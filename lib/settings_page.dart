@@ -11,6 +11,69 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
+  bool _showAppNames = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _showAppNames = prefs.getBool('show_app_names') ?? true;
+    });
+  }
+
+  Future<void> _toggleAppNames(bool value) async {
+    setState(() {
+      _showAppNames = value;
+    });
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('show_app_names', value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.grey[900],
+      appBar: AppBar(
+        title: const Text('Settings'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+      ),
+      body: ListView(
+        children: [
+          ListTile(
+            title: const Text("Background", style: TextStyle(color: Colors.white)),
+            leading: const Icon(Icons.wallpaper, color: Colors.white),
+            trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 16),
+            onTap: () {
+              Navigator.push(context, MaterialPageRoute(builder: (context) => const BackgroundSettingsPage()));
+            },
+          ),
+          SwitchListTile(
+            title: const Text("Show App Names", style: TextStyle(color: Colors.white)),
+            secondary: const Icon(Icons.text_fields, color: Colors.white),
+            value: _showAppNames,
+            onChanged: _toggleAppNames,
+            activeColor: Colors.blue,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class BackgroundSettingsPage extends StatefulWidget {
+  const BackgroundSettingsPage({super.key});
+
+  @override
+  State<BackgroundSettingsPage> createState() => _BackgroundSettingsPageState();
+}
+
+class _BackgroundSettingsPageState extends State<BackgroundSettingsPage> {
   // 'color' or 'image'
   String _backgroundType = 'color';
   // Default to black
@@ -88,7 +151,7 @@ class _SettingsPageState extends State<SettingsPage> {
     return Scaffold(
       backgroundColor: Colors.grey[900],
       appBar: AppBar(
-        title: const Text('Settings'),
+        title: const Text('Background Settings'),
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),

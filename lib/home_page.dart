@@ -6,6 +6,7 @@ import 'package:installed_apps/app_info.dart';
 import 'package:installed_apps/installed_apps.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'settings_page.dart';
+import 'glass_status_bar.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -28,6 +29,7 @@ class _HomePageState extends State<HomePage> {
   String _bgType = 'color';
   Color _bgColor = Colors.black;
   String? _bgImagePath;
+  bool _showAppNames = true;
 
   // Hardcoded grid dimensions
   final int _gridColumns = 4;
@@ -37,7 +39,7 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _fetchApps();
-    _loadBackgroundSettings();
+    _loadSettings();
   }
 
   // Asynchronously retrieves the list of installed apps.
@@ -80,13 +82,14 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  Future<void> _loadBackgroundSettings() async {
+  Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _bgType = prefs.getString('bg_type') ?? 'color';
       final int colorValue = prefs.getInt('bg_color') ?? Colors.black.value;
       _bgColor = Color(colorValue);
       _bgImagePath = prefs.getString('bg_image_path');
+      _showAppNames = prefs.getBool('show_app_names') ?? true;
     });
   }
 
@@ -155,7 +158,7 @@ class _HomePageState extends State<HomePage> {
               onOpenSettings: () {
                 Navigator.pop(context); // Close drawer
                 Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsPage()))
-                    .then((_) => _loadBackgroundSettings()); // Reload settings on return
+                    .then((_) => _loadSettings()); // Reload settings on return
               },
             );
           },
@@ -188,7 +191,7 @@ class _HomePageState extends State<HomePage> {
                 : Stack(
                   children: [
                   GridView.builder(
-                    padding: const EdgeInsets.fromLTRB(16, 60, 16, 16), // Top padding for Remove bar
+                    padding: const EdgeInsets.fromLTRB(16, 100, 16, 16), // Top padding for Status Bar
                     // We hardcode the number of items to create a fixed grid layout.
                     itemCount: _gridColumns * _gridRows,
                     gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
@@ -247,6 +250,16 @@ class _HomePageState extends State<HomePage> {
                         },
                       );
                     },
+                  ),
+                  // Glass Status Bar
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    child: GlassStatusBar(
+                      isImageBackground: _bgType == 'image',
+                      backgroundColor: _bgColor,
+                    ),
                   ),
                   // Remove Drop Zone
                   if (_isDragging)
@@ -314,18 +327,20 @@ class _HomePageState extends State<HomePage> {
               const Icon(Icons.android, color: Colors.white, size: 48),
           ),
         ),
-        const SizedBox(height: 8),
-        // Name
-        Text(
-          app.name,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 12,
+        if (_showAppNames) ...[
+          const SizedBox(height: 8),
+          // Name
+          Text(
+            app.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+            ),
+            textAlign: TextAlign.center,
           ),
-          textAlign: TextAlign.center,
-        ),
+        ],
       ],
     );
   }
