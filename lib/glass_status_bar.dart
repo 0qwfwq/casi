@@ -24,6 +24,8 @@ class _GlassStatusBarState extends State<GlassStatusBar> {
   DateTime _now = DateTime.now();
   String? _clockPackage;
   String? _calendarPackage;
+  String? _weatherPackage;
+  final int _temperature = 24; // Placeholder temperature
 
   @override
   void initState() {
@@ -75,6 +77,14 @@ class _GlassStatusBarState extends State<GlassStatusBar> {
         'com.oneplus.calendar',         // OnePlus
       ], 'calendar');
 
+      _weatherPackage = findPackage([
+        'com.google.android.apps.dynaprop', // Google Weather
+        'com.sec.android.daemonapp',        // Samsung Weather
+        'net.oneplus.weather',              // OnePlus Weather
+        'com.miui.weather2',                // Xiaomi Weather
+        'com.apple.weather',                // Just in case
+      ], 'weather');
+
     } catch (e) {
       debugPrint("Error finding system apps: $e");
     }
@@ -84,6 +94,12 @@ class _GlassStatusBarState extends State<GlassStatusBar> {
     if (packageName != null) {
       InstalledApps.startApp(packageName);
     }
+  }
+
+  Color _getTemperatureColor(int temp) {
+    if (temp < 15) return Colors.blueAccent; // Cold
+    if (temp > 28) return Colors.redAccent;  // Hot
+    return Colors.greenAccent;               // Nice
   }
 
   @override
@@ -110,12 +126,24 @@ class _GlassStatusBarState extends State<GlassStatusBar> {
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
       child: Row(
         children: [
-          // Left Capsule (Notifications)
-          _GlassCapsule(
-            child: IconButton(
-              icon: const Icon(Icons.notifications_none, color: Colors.white),
-              onPressed: () {}, // No functionality yet
-              tooltip: 'Notifications',
+          // Left Capsule (Weather)
+          GestureDetector(
+            onTap: () => _launchApp(_weatherPackage),
+            child: _GlassCapsule(
+              color: _getTemperatureColor(_temperature),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
+                child: Row(
+                  children: [
+                    const Icon(Icons.cloud, color: Colors.white, size: 20),
+                    const SizedBox(width: 8),
+                    Text(
+                      "$_temperature°",
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
           
@@ -192,8 +220,9 @@ class _GlassStatusBarState extends State<GlassStatusBar> {
 
 class _GlassCapsule extends StatelessWidget {
   final Widget child;
+  final Color? color;
   
-  const _GlassCapsule({required this.child});
+  const _GlassCapsule({required this.child, this.color});
 
   @override
   Widget build(BuildContext context) {
@@ -203,16 +232,17 @@ class _GlassCapsule extends StatelessWidget {
         Positioned.fill(
           child: OCLiquidGlass(
             borderRadius: 30,
+            color: (color ?? Colors.white).withValues(alpha: 0.2),
             child: const SizedBox(), // Empty child, just the glass effect
           ),
         ),
         // Content Layer (Foreground - unaffected by distortion)
         Container(
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.1),
+            color: (color ?? Colors.white).withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(30),
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.2),
+              color: (color ?? Colors.white).withValues(alpha: 0.2),
               width: 1.5,
             ),
           ),
