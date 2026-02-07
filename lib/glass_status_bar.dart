@@ -101,7 +101,11 @@ class _GlassStatusBarState extends State<GlassStatusBar> {
     final date = "${_now.month}/${_now.day}";
     
     return OCLiquidGlassGroup(
-      settings: const OCLiquidGlassSettings(),
+      settings: const OCLiquidGlassSettings(
+        blurRadiusPx: 3.0,
+        distortExponent: 1.0,
+        distortFalloffPx: 20.0,
+      ),
       child: Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
       child: Row(
