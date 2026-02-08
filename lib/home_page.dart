@@ -172,66 +172,68 @@ class _HomePageState extends State<HomePage> {
                         children: [
                           Opacity(
                             opacity: opacity,
-                            child: GridView.builder(
-                              padding: const EdgeInsets.fromLTRB(16, 100, 16, 16), // Top padding for Status Bar
-                              // We hardcode the number of items to create a fixed grid layout.
-                              itemCount: _gridColumns * _gridRows,
-                              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: _gridColumns, // <--- Hardcoded grid width (columns)
-                                crossAxisSpacing: 16,
-                                mainAxisSpacing: 24,
-                                childAspectRatio: 0.8,
-                              ),
-                              itemBuilder: (context, index) {
-                                return DragTarget<AppInfo>(
-                                  onAccept: (data) {
-                                    setState(() {
-                                      // If the app is already on the home screen, remove it from its old position.
-                                      final int? oldIndex = _homeApps.keys.cast<int?>().firstWhere(
-                                            (k) => _homeApps[k]?.packageName == data.packageName,
-                                            orElse: () => null,
-                                          );
-                                      if (oldIndex != null) {
-                                        _homeApps.remove(oldIndex);
+                            child: RepaintBoundary(
+                              child: GridView.builder(
+                                padding: const EdgeInsets.fromLTRB(16, 100, 16, 16), // Top padding for Status Bar
+                                // We hardcode the number of items to create a fixed grid layout.
+                                itemCount: _gridColumns * _gridRows,
+                                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: _gridColumns, // <--- Hardcoded grid width (columns)
+                                  crossAxisSpacing: 16,
+                                  mainAxisSpacing: 24,
+                                  childAspectRatio: 0.8,
+                                ),
+                                itemBuilder: (context, index) {
+                                  return DragTarget<AppInfo>(
+                                    onAccept: (data) {
+                                      setState(() {
+                                        // If the app is already on the home screen, remove it from its old position.
+                                        final int? oldIndex = _homeApps.keys.cast<int?>().firstWhere(
+                                              (k) => _homeApps[k]?.packageName == data.packageName,
+                                              orElse: () => null,
+                                            );
+                                        if (oldIndex != null) {
+                                          _homeApps.remove(oldIndex);
+                                        }
+                                        // Place it in the new position
+                                        _homeApps[index] = data;
+                                      });
+                                      _saveLayout();
+                                    },
+                                    builder: (context, candidateData, rejectedData) {
+                                      final app = _homeApps[index];
+                                      if (app == null) {
+                                        return Container(
+                                          decoration: BoxDecoration(
+                                            border: candidateData.isNotEmpty
+                                                ? Border.all(color: Colors.white24)
+                                                : null,
+                                            borderRadius: BorderRadius.circular(12),
+                                          ),
+                                        );
                                       }
-                                      // Place it in the new position
-                                      _homeApps[index] = data;
-                                    });
-                                    _saveLayout();
-                                  },
-                                  builder: (context, candidateData, rejectedData) {
-                                    final app = _homeApps[index];
-                                    if (app == null) {
-                                      return Container(
-                                        decoration: BoxDecoration(
-                                          border: candidateData.isNotEmpty
-                                              ? Border.all(color: Colors.white24)
-                                              : null,
-                                          borderRadius: BorderRadius.circular(12),
+                                      return LongPressDraggable<AppInfo>(
+                                        data: app,
+                                        onDragStarted: () => setState(() => _isDragging = true),
+                                        onDragEnd: (_) => setState(() => _isDragging = false),
+                                        feedback: Material(
+                                          color: Colors.transparent,
+                                          child: SizedBox(
+                                            width: 60,
+                                            child: _buildAppIconVisual(app),
+                                          ),
                                         ),
-                                      );
-                                    }
-                                    return LongPressDraggable<AppInfo>(
-                                      data: app,
-                                      onDragStarted: () => setState(() => _isDragging = true),
-                                      onDragEnd: (_) => setState(() => _isDragging = false),
-                                      feedback: Material(
-                                        color: Colors.transparent,
-                                        child: SizedBox(
-                                          width: 60,
+                                        childWhenDragging: Container(color: Colors.transparent),
+                                        child: InkWell(
+                                          onTap: () => InstalledApps.startApp(app.packageName),
+                                          borderRadius: BorderRadius.circular(12),
                                           child: _buildAppIconVisual(app),
                                         ),
-                                      ),
-                                      childWhenDragging: Container(color: Colors.transparent),
-                                      child: InkWell(
-                                        onTap: () => InstalledApps.startApp(app.packageName),
-                                        borderRadius: BorderRadius.circular(12),
-                                        child: _buildAppIconVisual(app),
-                                      ),
-                                    );
-                                  },
-                                );
-                              },
+                                      );
+                                    },
+                                  );
+                                },
+                              ),
                             ),
                           ),
                           // Glass Status Bar
@@ -336,6 +338,7 @@ class _HomePageState extends State<HomePage> {
             app.icon ?? Uint8List(0),
             width: 48,
             height: 48,
+            gaplessPlayback: true,
             errorBuilder: (context, error, stackTrace) => 
               const Icon(Icons.android, color: Colors.white, size: 48),
           ),
@@ -415,7 +418,8 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
     return ValueListenableBuilder<double>(
       valueListenable: widget.progressNotifier,
       builder: (context, progress, _) {
-        final double width = lerpDouble(120, MediaQuery.of(context).size.width, progress)!;
+        final double screenWidth = MediaQuery.of(context).size.width;
+        final double width = lerpDouble(120, screenWidth, progress)!;
         final double borderRadius = lerpDouble(30, 20, progress)!;
         // Fade content in as it expands
         final double contentOpacity = (progress - 0.6).clamp(0.0, 1.0) / 0.4;
@@ -434,15 +438,20 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
       child: Align(
         alignment: Alignment.topCenter,
         child: SizedBox(
-          width: width,
+          width: screenWidth,
           child: Stack(
         children: [
           // Liquid Glass Background
-          Positioned.fill(
-            child: OCLiquidGlass(
-              borderRadius: borderRadius,
-              color: Colors.grey[900]!.withValues(alpha: 0.4),
-              child: const SizedBox(),
+          Align(
+            alignment: Alignment.topCenter,
+            child: SizedBox(
+              width: width,
+              height: double.infinity,
+              child: OCLiquidGlass(
+                borderRadius: borderRadius,
+                color: Colors.grey[900]!.withValues(alpha: 0.4),
+                child: const SizedBox(),
+              ),
             ),
           ),
           
@@ -511,21 +520,21 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                   ),
                 ),
 
-                SliverPadding(
-                  padding: EdgeInsets.fromLTRB(16, 0, 16, MediaQuery.of(context).viewInsets.bottom + 16),
-                  sliver: SliverGrid(
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 4,
-                    crossAxisSpacing: 16,
-                    mainAxisSpacing: 24,
-                    childAspectRatio: 0.8,
-                  ),
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                        final app = _filteredApps[index];
-                        return Opacity(
-                          opacity: contentOpacity,
-                          child: InkWell(
+                SliverOpacity(
+                  opacity: contentOpacity,
+                  sliver: SliverPadding(
+                    padding: EdgeInsets.fromLTRB(16, 0, 16, MediaQuery.of(context).viewInsets.bottom + 16),
+                    sliver: SliverGrid(
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 4,
+                      crossAxisSpacing: 16,
+                      mainAxisSpacing: 24,
+                      childAspectRatio: 0.8,
+                    ),
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) {
+                          final app = _filteredApps[index];
+                          return InkWell(
                             onTap: () => widget.onAppTap(app),
                             onLongPress: () => widget.onAppLongPress(app),
                             child: Column(
@@ -537,6 +546,7 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                                     app.icon ?? Uint8List(0),
                                     width: 48,
                                     height: 48,
+                                    gaplessPlayback: true,
                                     errorBuilder: (context, error, stackTrace) =>
                                         const Icon(Icons.android, color: Colors.white, size: 48),
                                   ),
@@ -556,10 +566,10 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                                 ],
                               ],
                             ),
-                          ),
-                        );
-                      },
-                      childCount: _filteredApps.length,
+                          );
+                        },
+                        childCount: _filteredApps.length,
+                      ),
                     ),
                   ),
                 ),
