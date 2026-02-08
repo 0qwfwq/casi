@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:installed_apps/app_info.dart';
 import 'package:installed_apps/installed_apps.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:oc_liquid_glass/oc_liquid_glass.dart';
 import 'settings_page.dart';
 import 'glass_status_bar.dart';
 
@@ -34,6 +35,8 @@ class _HomePageState extends State<HomePage> {
   // Hardcoded grid dimensions
   final int _gridColumns = 4;
   final int _gridRows = 6;
+
+  final ValueNotifier<double> _drawerProgress = ValueNotifier(0.0);
 
   @override
   void initState() {
@@ -138,40 +141,11 @@ class _HomePageState extends State<HomePage> {
     _saveLayout();
   }
 
-  // Opens the bottom sheet containing all installed apps.
-  void _showAppDrawer() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return DraggableScrollableSheet(
-          initialChildSize: 0.7,
-          minChildSize: 0.5,
-          maxChildSize: 0.95,
-          builder: (context, scrollController) {
-            return _AppDrawerSheet(
-              apps: _apps,
-              scrollController: scrollController,
-              onAppTap: (app) => InstalledApps.startApp(app.packageName),
-              onAppLongPress: (app) => _addToHomeScreen(app),
-              onOpenSettings: () {
-                Navigator.pop(context); // Close drawer
-                Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsPage()))
-                    .then((_) => _loadSettings()); // Reload settings on return
-              },
-            );
-          },
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black, 
-      body: Stack(
+        backgroundColor: Colors.black, 
+        body: Stack(
         children: [
           // Background Layer
           Positioned.fill(
@@ -190,124 +164,163 @@ class _HomePageState extends State<HomePage> {
                 ? const Center(child: CircularProgressIndicator())
                 : Stack(
                   children: [
-                  GridView.builder(
-                    padding: const EdgeInsets.fromLTRB(16, 100, 16, 16), // Top padding for Status Bar
-                    // We hardcode the number of items to create a fixed grid layout.
-                    itemCount: _gridColumns * _gridRows,
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: _gridColumns, // <--- Hardcoded grid width (columns)
-                      crossAxisSpacing: 16,
-                      mainAxisSpacing: 24,
-                      childAspectRatio: 0.8,
-                    ),
-                    itemBuilder: (context, index) {
-                      return DragTarget<AppInfo>(
-                        onAccept: (data) {
-                          setState(() {
-                            // If the app is already on the home screen, remove it from its old position.
-                            final int? oldIndex = _homeApps.keys.cast<int?>().firstWhere(
-                                  (k) => _homeApps[k]?.packageName == data.packageName,
-                                  orElse: () => null,
+                  ValueListenableBuilder<double>(
+                    valueListenable: _drawerProgress,
+                    builder: (context, progress, child) {
+                      final double opacity = (1.0 - progress).clamp(0.0, 1.0);
+                      return Stack(
+                        children: [
+                          Opacity(
+                            opacity: opacity,
+                            child: GridView.builder(
+                              padding: const EdgeInsets.fromLTRB(16, 100, 16, 16), // Top padding for Status Bar
+                              // We hardcode the number of items to create a fixed grid layout.
+                              itemCount: _gridColumns * _gridRows,
+                              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: _gridColumns, // <--- Hardcoded grid width (columns)
+                                crossAxisSpacing: 16,
+                                mainAxisSpacing: 24,
+                                childAspectRatio: 0.8,
+                              ),
+                              itemBuilder: (context, index) {
+                                return DragTarget<AppInfo>(
+                                  onAccept: (data) {
+                                    setState(() {
+                                      // If the app is already on the home screen, remove it from its old position.
+                                      final int? oldIndex = _homeApps.keys.cast<int?>().firstWhere(
+                                            (k) => _homeApps[k]?.packageName == data.packageName,
+                                            orElse: () => null,
+                                          );
+                                      if (oldIndex != null) {
+                                        _homeApps.remove(oldIndex);
+                                      }
+                                      // Place it in the new position
+                                      _homeApps[index] = data;
+                                    });
+                                    _saveLayout();
+                                  },
+                                  builder: (context, candidateData, rejectedData) {
+                                    final app = _homeApps[index];
+                                    if (app == null) {
+                                      return Container(
+                                        decoration: BoxDecoration(
+                                          border: candidateData.isNotEmpty
+                                              ? Border.all(color: Colors.white24)
+                                              : null,
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                      );
+                                    }
+                                    return LongPressDraggable<AppInfo>(
+                                      data: app,
+                                      onDragStarted: () => setState(() => _isDragging = true),
+                                      onDragEnd: (_) => setState(() => _isDragging = false),
+                                      feedback: Material(
+                                        color: Colors.transparent,
+                                        child: SizedBox(
+                                          width: 60,
+                                          child: _buildAppIconVisual(app),
+                                        ),
+                                      ),
+                                      childWhenDragging: Container(color: Colors.transparent),
+                                      child: InkWell(
+                                        onTap: () => InstalledApps.startApp(app.packageName),
+                                        borderRadius: BorderRadius.circular(12),
+                                        child: _buildAppIconVisual(app),
+                                      ),
+                                    );
+                                  },
                                 );
-                            if (oldIndex != null) {
-                              _homeApps.remove(oldIndex);
-                            }
-                            // Place it in the new position
-                            _homeApps[index] = data;
-                          });
-                          _saveLayout();
-                        },
-                        builder: (context, candidateData, rejectedData) {
-                          final app = _homeApps[index];
-                          if (app == null) {
-                            return Container(
-                              decoration: BoxDecoration(
-                                border: candidateData.isNotEmpty
-                                    ? Border.all(color: Colors.white24)
-                                    : null,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            );
-                          }
-                          return LongPressDraggable<AppInfo>(
-                            data: app,
-                            onDragStarted: () => setState(() => _isDragging = true),
-                            onDragEnd: (_) => setState(() => _isDragging = false),
-                            feedback: Material(
-                              color: Colors.transparent,
-                              child: SizedBox(
-                                width: 60,
-                                child: _buildAppIconVisual(app),
+                              },
+                            ),
+                          ),
+                          // Glass Status Bar
+                          Positioned(
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            child: GlassStatusBar(
+                              isImageBackground: _bgType == 'image',
+                              backgroundColor: _bgColor,
+                              opacity: opacity,
+                            ),
+                          ),
+                          // Remove Drop Zone
+                          if (_isDragging)
+                            Positioned(
+                              top: 0,
+                              left: 0,
+                              right: 0,
+                              height: 60,
+                              child: Opacity(
+                                opacity: opacity,
+                                child: DragTarget<AppInfo>(
+                                  onAccept: (data) {
+                                    setState(() {
+                                      _homeApps.removeWhere((key, value) => value.packageName == data.packageName);
+                                    });
+                                    _saveLayout();
+                                  },
+                                  builder: (context, candidateData, rejectedData) {
+                                    return Container(
+                                      color: candidateData.isNotEmpty
+                                          ? Colors.red.withValues(alpha: 0.5)
+                                          : Colors.red.withValues(alpha: 0.2),
+                                      child: const Center(
+                                        child: Row(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            Icon(Icons.delete, color: Colors.white),
+                                            SizedBox(width: 8),
+                                            Text(
+                                              "Remove",
+                                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
                               ),
                             ),
-                            childWhenDragging: Container(color: Colors.transparent),
-                            child: InkWell(
-                              onTap: () => InstalledApps.startApp(app.packageName),
-                              borderRadius: BorderRadius.circular(12),
-                              child: _buildAppIconVisual(app),
-                            ),
-                          );
-                        },
+                        ],
                       );
                     },
                   ),
-                  // Glass Status Bar
-                  Positioned(
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    child: GlassStatusBar(
-                      isImageBackground: _bgType == 'image',
-                      backgroundColor: _bgColor,
+                  
+                  // App Drawer (Draggable Sheet)
+                  NotificationListener<DraggableScrollableNotification>(
+                    onNotification: (notification) {
+                      final double progress = (notification.extent - 0.08) / (0.95 - 0.08);
+                      _drawerProgress.value = progress.clamp(0.0, 1.0);
+                      return false;
+                    },
+                    child: DraggableScrollableSheet(
+                    initialChildSize: 0.08,
+                    minChildSize: 0.08,
+                    maxChildSize: 1.0,
+                    snap: true,
+                    builder: (context, scrollController) {
+                      return _AppDrawerSheet(
+                        progressNotifier: _drawerProgress,
+                        apps: _apps,
+                        scrollController: scrollController,
+                        onAppTap: (app) => InstalledApps.startApp(app.packageName),
+                        onAppLongPress: (app) => _addToHomeScreen(app),
+                        onOpenSettings: () {
+                          Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsPage()))
+                              .then((_) => _loadSettings());
+                        },
+                      );
+                    },
                     ),
                   ),
-                  // Remove Drop Zone
-                  if (_isDragging)
-                    Positioned(
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      height: 60,
-                      child: DragTarget<AppInfo>(
-                        onAccept: (data) {
-                          setState(() {
-                            _homeApps.removeWhere((key, value) => value.packageName == data.packageName);
-                          });
-                          _saveLayout();
-                        },
-                        builder: (context, candidateData, rejectedData) {
-                          return Container(
-                            color: candidateData.isNotEmpty
-                                ? Colors.red.withValues(alpha: 0.5)
-                                : Colors.red.withValues(alpha: 0.2),
-                            child: const Center(
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.delete, color: Colors.white),
-                                  SizedBox(width: 8),
-                                  Text(
-                                    "Remove",
-                                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
                 ],
                 ),
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _showAppDrawer,
-        backgroundColor: Colors.white.withValues(alpha: 0.1),
-        child: const Icon(Icons.apps, color: Colors.white),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
 
@@ -352,6 +365,7 @@ class _AppDrawerSheet extends StatefulWidget {
   final Function(AppInfo) onAppTap;
   final Function(AppInfo) onAppLongPress;
   final VoidCallback onOpenSettings;
+  final ValueNotifier<double> progressNotifier;
 
   const _AppDrawerSheet({
     required this.apps,
@@ -359,6 +373,7 @@ class _AppDrawerSheet extends StatefulWidget {
     required this.onAppTap,
     required this.onAppLongPress,
     required this.onOpenSettings,
+    required this.progressNotifier,
   });
 
   @override
@@ -397,124 +412,166 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.grey[900]!.withValues(alpha: 0.7),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-            border: Border(
-              top: BorderSide(color: Colors.white.withValues(alpha: 0.2), width: 0.5),
+    return ValueListenableBuilder<double>(
+      valueListenable: widget.progressNotifier,
+      builder: (context, progress, _) {
+        final double width = lerpDouble(120, MediaQuery.of(context).size.width, progress)!;
+        final double borderRadius = lerpDouble(30, 20, progress)!;
+        // Fade content in as it expands
+        final double contentOpacity = (progress - 0.6).clamp(0.0, 1.0) / 0.4;
+        // Fade dots out as content appears
+        final double dotsOpacity = 1.0 - contentOpacity;
+        // Only show app names when fully expanded to prevent overflow during animation
+        final bool showAppNames = progress > 0.99;
+
+        return OCLiquidGlassGroup(
+      settings: const OCLiquidGlassSettings(
+        blurRadiusPx: 5.0,
+        distortExponent: 1.0,
+        distortFalloffPx: 20.0,
+        specStrength: 5.0,
+      ),
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: SizedBox(
+          width: width,
+          child: Stack(
+        children: [
+          // Liquid Glass Background
+          Positioned.fill(
+            child: OCLiquidGlass(
+              borderRadius: borderRadius,
+              color: Colors.grey[900]!.withValues(alpha: 0.4),
+              child: const SizedBox(),
             ),
           ),
-          child: Column(
-            children: [
-              const SizedBox(height: 12),
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey[600],
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      "All Apps",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
+          
+          // Content
+          CustomScrollView(
+            controller: widget.scrollController,
+            slivers: [
+              // Handle / Dots Section
+              SliverToBoxAdapter(
+                child: SizedBox(
+                  height: 60,
+                  child: Opacity(
+                    opacity: dotsOpacity,
+                    child: Center(
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(width: 6, height: 6, decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
+                          const SizedBox(width: 4),
+                          Container(width: 6, height: 6, decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.5), shape: BoxShape.circle)),
+                        ],
                       ),
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.settings, color: Colors.white70),
-                      onPressed: widget.onOpenSettings,
-                    ),
-                  ],
+                  ),
                 ),
               ),
-              Expanded(
-                child: GridView.builder(
-                  controller: widget.scrollController,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+
+              // App Grid (Only visible when expanded)
+              if (contentOpacity > 0) ...[
+                // Search Bar (Moved to top)
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  sliver: SliverToBoxAdapter(
+                    child: Opacity(
+                      opacity: contentOpacity,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _searchController,
+                              onChanged: _updateSearch,
+                              style: const TextStyle(color: Colors.white),
+                              decoration: InputDecoration(
+                                hintText: 'Search apps...',
+                                hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
+                                prefixIcon: const Icon(Icons.search, color: Colors.white),
+                                filled: true,
+                                fillColor: Colors.white.withValues(alpha: 0.1),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(30),
+                                  borderSide: BorderSide.none,
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          IconButton(
+                            icon: const Icon(Icons.settings, color: Colors.white70),
+                            onPressed: widget.onOpenSettings,
+                            style: IconButton.styleFrom(backgroundColor: Colors.white.withValues(alpha: 0.1)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+                SliverPadding(
+                  padding: EdgeInsets.fromLTRB(16, 0, 16, MediaQuery.of(context).viewInsets.bottom + 16),
+                  sliver: SliverGrid(
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 4,
                     crossAxisSpacing: 16,
                     mainAxisSpacing: 24,
                     childAspectRatio: 0.8,
                   ),
-                  itemCount: _filteredApps.length,
-                  itemBuilder: (context, index) {
-                    final app = _filteredApps[index];
-                    return InkWell(
-                      onTap: () => widget.onAppTap(app),
-                      onLongPress: () => widget.onAppLongPress(app),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            child: Image.memory(
-                              app.icon ?? Uint8List(0),
-                              width: 48,
-                              height: 48,
-                              errorBuilder: (context, error, stackTrace) =>
-                                  const Icon(Icons.android, color: Colors.white, size: 48),
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        final app = _filteredApps[index];
+                        return Opacity(
+                          opacity: contentOpacity,
+                          child: InkWell(
+                            onTap: () => widget.onAppTap(app),
+                            onLongPress: () => widget.onAppLongPress(app),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  child: Image.memory(
+                                    app.icon ?? Uint8List(0),
+                                    width: 48,
+                                    height: 48,
+                                    errorBuilder: (context, error, stackTrace) =>
+                                        const Icon(Icons.android, color: Colors.white, size: 48),
+                                  ),
+                                ),
+                                if (showAppNames) ...[
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    app.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ],
+                              ],
                             ),
                           ),
-                          const SizedBox(height: 8),
-                          Text(
-                            app.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ),
-              Padding(
-                padding: EdgeInsets.fromLTRB(
-                  16,
-                  16,
-                  16,
-                  MediaQuery.of(context).viewInsets.bottom + 16,
-                ),
-                child: TextField(
-                  controller: _searchController,
-                  onChanged: _updateSearch,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    hintText: 'Search apps...',
-                    hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
-                    prefixIcon: const Icon(Icons.search, color: Colors.white),
-                    filled: true,
-                    fillColor: Colors.white.withValues(alpha: 0.1),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(30),
-                      borderSide: BorderSide.none,
+                        );
+                      },
+                      childCount: _filteredApps.length,
                     ),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                   ),
                 ),
-              ),
+              ],
             ],
           ),
+        ],
+      ),
         ),
       ),
+    );
+      },
     );
   }
 }

@@ -8,11 +8,13 @@ import 'package:oc_liquid_glass/oc_liquid_glass.dart';
 class GlassStatusBar extends StatefulWidget {
   final bool isImageBackground;
   final Color backgroundColor;
+  final double opacity;
 
   const GlassStatusBar({
     super.key,
     this.isImageBackground = false,
     this.backgroundColor = Colors.black,
+    this.opacity = 1.0,
   });
 
   @override
@@ -51,13 +53,17 @@ class _GlassStatusBarState extends State<GlassStatusBar> {
         for (var pkg in priorityPackages) {
           if (apps.any((app) => app.packageName == pkg)) return pkg;
         }
-        // 2. Check for keyword in package name
+        // 2. Check for exact app name match (High confidence)
+        try {
+          return apps.firstWhere((app) => app.name.toLowerCase() == keyword.toLowerCase()).packageName;
+        } catch (_) {}
+        // 3. Check for keyword in package name
         try {
           return apps.firstWhere((app) => app.packageName.toLowerCase().contains(keyword)).packageName;
         } catch (_) {}
-        // 3. Check for keyword in app name
+        // 4. Check for keyword in app name
         try {
-          return apps.firstWhere((app) => app.name.toLowerCase() == keyword).packageName;
+          return apps.firstWhere((app) => app.name.toLowerCase().contains(keyword)).packageName;
         } catch (_) {}
         
         return null;
@@ -79,9 +85,15 @@ class _GlassStatusBarState extends State<GlassStatusBar> {
 
       _weatherPackage = findPackage([
         'com.google.android.apps.dynaprop', // Google Weather
-        'com.sec.android.daemonapp',        // Samsung Weather
+        'com.samsung.android.weather',      // Samsung Weather (Alternative)
+        'com.sec.android.daemonapp',        // Samsung Weather (Service)
         'net.oneplus.weather',              // OnePlus Weather
         'com.miui.weather2',                // Xiaomi Weather
+        'com.huawei.android.weather',       // Huawei Weather
+        'com.sonymobile.xperiaweather',     // Sony Weather
+        'com.asus.weather',                 // Asus Weather
+        'com.accuweather.android',          // AccuWeather
+        'com.weather.Weather',              // The Weather Channel
         'com.apple.weather',                // Just in case
       ], 'weather');
 
@@ -92,6 +104,7 @@ class _GlassStatusBarState extends State<GlassStatusBar> {
 
   void _launchApp(String? packageName) {
     if (packageName != null) {
+      debugPrint("Attempting to launch: $packageName");
       InstalledApps.startApp(packageName);
     }
   }
@@ -110,6 +123,8 @@ class _GlassStatusBarState extends State<GlassStatusBar> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.opacity == 0) return const SizedBox.shrink();
+
     // Format: 12:00 PM | 1/7
     final hour = _now.hour == 0 || _now.hour == 12 ? 12 : _now.hour % 12;
     final amPm = _now.hour >= 12 ? 'PM' : 'AM';
@@ -117,8 +132,9 @@ class _GlassStatusBarState extends State<GlassStatusBar> {
     final date = "${_now.month}/${_now.day}";
     
     return OCLiquidGlassGroup(
-      settings: const OCLiquidGlassSettings(
-        blurRadiusPx: 3.0,
+      settings: OCLiquidGlassSettings(
+        blurRadiusPx: 3.0 * widget.opacity,
+        specStrength: 5.0 * widget.opacity,
         distortExponent: 1.0,
         distortFalloffPx: 20.0,
       ),
@@ -130,6 +146,7 @@ class _GlassStatusBarState extends State<GlassStatusBar> {
           GestureDetector(
             onTap: () => _launchApp(_weatherPackage),
             child: _GlassCapsule(
+              opacity: widget.opacity,
               color: _getTemperatureColor(_temperature),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
@@ -152,6 +169,7 @@ class _GlassStatusBarState extends State<GlassStatusBar> {
           // Right Capsule (Status Bar)
           Expanded(
             child: _GlassCapsule(
+              opacity: widget.opacity,
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
                 child: Row(
@@ -221,32 +239,37 @@ class _GlassStatusBarState extends State<GlassStatusBar> {
 class _GlassCapsule extends StatelessWidget {
   final Widget child;
   final Color? color;
+  final double opacity;
   
-  const _GlassCapsule({required this.child, this.color});
+  const _GlassCapsule({required this.child, this.color, this.opacity = 1.0});
 
   @override
   Widget build(BuildContext context) {
     return Stack(
       children: [
         // Glass Layer (Background)
-        Positioned.fill(
-          child: OCLiquidGlass(
-            borderRadius: 30,
-            color: (color ?? Colors.white).withValues(alpha: 0.2),
-            child: const SizedBox(), // Empty child, just the glass effect
+        if (opacity > 0)
+          Positioned.fill(
+            child: OCLiquidGlass(
+              borderRadius: 30,
+              color: (color ?? Colors.white).withValues(alpha: 0.2 * opacity),
+              child: const SizedBox(), // Empty child, just the glass effect
+            ),
           ),
-        ),
         // Content Layer (Foreground - unaffected by distortion)
         Container(
           decoration: BoxDecoration(
-            color: (color ?? Colors.white).withValues(alpha: 0.1),
+            color: (color ?? Colors.white).withValues(alpha: 0.1 * opacity),
             borderRadius: BorderRadius.circular(30),
             border: Border.all(
-              color: (color ?? Colors.white).withValues(alpha: 0.2),
+              color: (color ?? Colors.white).withValues(alpha: 0.2 * opacity),
               width: 1.5,
             ),
           ),
-          child: child,
+          child: Opacity(
+            opacity: opacity,
+            child: child,
+          ),
         ),
       ],
     );
