@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:installed_apps/app_info.dart';
 import 'package:installed_apps/installed_apps.dart';
 import 'package:oc_liquid_glass/oc_liquid_glass.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class WeatherCapsule extends StatefulWidget {
   final double opacity;
@@ -28,6 +29,16 @@ class _WeatherCapsuleState extends State<WeatherCapsule> with WidgetsBindingObse
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _findWeatherApp();
+    _initWeather();
+  }
+
+  Future<void> _initWeather() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        _temperature = prefs.getInt('last_temperature');
+      });
+    }
     _fetchWeather();
   }
 
@@ -71,7 +82,10 @@ class _WeatherCapsuleState extends State<WeatherCapsule> with WidgetsBindingObse
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (mounted) {
-          setState(() => _temperature = (data['current_weather']['temperature'] as num).round());
+          final temp = (data['current_weather']['temperature'] as num).round();
+          setState(() => _temperature = temp);
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setInt('last_temperature', temp);
         }
       }
     } catch (e) {
