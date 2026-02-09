@@ -244,7 +244,7 @@ class _HomePageState extends State<HomePage> {
                             child: GlassStatusBar(
                               isImageBackground: _bgType == 'image',
                               backgroundColor: _bgColor,
-                              opacity: opacity,
+                              opacity: 1.0,
                             ),
                           ),
                           // Remove Drop Zone
@@ -294,14 +294,14 @@ class _HomePageState extends State<HomePage> {
                   // App Drawer (Draggable Sheet)
                   NotificationListener<DraggableScrollableNotification>(
                     onNotification: (notification) {
-                      final double progress = (notification.extent - 0.08) / (0.95 - 0.08);
+                      final double progress = (notification.extent - 0.08) / (0.5 - 0.08);
                       _drawerProgress.value = progress.clamp(0.0, 1.0);
                       return false;
                     },
                     child: DraggableScrollableSheet(
                     initialChildSize: 0.08,
                     minChildSize: 0.08,
-                    maxChildSize: 1.0,
+                    maxChildSize: 0.5,
                     snap: true,
                     builder: (context, scrollController) {
                       return _AppDrawerSheet(
@@ -429,158 +429,158 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
         final bool showAppNames = progress > 0.99;
 
         return OCLiquidGlassGroup(
-      settings: const OCLiquidGlassSettings(
-        blurRadiusPx: 5.0,
-        distortExponent: 1.0,
-        distortFalloffPx: 20.0,
-        specStrength: 5.0,
-      ),
-      child: Align(
-        alignment: Alignment.topCenter,
-        child: SizedBox(
-          width: screenWidth,
-          child: Stack(
-        children: [
-          // Liquid Glass Background
-          Align(
+          settings: const OCLiquidGlassSettings(
+            blurRadiusPx: 5.0,
+            distortExponent: 1.0,
+            distortFalloffPx: 20.0,
+            specStrength: 5.0,
+          ),
+          child: Align(
             alignment: Alignment.topCenter,
             child: SizedBox(
-              width: width,
-              height: double.infinity,
-              child: OCLiquidGlass(
-                borderRadius: borderRadius,
-                color: Colors.grey[900]!.withValues(alpha: 0.4),
-                child: const SizedBox(),
-              ),
-            ),
-          ),
-          
-          // Content
-          CustomScrollView(
-            controller: widget.scrollController,
-            slivers: [
-              // Handle / Dots Section
-              SliverToBoxAdapter(
-                child: SizedBox(
-                  height: 60,
-                  child: Opacity(
-                    opacity: dotsOpacity,
-                    child: Center(
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Container(width: 6, height: 6, decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
-                          const SizedBox(width: 4),
-                          Container(width: 6, height: 6, decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.5), shape: BoxShape.circle)),
-                        ],
+              width: screenWidth,
+              child: Stack(
+                children: [
+                  // Liquid Glass Background
+                  Align(
+                    alignment: Alignment.topCenter,
+                    child: SizedBox(
+                      width: width,
+                      height: double.infinity,
+                      child: OCLiquidGlass(
+                        borderRadius: borderRadius,
+                        color: Colors.grey[900]!.withValues(alpha: 0.4),
+                        child: const SizedBox(),
                       ),
                     ),
                   ),
-                ),
-              ),
-
-              // App Grid (Only visible when expanded)
-              if (contentOpacity > 0) ...[
-                // Search Bar (Moved to top)
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                  sliver: SliverToBoxAdapter(
-                    child: Opacity(
-                      opacity: contentOpacity,
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              controller: _searchController,
-                              onChanged: _updateSearch,
-                              style: const TextStyle(color: Colors.white),
-                              decoration: InputDecoration(
-                                hintText: 'Search apps...',
-                                hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
-                                prefixIcon: const Icon(Icons.search, color: Colors.white),
-                                filled: true,
-                                fillColor: Colors.white.withValues(alpha: 0.1),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(30),
-                                  borderSide: BorderSide.none,
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  
+                  // Content
+                  CustomScrollView(
+                    controller: widget.scrollController,
+                    slivers: [
+                      // Handle / Dots Section
+                      SliverToBoxAdapter(
+                        child: SizedBox(
+                          height: 60,
+                          child: Opacity(
+                            opacity: dotsOpacity,
+                            child: Center(
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Container(width: 6, height: 6, decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
+                                  const SizedBox(width: 4),
+                                  Container(width: 6, height: 6, decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.5), shape: BoxShape.circle)),
+                                ],
                               ),
                             ),
                           ),
-                          const SizedBox(width: 12),
-                          IconButton(
-                            icon: const Icon(Icons.settings, color: Colors.white70),
-                            onPressed: widget.onOpenSettings,
-                            style: IconButton.styleFrom(backgroundColor: Colors.white.withValues(alpha: 0.1)),
-                          ),
-                        ],
+                        ),
                       ),
-                    ),
-                  ),
-                ),
 
-                SliverOpacity(
-                  opacity: contentOpacity,
-                  sliver: SliverPadding(
-                    padding: EdgeInsets.fromLTRB(16, 0, 16, MediaQuery.of(context).viewInsets.bottom + 16),
-                    sliver: SliverGrid(
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 4,
-                      crossAxisSpacing: 16,
-                      mainAxisSpacing: 24,
-                      childAspectRatio: 0.8,
-                    ),
-                      delegate: SliverChildBuilderDelegate(
-                        (context, index) {
-                          final app = _filteredApps[index];
-                          return InkWell(
-                            onTap: () => widget.onAppTap(app),
-                            onLongPress: () => widget.onAppLongPress(app),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(8),
-                                  child: Image.memory(
-                                    app.icon ?? Uint8List(0),
-                                    width: 48,
-                                    height: 48,
-                                    gaplessPlayback: true,
-                                    errorBuilder: (context, error, stackTrace) =>
-                                        const Icon(Icons.android, color: Colors.white, size: 48),
-                                  ),
-                                ),
-                                if (showAppNames) ...[
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    app.name,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 12,
+                      // App Grid (Only visible when expanded)
+                      if (contentOpacity > 0) ...[
+                        // Search Bar (Moved to top)
+                        SliverPadding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                          sliver: SliverToBoxAdapter(
+                            child: Opacity(
+                              opacity: contentOpacity,
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: TextField(
+                                      controller: _searchController,
+                                      onChanged: _updateSearch,
+                                      style: const TextStyle(color: Colors.white),
+                                      decoration: InputDecoration(
+                                        hintText: 'Search apps...',
+                                        hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
+                                        prefixIcon: const Icon(Icons.search, color: Colors.white),
+                                        filled: true,
+                                        fillColor: Colors.white.withValues(alpha: 0.1),
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(30),
+                                          borderSide: BorderSide.none,
+                                        ),
+                                        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                                      ),
                                     ),
-                                    textAlign: TextAlign.center,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  IconButton(
+                                    icon: const Icon(Icons.settings, color: Colors.white70),
+                                    onPressed: widget.onOpenSettings,
+                                    style: IconButton.styleFrom(backgroundColor: Colors.white.withValues(alpha: 0.1)),
                                   ),
                                 ],
-                              ],
+                              ),
                             ),
-                          );
-                        },
-                        childCount: _filteredApps.length,
-                      ),
-                    ),
+                          ),
+                        ),
+
+                        SliverOpacity(
+                          opacity: contentOpacity,
+                          sliver: SliverPadding(
+                            padding: EdgeInsets.fromLTRB(16, 0, 16, MediaQuery.of(context).viewInsets.bottom + 16),
+                            sliver: SliverGrid(
+                              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 4,
+                                crossAxisSpacing: 16,
+                                mainAxisSpacing: 24,
+                                childAspectRatio: 0.8,
+                              ),
+                              delegate: SliverChildBuilderDelegate(
+                                (context, index) {
+                                  final app = _filteredApps[index];
+                                  return InkWell(
+                                    onTap: () => widget.onAppTap(app),
+                                    onLongPress: () => widget.onAppLongPress(app),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.all(8),
+                                          child: Image.memory(
+                                            app.icon ?? Uint8List(0),
+                                            width: 48,
+                                            height: 48,
+                                            gaplessPlayback: true,
+                                            errorBuilder: (context, error, stackTrace) =>
+                                                const Icon(Icons.android, color: Colors.white, size: 48),
+                                          ),
+                                        ),
+                                        if (showAppNames) ...[
+                                          const SizedBox(height: 8),
+                                          Text(
+                                            app.name,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 12,
+                                            ),
+                                            textAlign: TextAlign.center,
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  );
+                                },
+                                childCount: _filteredApps.length,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
-                ),
-              ],
-            ],
+                ],
+              ),
+            ),
           ),
-        ],
-      ),
-        ),
-      ),
-    );
+        );
       },
     );
   }
