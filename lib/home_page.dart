@@ -294,13 +294,13 @@ class _HomePageState extends State<HomePage> {
                   // App Drawer (Draggable Sheet)
                   NotificationListener<DraggableScrollableNotification>(
                     onNotification: (notification) {
-                      final double progress = (notification.extent - 0.08) / (0.5 - 0.08);
+                      final double progress = (notification.extent - 0.05) / (0.5 - 0.05);
                       _drawerProgress.value = progress.clamp(0.0, 1.0);
                       return false;
                     },
                     child: DraggableScrollableSheet(
-                    initialChildSize: 0.08,
-                    minChildSize: 0.08,
+                    initialChildSize: 0.05,
+                    minChildSize: 0.05,
                     maxChildSize: 0.5,
                     snap: true,
                     builder: (context, scrollController) {
@@ -462,20 +462,7 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                       // Handle / Dots Section
                       SliverToBoxAdapter(
                         child: SizedBox(
-                          height: 60,
-                          child: Opacity(
-                            opacity: dotsOpacity,
-                            child: Center(
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Container(width: 6, height: 6, decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
-                                  const SizedBox(width: 4),
-                                  Container(width: 6, height: 6, decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.5), shape: BoxShape.circle)),
-                                ],
-                              ),
-                            ),
-                          ),
+                          height: 20,
                         ),
                       ),
 
