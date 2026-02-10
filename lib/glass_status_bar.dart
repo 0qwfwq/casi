@@ -29,12 +29,23 @@ class GlassStatusBar extends StatelessWidget {
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        child: Stack(
           children: [
-            WeatherCapsule(opacity: opacity),
             ClockCapsule(opacity: opacity),
-            StatusIconsCapsule(opacity: opacity),
+            Positioned(
+              top: 0,
+              bottom: 0,
+              left: 0,
+              width: 105,
+              child: WeatherCapsule(opacity: opacity),
+            ),
+            Positioned(
+              top: 0,
+              bottom: 0,
+              right: 0,
+              width: 105,
+              child: StatusIconsCapsule(opacity: opacity),
+            ),
           ],
         ),
       ),

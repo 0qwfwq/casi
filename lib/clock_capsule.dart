@@ -17,7 +17,6 @@ class _ClockCapsuleState extends State<ClockCapsule> {
   late Timer _timer;
   DateTime _now = DateTime.now();
   String? _clockPackage;
-  String? _calendarPackage;
 
   @override
   void initState() {
@@ -59,13 +58,6 @@ class _ClockCapsuleState extends State<ClockCapsule> {
         'com.oneplus.deskclock',
       ], 'clock');
 
-      _calendarPackage = findPackage([
-        'com.google.android.calendar',
-        'com.android.calendar',
-        'com.samsung.android.calendar',
-        'com.oneplus.calendar',
-      ], 'calendar');
-
     } catch (e) {
       debugPrint("Error finding system apps: $e");
     }
@@ -86,44 +78,31 @@ class _ClockCapsuleState extends State<ClockCapsule> {
   @override
   Widget build(BuildContext context) {
     final hour = _now.hour == 0 || _now.hour == 12 ? 12 : _now.hour % 12;
-    final amPm = _now.hour >= 12 ? 'PM' : 'AM';
     final minute = _now.minute.toString().padLeft(2, '0');
-    final date = "${_now.month}/${_now.day}";
 
     return _GlassCapsule(
       opacity: widget.opacity,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            GestureDetector(
-              onTap: () => _launchApp(_clockPackage),
+        padding: const EdgeInsets.symmetric(horizontal: 30.0, vertical: 20.0),
+        child: GestureDetector(
+          onTap: () => _launchApp(_clockPackage),
+          child: SizedBox(
+            width: double.infinity,
+            child: Transform(
+              alignment: Alignment.center,
+              transform: Matrix4.identity()..scale(1.0, 1.3),
               child: Text(
-                "$hour:$minute $amPm",
+                "$hour:$minute",
+                textAlign: TextAlign.center,
                 style: const TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.w600,
-                  fontSize: 14,
+                  fontSize: 70,
+                  height: 1.0,
                 ),
               ),
             ),
-            const Text(
-              " | ",
-              style: TextStyle(color: Colors.white, fontSize: 14),
-            ),
-            GestureDetector(
-              onTap: () => _launchApp(_calendarPackage),
-              child: Text(
-                date,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );

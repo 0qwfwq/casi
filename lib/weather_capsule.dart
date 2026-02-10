@@ -167,6 +167,7 @@ class _WeatherCapsuleState extends State<WeatherCapsule> with WidgetsBindingObse
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
           child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Icon(Icons.cloud, color: Colors.white, size: 20),
               const SizedBox(width: 8),
@@ -191,33 +192,23 @@ class _GlassCapsule extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        // Glass Layer (Background)
-        if (opacity > 0)
-          Positioned.fill(
-            child: OCLiquidGlass(
-              borderRadius: 30,
-              color: (color ?? Colors.white).withValues(alpha: 0.2 * opacity),
-              child: const SizedBox(), // Empty child, just the glass effect
-            ),
-          ),
-        // Content Layer (Foreground - unaffected by distortion)
-        Container(
-          decoration: BoxDecoration(
-            color: (color ?? Colors.white).withValues(alpha: 0.1 * opacity),
-            borderRadius: BorderRadius.circular(30),
-            border: Border.all(
-              color: (color ?? Colors.white).withValues(alpha: 0.2 * opacity),
-              width: 1.5,
-            ),
-          ),
-          child: Opacity(
-            opacity: opacity,
-            child: child,
-          ),
+    return Container(
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: [
+            (color ?? Colors.white).withValues(alpha: 0.5 * opacity),
+            (color ?? Colors.white).withValues(alpha: 0.0),
+          ],
         ),
-      ],
+        borderRadius: BorderRadius.circular(30),
+      ),
+      child: Opacity(
+        opacity: opacity,
+        child: child,
+      ),
     );
   }
 }

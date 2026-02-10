@@ -124,7 +124,7 @@ class _StatusIconsCapsuleState extends State<StatusIconsCapsule> with SingleTick
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
           child: Row(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(
                 "$_batteryLevel%",
@@ -149,31 +149,23 @@ class _GlassCapsule extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        if (opacity > 0)
-          Positioned.fill(
-            child: OCLiquidGlass(
-              borderRadius: 30,
-              color: (color ?? Colors.white).withValues(alpha: 0.2 * opacity),
-              child: const SizedBox(),
-            ),
-          ),
-        Container(
-          decoration: BoxDecoration(
-            color: (color ?? Colors.white).withValues(alpha: 0.1 * opacity),
-            borderRadius: BorderRadius.circular(30),
-            border: Border.all(
-              color: (color ?? Colors.white).withValues(alpha: 0.2 * opacity),
-              width: 1.5,
-            ),
-          ),
-          child: Opacity(
-            opacity: opacity,
-            child: child,
-          ),
+    return Container(
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.centerRight,
+          end: Alignment.centerLeft,
+          colors: [
+            (color ?? Colors.white).withValues(alpha: 0.5 * opacity),
+            (color ?? Colors.white).withValues(alpha: 0.0),
+          ],
         ),
-      ],
+        borderRadius: BorderRadius.circular(30),
+      ),
+      child: Opacity(
+        opacity: opacity,
+        child: child,
+      ),
     );
   }
 }
