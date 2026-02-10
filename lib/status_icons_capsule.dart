@@ -160,7 +160,7 @@ class _GlassCapsule extends StatelessWidget {
             (color ?? Colors.white).withValues(alpha: 0.0),
           ],
         ),
-        borderRadius: BorderRadius.circular(30),
+        borderRadius: const BorderRadius.horizontal(right: Radius.circular(30)),
       ),
       child: Opacity(
         opacity: opacity,
