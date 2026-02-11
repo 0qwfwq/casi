@@ -129,8 +129,14 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                         child: Stack(
                           children: [
                             Positioned.fill(
+                              child: BackdropFilter(
+                                filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                                child: Container(color: Colors.transparent),
+                              ),
+                            ),
+                            Positioned.fill(
                               child: OCLiquidGlass(
-                                color: Colors.white.withValues(alpha: 0.2),
+                                color: Colors.white.withValues(alpha: 0.5),
                                 child: const SizedBox(),
                               ),
                             ),
