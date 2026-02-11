@@ -112,14 +112,7 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
         // Only show app names when fully expanded to prevent overflow during animation
         final bool showAppNames = progress > 0.99;
 
-        return OCLiquidGlassGroup(
-          settings: const OCLiquidGlassSettings(
-            blurRadiusPx: 5.0,
-            distortExponent: 1.0,
-            distortFalloffPx: 20.0,
-            specStrength: 5.0,
-          ),
-          child: Align(
+        return Align(
             alignment: Alignment.topCenter,
             child: SizedBox(
               width: screenWidth,
@@ -131,10 +124,27 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                     child: SizedBox(
                       width: width,
                       height: double.infinity,
-                      child: OCLiquidGlass(
-                        borderRadius: borderRadius,
-                        color: Colors.grey[900]!.withValues(alpha: 0.4),
-                        child: const SizedBox(),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(borderRadius),
+                        child: Stack(
+                          children: [
+                            Positioned.fill(
+                              child: OCLiquidGlass(
+                                color: Colors.white.withValues(alpha: 0.2),
+                                child: const SizedBox(),
+                              ),
+                            ),
+                            Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(borderRadius),
+                                border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.2),
+                                  width: 1.5,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -250,8 +260,7 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                 ],
               ),
             ),
-          ),
-        );
+          );
       },
     );
   }

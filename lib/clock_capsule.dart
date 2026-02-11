@@ -1,10 +1,14 @@
 import 'dart:async';
-import 'dart:math' as math;
+import 'dart:convert';
+import 'package:battery_plus/battery_plus.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
 import 'package:installed_apps/app_info.dart';
 import 'package:installed_apps/installed_apps.dart';
 import 'package:oc_liquid_glass/oc_liquid_glass.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ClockCapsule extends StatefulWidget {
   final double opacity;
@@ -15,31 +19,65 @@ class ClockCapsule extends StatefulWidget {
   State<ClockCapsule> createState() => _ClockCapsuleState();
 }
 
-class _ClockCapsuleState extends State<ClockCapsule> {
+class _ClockCapsuleState extends State<ClockCapsule> with WidgetsBindingObserver {
   late Timer _timer;
   DateTime _now = DateTime.now();
   String? _clockPackage;
   double? _latitude;
   double? _longitude;
 
+  // Weather State
+  String? _weatherPackage;
+  int? _temperature;
+  bool _isWeatherLoading = false;
+
+  // Status State
+  final Battery _battery = Battery();
+  int _batteryLevel = 100;
+  BatteryState _batteryState = BatteryState.full;
+  StreamSubscription<BatteryState>? _batteryStateSubscription;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
+  bool _isWifiConnected = false;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+
     _findSystemApps();
     _initLocation();
+    _initWeather();
+    _initBattery();
+    _initConnectivity();
+
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (mounted) {
         setState(() {
           _now = DateTime.now();
         });
+        // Poll battery every minute
+        if (timer.tick % 60 == 0) {
+          _getBatteryLevel();
+        }
       }
     });
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _fetchWeather();
+      _getBatteryLevel();
+    }
+  }
+
   Future<void> _initLocation() async {
     try {
-      // Check permissions (assuming WeatherCapsule handles the request, we just check)
       LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      
       if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
         Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.low);
         if (mounted) {
@@ -47,11 +85,85 @@ class _ClockCapsuleState extends State<ClockCapsule> {
             _latitude = position.latitude;
             _longitude = position.longitude;
           });
+          _fetchWeather();
         }
       }
     } catch (e) {
       debugPrint("Error getting location for clock color: $e");
     }
+  }
+
+  Future<void> _initWeather() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        _temperature = prefs.getInt('last_temperature');
+      });
+    }
+  }
+
+  Future<void> _fetchWeather() async {
+    if (_isWeatherLoading || _latitude == null || _longitude == null) return;
+    if (mounted) setState(() => _isWeatherLoading = true);
+
+    try {
+      final url = Uri.parse(
+          'https://api.open-meteo.com/v1/forecast?latitude=$_latitude&longitude=$_longitude&current_weather=true');
+      final response = await http.get(url);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (mounted) {
+          final temp = (data['current_weather']['temperature'] as num).round();
+          setState(() => _temperature = temp);
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setInt('last_temperature', temp);
+        }
+      }
+    } catch (e) {
+      debugPrint("Error fetching weather: $e");
+    } finally {
+      if (mounted) setState(() => _isWeatherLoading = false);
+    }
+  }
+
+  void _initBattery() {
+    _getBatteryLevel();
+    _battery.batteryState.then((state) {
+      if (mounted) {
+        setState(() => _batteryState = state);
+      }
+    });
+    _batteryStateSubscription = _battery.onBatteryStateChanged.listen((BatteryState state) {
+      if (mounted) {
+        setState(() => _batteryState = state);
+        _getBatteryLevel();
+      }
+    });
+  }
+
+  Future<void> _getBatteryLevel() async {
+    try {
+      final int level = await _battery.batteryLevel;
+      if (mounted) {
+        setState(() => _batteryLevel = level);
+      }
+    } catch (e) {
+      debugPrint("Error getting battery level: $e");
+    }
+  }
+
+  Future<void> _initConnectivity() async {
+    final connectivity = Connectivity();
+    final results = await connectivity.checkConnectivity();
+    if (mounted) {
+      setState(() => _isWifiConnected = results.contains(ConnectivityResult.wifi));
+    }
+    _connectivitySubscription = connectivity.onConnectivityChanged.listen((results) {
+      if (mounted) {
+        setState(() => _isWifiConnected = results.contains(ConnectivityResult.wifi));
+      }
+    });
   }
 
   Future<void> _findSystemApps() async {
@@ -81,6 +193,20 @@ class _ClockCapsuleState extends State<ClockCapsule> {
         'com.oneplus.deskclock',
       ], 'clock');
 
+      _weatherPackage = findPackage([
+        'com.google.android.apps.dynaprop',
+        'com.samsung.android.weather',
+        'com.sec.android.daemonapp',
+        'net.oneplus.weather',
+        'com.miui.weather2',
+        'com.huawei.android.weather',
+        'com.sonymobile.xperiaweather',
+        'com.asus.weather',
+        'com.accuweather.android',
+        'com.weather.Weather',
+        'com.apple.weather',
+      ], 'weather');
+
     } catch (e) {
       debugPrint("Error finding system apps: $e");
     }
@@ -94,79 +220,11 @@ class _ClockCapsuleState extends State<ClockCapsule> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _timer.cancel();
+    _batteryStateSubscription?.cancel();
+    _connectivitySubscription?.cancel();
     super.dispose();
-  }
-
-  // Calculates solar elevation angle in degrees
-  double _calculateSolarElevation(DateTime date, double latitude, double longitude) {
-    DateTime utc = date.toUtc();
-    // Julian Day
-    double julianDay = 367 * utc.year -
-        (7 * (utc.year + (utc.month + 9) ~/ 12)) ~/ 4 +
-        (275 * utc.month) ~/ 9 +
-        utc.day +
-        1721013.5 +
-        (utc.hour + utc.minute / 60.0 + utc.second / 3600.0) / 24.0;
-
-    double n = julianDay - 2451545.0;
-    double L = (280.460 + 0.9856474 * n) % 360;
-    double g = (357.528 + 0.9856003 * n) % 360;
-    double gRad = g * math.pi / 180;
-    double lambda = L + 1.915 * math.sin(gRad) + 0.020 * math.sin(2 * gRad);
-    double lambdaRad = lambda * math.pi / 180;
-    double epsilon = 23.439 - 0.0000004 * n;
-    double epsilonRad = epsilon * math.pi / 180;
-    double alpha = math.atan2(math.cos(epsilonRad) * math.sin(lambdaRad), math.cos(lambdaRad));
-    double delta = math.asin(math.sin(epsilonRad) * math.sin(lambdaRad));
-    double gmst = 6.697375 + 0.0657098242 * n + utc.hour + (utc.minute + utc.second / 60.0) / 60.0;
-    gmst = (gmst % 24) * 15;
-    double lst = gmst + longitude;
-    double lstRad = lst * math.pi / 180;
-    double H = lstRad - alpha;
-    double latRad = latitude * math.pi / 180;
-    double sinElevation = math.sin(latRad) * math.sin(delta) + math.cos(latRad) * math.cos(delta) * math.cos(H);
-    
-    return math.asin(sinElevation) * 180 / math.pi;
-  }
-
-  Color _getSolarColor() {
-    // Fallback if location is not available
-    if (_latitude == null || _longitude == null) {
-      return _getSimpleTimeColor();
-    }
-
-    double elevation = _calculateSolarElevation(_now, _latitude!, _longitude!);
-
-    // Day: > 6 degrees
-    if (elevation > 6) return Colors.white;
-    
-    // Transition to Golden Hour: 6 to 0 degrees
-    if (elevation > 0) {
-      double t = (6 - elevation) / 6;
-      return Color.lerp(Colors.white, const Color(0xFFFF8C00), t)!; // White -> Deep Orange
-    }
-    
-    // Golden Hour: 0 to -4 degrees
-    if (elevation > -4) {
-      double t = (0 - elevation) / 4;
-      return Color.lerp(const Color(0xFFFF8C00), const Color(0xFFC2185B), t)!; // Deep Orange -> Magenta
-    }
-    
-    // Blue Hour: -4 to -6 degrees
-    if (elevation > -6) {
-      double t = (-4 - elevation) / 2;
-      return Color.lerp(const Color(0xFFC2185B), const Color(0xFF304FFE), t)!; // Magenta -> Deep Cobalt/Violet
-    }
-    
-    // Night: < -6 degrees (Fade to Dark)
-    return const Color(0xFF120024); // Dark Purple/Black
-  }
-
-  Color _getSimpleTimeColor() {
-    final double hour = _now.hour + _now.minute / 60.0;
-    final double t = 1.0 - ((hour - 12.0).abs() / 12.0);
-    return Color.lerp(const Color(0xFF120024), Colors.white, t)!;
   }
 
   @override
@@ -174,30 +232,87 @@ class _ClockCapsuleState extends State<ClockCapsule> {
     final hour = _now.hour == 0 || _now.hour == 12 ? 12 : _now.hour % 12;
     final minute = _now.minute.toString().padLeft(2, '0');
 
-    return _GlassCapsule(
-      opacity: widget.opacity,
-      color: _getSolarColor(),
+    return SizedBox(
+      width: double.infinity,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 30.0, vertical: 20.0),
-        child: GestureDetector(
-          onTap: () => _launchApp(_clockPackage),
-          child: SizedBox(
-            width: double.infinity,
-            child: Transform(
-              alignment: Alignment.center,
-              transform: Matrix4.identity()..scale(1.0, 1.3),
-              child: Text(
-                "$hour:$minute",
-                textAlign: TextAlign.center,
-                style: const TextStyle(
+        padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 16.0),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // Weather Section (Left)
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: _GlassCapsule(
+                  opacity: widget.opacity,
                   color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 70,
-                  height: 1.0,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
+                    child: GestureDetector(
+                      onTap: () => _launchApp(_weatherPackage),
+                      behavior: HitTestBehavior.opaque,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.cloud, color: Colors.white, size: 20),
+                          const SizedBox(width: 8),
+                          Text(
+                            _temperature != null ? "$_temperature°" : "--",
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
-          ),
+
+            // Clock Section (Center)
+            GestureDetector(
+              onTap: () => _launchApp(_clockPackage),
+              child: Transform(
+                alignment: Alignment.center,
+                transform: Matrix4.diagonal3Values(1.1, 1.5, 1.0),
+                child: Text(
+                  "$hour:$minute",
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 48,
+                    height: 1.0,
+                  ),
+                ),
+              ),
+            ),
+
+            // Status Section (Right)
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: _GlassCapsule(
+                  opacity: widget.opacity,
+                  color: Colors.white,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          "$_batteryLevel%",
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                        ),
+                        const SizedBox(width: 8),
+                        Icon(_isWifiConnected ? Icons.wifi : Icons.wifi_off, color: Colors.white, size: 20),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -213,31 +328,31 @@ class _GlassCapsule extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        if (opacity > 0)
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(30),
+      child: Stack(
+        children: [
           Positioned.fill(
             child: OCLiquidGlass(
-              borderRadius: 30,
               color: (color ?? Colors.white).withValues(alpha: 0.2 * opacity),
               child: const SizedBox(),
             ),
           ),
-        Container(
-          decoration: BoxDecoration(
-            color: (color ?? Colors.white).withValues(alpha: 0.1 * opacity),
-            borderRadius: BorderRadius.circular(30),
-            border: Border.all(
-              color: (color ?? Colors.white).withValues(alpha: 0.2 * opacity),
-              width: 1.5,
+          Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(30),
+              border: Border.all(
+                color: (color ?? Colors.white).withValues(alpha: 0.2 * opacity),
+                width: 1.5,
+              ),
+            ),
+            child: Opacity(
+              opacity: opacity,
+              child: child,
             ),
           ),
-          child: Opacity(
-            opacity: opacity,
-            child: child,
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

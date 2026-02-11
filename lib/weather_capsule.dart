@@ -192,22 +192,31 @@ class _GlassCapsule extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-          colors: [
-            (color ?? Colors.white).withValues(alpha: 0.5 * opacity),
-            (color ?? Colors.white).withValues(alpha: 0.0),
-          ],
-        ),
-        borderRadius: const BorderRadius.horizontal(left: Radius.circular(30)),
-      ),
-      child: Opacity(
-        opacity: opacity,
-        child: child,
+    return ClipRRect(
+      borderRadius: const BorderRadius.horizontal(left: Radius.circular(30)),
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: OCLiquidGlass(
+              color: (color ?? Colors.white).withValues(alpha: 0.2 * opacity),
+              child: const SizedBox(),
+            ),
+          ),
+          Container(
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              borderRadius: const BorderRadius.horizontal(left: Radius.circular(30)),
+              border: Border.all(
+                color: (color ?? Colors.white).withValues(alpha: 0.2 * opacity),
+                width: 1.5,
+              ),
+            ),
+            child: Opacity(
+              opacity: opacity,
+              child: child,
+            ),
+          ),
+        ],
       ),
     );
   }
