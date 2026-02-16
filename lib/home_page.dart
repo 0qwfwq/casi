@@ -6,7 +6,7 @@ import 'package:installed_apps/installed_apps.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'settings_page.dart';
 import 'glass_status_bar.dart';
-import 'dock_bubble.dart';
+import 'AppDrawer.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -36,6 +36,8 @@ class _HomePageState extends State<HomePage> {
   final int _gridRows = 6;
 
   final ValueNotifier<double> _drawerProgress = ValueNotifier(0.0);
+  final DraggableScrollableController _drawerController = DraggableScrollableController();
+  double _dragStartY = 0.0;
 
   @override
   void initState() {
@@ -158,151 +160,168 @@ class _HomePageState extends State<HomePage> {
           ),
           
           // Content Layer
-          SafeArea(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : Stack(
-                  children: [
-                  ValueListenableBuilder<double>(
-                    valueListenable: _drawerProgress,
-                    builder: (context, progress, child) {
-                      final double opacity = (1.0 - progress).clamp(0.0, 1.0);
-                      return Stack(
-                        children: [
-                          Opacity(
-                            opacity: opacity,
-                            child: RepaintBoundary(
-                              child: GridView.builder(
-                                padding: const EdgeInsets.fromLTRB(16, 100, 16, 16), // Top padding for Status Bar
-                                // We hardcode the number of items to create a fixed grid layout.
-                                itemCount: _gridColumns * _gridRows,
-                                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: _gridColumns, // <--- Hardcoded grid width (columns)
-                                  crossAxisSpacing: 16,
-                                  mainAxisSpacing: 24,
-                                  childAspectRatio: 0.8,
-                                ),
-                                itemBuilder: (context, index) {
-                                  return DragTarget<AppInfo>(
-                                    onAccept: (data) {
-                                      setState(() {
-                                        // If the app is already on the home screen, remove it from its old position.
-                                        final int? oldIndex = _homeApps.keys.cast<int?>().firstWhere(
-                                              (k) => _homeApps[k]?.packageName == data.packageName,
-                                              orElse: () => null,
-                                            );
-                                        if (oldIndex != null) {
-                                          _homeApps.remove(oldIndex);
+          GestureDetector(
+            onVerticalDragStart: (details) {
+              _dragStartY = details.globalPosition.dy;
+            },
+            onVerticalDragEnd: (details) {
+              final double screenHeight = MediaQuery.of(context).size.height;
+              if (_dragStartY < screenHeight - 60 && details.primaryVelocity! < -500) {
+                _drawerController.animateTo(
+                  0.9,
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOut,
+                );
+              }
+            },
+            child: SafeArea(
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : Stack(
+                    children: [
+                    ValueListenableBuilder<double>(
+                      valueListenable: _drawerProgress,
+                      builder: (context, progress, child) {
+                        final double opacity = (1.0 - progress).clamp(0.0, 1.0);
+                        return Stack(
+                          children: [
+                            Opacity(
+                              opacity: opacity,
+                              child: RepaintBoundary(
+                                child: GridView.builder(
+                                  padding: const EdgeInsets.fromLTRB(16, 100, 16, 16), // Top padding for Status Bar
+                                  // We hardcode the number of items to create a fixed grid layout.
+                                  itemCount: _gridColumns * _gridRows,
+                                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: _gridColumns, // <--- Hardcoded grid width (columns)
+                                    crossAxisSpacing: 16,
+                                    mainAxisSpacing: 24,
+                                    childAspectRatio: 0.8,
+                                  ),
+                                  physics: const NeverScrollableScrollPhysics(),
+                                  itemBuilder: (context, index) {
+                                    return DragTarget<AppInfo>(
+                                      onAccept: (data) {
+                                        setState(() {
+                                          // If the app is already on the home screen, remove it from its old position.
+                                          final int? oldIndex = _homeApps.keys.cast<int?>().firstWhere(
+                                                (k) => _homeApps[k]?.packageName == data.packageName,
+                                                orElse: () => null,
+                                              );
+                                          if (oldIndex != null) {
+                                            _homeApps.remove(oldIndex);
+                                          }
+                                          // Place it in the new position
+                                          _homeApps[index] = data;
+                                        });
+                                        _saveLayout();
+                                      },
+                                      builder: (context, candidateData, rejectedData) {
+                                        final app = _homeApps[index];
+                                        if (app == null) {
+                                          return Container(
+                                            decoration: BoxDecoration(
+                                              border: candidateData.isNotEmpty
+                                                  ? Border.all(color: Colors.white24)
+                                                  : null,
+                                              borderRadius: BorderRadius.circular(12),
+                                            ),
+                                          );
                                         }
-                                        // Place it in the new position
-                                        _homeApps[index] = data;
-                                      });
-                                      _saveLayout();
-                                    },
-                                    builder: (context, candidateData, rejectedData) {
-                                      final app = _homeApps[index];
-                                      if (app == null) {
-                                        return Container(
-                                          decoration: BoxDecoration(
-                                            border: candidateData.isNotEmpty
-                                                ? Border.all(color: Colors.white24)
-                                                : null,
-                                            borderRadius: BorderRadius.circular(12),
+                                        return LongPressDraggable<AppInfo>(
+                                          data: app,
+                                          onDragStarted: () => setState(() => _isDragging = true),
+                                          onDragEnd: (_) => setState(() => _isDragging = false),
+                                          feedback: Material(
+                                            color: Colors.transparent,
+                                            child: SizedBox(
+                                              width: 60,
+                                              child: _buildAppIconVisual(app),
+                                            ),
                                           ),
-                                        );
-                                      }
-                                      return LongPressDraggable<AppInfo>(
-                                        data: app,
-                                        onDragStarted: () => setState(() => _isDragging = true),
-                                        onDragEnd: (_) => setState(() => _isDragging = false),
-                                        feedback: Material(
-                                          color: Colors.transparent,
-                                          child: SizedBox(
-                                            width: 60,
+                                          childWhenDragging: Container(color: Colors.transparent),
+                                          child: InkWell(
+                                            onTap: () => InstalledApps.startApp(app.packageName),
+                                            borderRadius: BorderRadius.circular(12),
                                             child: _buildAppIconVisual(app),
                                           ),
-                                        ),
-                                        childWhenDragging: Container(color: Colors.transparent),
-                                        child: InkWell(
-                                          onTap: () => InstalledApps.startApp(app.packageName),
-                                          borderRadius: BorderRadius.circular(12),
-                                          child: _buildAppIconVisual(app),
-                                        ),
-                                      );
-                                    },
-                                  );
-                                },
-                              ),
-                            ),
-                          ),
-                          // Glass Status Bar
-                          Positioned(
-                            top: 0,
-                            left: 0,
-                            right: 0,
-                            child: GlassStatusBar(
-                              isImageBackground: _bgType == 'image',
-                              backgroundColor: _bgColor,
-                              opacity: 1.0,
-                            ),
-                          ),
-                          // Remove Drop Zone
-                          if (_isDragging)
-                            Positioned(
-                              top: 0,
-                              left: 0,
-                              right: 0,
-                              height: 60,
-                              child: Opacity(
-                                opacity: opacity,
-                                child: DragTarget<AppInfo>(
-                                  onAccept: (data) {
-                                    setState(() {
-                                      _homeApps.removeWhere((key, value) => value.packageName == data.packageName);
-                                    });
-                                    _saveLayout();
-                                  },
-                                  builder: (context, candidateData, rejectedData) {
-                                    return Container(
-                                      color: candidateData.isNotEmpty
-                                          ? Colors.red.withValues(alpha: 0.5)
-                                          : Colors.red.withValues(alpha: 0.2),
-                                      child: const Center(
-                                        child: Row(
-                                          mainAxisAlignment: MainAxisAlignment.center,
-                                          children: [
-                                            Icon(Icons.delete, color: Colors.white),
-                                            SizedBox(width: 8),
-                                            Text(
-                                              "Remove",
-                                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
+                                        );
+                                      },
                                     );
                                   },
                                 ),
                               ),
                             ),
-                        ],
-                      );
-                    },
+                            // Glass Status Bar
+                            Positioned(
+                              top: 0,
+                              left: 0,
+                              right: 0,
+                              child: GlassStatusBar(
+                                isImageBackground: _bgType == 'image',
+                                backgroundColor: _bgColor,
+                                opacity: 1.0,
+                              ),
+                            ),
+                            // Remove Drop Zone
+                            if (_isDragging)
+                              Positioned(
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                height: 60,
+                                child: Opacity(
+                                  opacity: opacity,
+                                  child: DragTarget<AppInfo>(
+                                    onAccept: (data) {
+                                      setState(() {
+                                        _homeApps.removeWhere((key, value) => value.packageName == data.packageName);
+                                      });
+                                      _saveLayout();
+                                    },
+                                    builder: (context, candidateData, rejectedData) {
+                                      return Container(
+                                        color: candidateData.isNotEmpty
+                                            ? Colors.red.withValues(alpha: 0.5)
+                                            : Colors.red.withValues(alpha: 0.2),
+                                        child: const Center(
+                                          child: Row(
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            children: [
+                                              Icon(Icons.delete, color: Colors.white),
+                                              SizedBox(width: 8),
+                                              Text(
+                                                "Remove",
+                                                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ),
+                          ],
+                        );
+                      },
+                    ),
+                    
+                    // App Drawer (Draggable Sheet)
+                    AppDrawer(
+                      apps: _apps,
+                      progressNotifier: _drawerProgress,
+                      controller: _drawerController,
+                      onAppTap: (app) => InstalledApps.startApp(app.packageName),
+                      onAppLongPress: (app) => _addToHomeScreen(app),
+                      onOpenSettings: () {
+                        Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsPage()))
+                            .then((_) => _loadSettings());
+                      },
+                    ),
+                  ],
                   ),
-                  
-                  // App Drawer (Draggable Sheet)
-                  DockBubble(
-                    apps: _apps,
-                    progressNotifier: _drawerProgress,
-                    onAppTap: (app) => InstalledApps.startApp(app.packageName),
-                    onAppLongPress: (app) => _addToHomeScreen(app),
-                    onOpenSettings: () {
-                      Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsPage()))
-                          .then((_) => _loadSettings());
-                    },
-                  ),
-                ],
-                ),
+            ),
           ),
         ],
       ),
