@@ -135,8 +135,8 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     final double screenHeight = MediaQuery.of(context).size.height;
-    // Calculate header height (25% for clock + ~60px for status row + padding)
-    final double headerHeight = (screenHeight * 0.22) + 80;
+    // Calculate header height (28% for clock + ~60px for status row + padding)
+    final double headerHeight = (screenHeight * 0.28) + 80;
 
     return Scaffold(
       backgroundColor: Colors.black,

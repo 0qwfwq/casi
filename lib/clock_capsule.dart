@@ -40,11 +40,9 @@ class _ClockCapsuleState extends State<ClockCapsule> {
       List<AppInfo> apps = await InstalledApps.getInstalledApps(withIcon: false, excludeSystemApps: false);
       
       String? findPackage(List<String> priorityPackages, String keyword) {
-        // 1. Check priority list
         for (var pkg in priorityPackages) {
           if (apps.any((app) => app.packageName == pkg)) return pkg;
         }
-        // 2. Search by name or package name
         final lowerKeyword = keyword.toLowerCase();
         final app = apps.where(
           (app) => app.name.toLowerCase() == lowerKeyword ||
@@ -72,6 +70,18 @@ class _ClockCapsuleState extends State<ClockCapsule> {
     }
   }
 
+  // Helper to format date like "Wed Jun 11" without needing 'intl' package
+  String _getFormattedDate() {
+    const List<String> days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const List<String> months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    
+    String dayName = days[_now.weekday - 1];
+    String monthName = months[_now.month - 1];
+    String dayNum = _now.day.toString();
+    
+    return "$dayName $monthName $dayNum";
+  }
+
   @override
   void dispose() {
     _timer.cancel();
@@ -86,27 +96,47 @@ class _ClockCapsuleState extends State<ClockCapsule> {
 
     return Column(
       mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // Clock Section (1/4 of screen)
+        // 1. The Date (Small, standard sans-serif, centered)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 4.0), // Slight gap between date and time
+          child: Text(
+            _getFormattedDate(),
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.9),
+              fontSize: 18,
+              fontWeight: FontWeight.w500,
+              letterSpacing: 0.5,
+              fontFamily: 'Roboto', // Or system default
+            ),
+          ),
+        ),
+
+        // 2. The Clock (Massive, Extra-Condensed)
         SizedBox(
-          height: screenHeight * 0.22,
+          // Increased height allocation to allow for the tall font stretching
+          height: screenHeight * 0.20, 
           width: double.infinity,
           child: GestureDetector(
             onTap: () => _launchApp(_clockPackage),
             child: FittedBox(
               fit: BoxFit.contain,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                padding: const EdgeInsets.symmetric(horizontal: 8.0),
                 child: Transform(
                   alignment: Alignment.center,
-                  transform: Matrix4.diagonal3Values(1.1, 1.5, 1.0),
+                  // X=0.85 (Squeeze width), Y=2.0 (Stretch height) -> Creates "Extra Condensed" look
+                  transform: Matrix4.diagonal3Values(0.85, 1.0, 1.0),
                   child: Text(
                     "$hour:$minute",
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                       color: Colors.white,
-                      fontWeight: FontWeight.w600,
+                      // Using a bold weight helps the font retain visibility when squeezed
+                      fontWeight: FontWeight.bold, 
                       height: 1.0,
+                      letterSpacing: -2.0, // Tighten the gap between numbers
                     ),
                   ),
                 ),
@@ -115,9 +145,9 @@ class _ClockCapsuleState extends State<ClockCapsule> {
           ),
         ),
 
-        // Weather and Status Section (Underneath)
+        // 3. Weather and Status Section
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 8.0),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
