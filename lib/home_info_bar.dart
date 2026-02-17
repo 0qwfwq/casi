@@ -243,7 +243,7 @@ class _HomePageState extends State<HomePage> {
       physics: const NeverScrollableScrollPhysics(),
       itemBuilder: (context, index) {
         return DragTarget<AppInfo>(
-          onAccept: (data) => _onAppDropped(index, data),
+          onAcceptWithDetails: (details) => _onAppDropped(index, details.data),
           builder: (context, candidateData, rejectedData) {
             return _buildGridItem(index, candidateData.isNotEmpty);
           },
@@ -300,9 +300,9 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildRemoveZone() {
     return DragTarget<AppInfo>(
-      onAccept: (data) {
+      onAcceptWithDetails: (details) {
         setState(() {
-          _homeApps.removeWhere((key, value) => value.packageName == data.packageName);
+          _homeApps.removeWhere((key, value) => value.packageName == details.data.packageName);
         });
         _saveLayout();
       },

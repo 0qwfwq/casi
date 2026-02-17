@@ -58,7 +58,7 @@ class _SettingsPageState extends State<SettingsPage> {
             secondary: const Icon(Icons.text_fields, color: Colors.white),
             value: _showAppNames,
             onChanged: _toggleAppNames,
-            activeColor: Colors.blue,
+            activeThumbColor: Colors.blue,
           ),
         ],
       ),

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'clock_capsule.dart';
-import 'home_info_bar.dart';
 
 class GlassStatusBar extends StatelessWidget {
   final double opacity;
