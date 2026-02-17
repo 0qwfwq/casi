@@ -118,8 +118,7 @@ class _BackgroundSettingsPageState extends State<BackgroundSettingsPage> {
   void _updateColorFromHex(String hex) {
     hex = hex.replaceAll('#', '');
     if (hex.length == 6) {
-      // Add full opacity if only RGB provided
-      hex = 'FF$hex';
+      hex = 'FF$hex'; // Add full opacity if only RGB provided
     }
     
     try {

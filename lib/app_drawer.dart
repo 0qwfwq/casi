@@ -108,8 +108,6 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
       valueListenable: widget.progressNotifier,
       builder: (context, progress, _) {
         final double screenWidth = MediaQuery.of(context).size.width;
-        final double width = screenWidth;
-        const double borderRadius = 30.0;
         final double contentOpacity = (progress * 2).clamp(0.0, 1.0);
 
         return Align(
@@ -118,48 +116,10 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
               width: screenWidth,
               child: Stack(
                 children: [
-                  // Liquid Glass Background
-                  Align(
-                    alignment: Alignment.bottomCenter,
-                    child: SizedBox(
-                      width: width,
-                      height: double.infinity,
-                      child: ClipRRect(
-                        borderRadius: const BorderRadius.vertical(top: Radius.circular(borderRadius)),
-                        child: Stack(
-                          children: [
-                            Positioned.fill(
-                              child: BackdropFilter(
-                                filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-                                child: Container(color: Colors.transparent),
-                              ),
-                            ),
-                            Positioned.fill(
-                              child: OCLiquidGlass(
-                                color: Colors.white.withValues(alpha: 0.5),
-                                child: const SizedBox(),
-                              ),
-                            ),
-                            Container(
-                              decoration: BoxDecoration(
-                                borderRadius: const BorderRadius.vertical(top: Radius.circular(borderRadius)),
-                                border: Border.all(
-                                  color: Colors.white.withValues(alpha: 0.2),
-                                  width: 1.5,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  
-                  // Content
+                  const _LiquidBackground(),
                   CustomScrollView(
                     controller: widget.scrollController,
                     slivers: [
-                      // Handle / Dots Section
                       SliverToBoxAdapter(
                         child: Center(
                           child: Container(
@@ -174,8 +134,6 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                         ),
                       ),
 
-                      // App Grid (Only visible when expanded)
-                      // Search Bar (Moved to top)
                       SliverPadding(
                         padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                         sliver: SliverToBoxAdapter(
@@ -272,6 +230,49 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
             ),
           );
       },
+    );
+  }
+}
+
+class _LiquidBackground extends StatelessWidget {
+  const _LiquidBackground();
+
+  @override
+  Widget build(BuildContext context) {
+    const double borderRadius = 30.0;
+    return Align(
+      alignment: Alignment.bottomCenter,
+      child: SizedBox(
+        height: double.infinity,
+        child: ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(borderRadius)),
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                  child: Container(color: Colors.transparent),
+                ),
+              ),
+              Positioned.fill(
+                child: OCLiquidGlass(
+                  color: Colors.white.withValues(alpha: 0.5),
+                  child: const SizedBox(),
+                ),
+              ),
+              Container(
+                decoration: BoxDecoration(
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(borderRadius)),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.2),
+                    width: 1.5,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
