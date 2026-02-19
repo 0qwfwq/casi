@@ -63,8 +63,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   /// Asynchronously retrieves the list of installed apps and loads the saved layout.
   Future<void> _fetchApps() async {
-    List<AppInfo> apps = await InstalledApps.getInstalledApps(excludeSystemApps: false, withIcon: true);
-    apps.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     // 1. Fast load (no icons) to show UI immediately on cold start
     if (_apps.isEmpty) {
       final fastApps = await InstalledApps.getInstalledApps(excludeSystemApps: false, withIcon: false);
@@ -78,7 +76,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       }
     }
 
-    await _loadSavedLayout(apps);
     // 2. Full load (with icons) to update UI with graphics
     final fullApps = await InstalledApps.getInstalledApps(excludeSystemApps: false, withIcon: true);
     fullApps.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
@@ -86,7 +83,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
     if (mounted) {
       setState(() {
-        _apps = apps;
         _apps = fullApps;
         _isLoading = false;
       });

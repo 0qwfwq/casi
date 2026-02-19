@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:installed_apps/app_info.dart';
 import 'package:installed_apps/installed_apps.dart';
 import 'weather_capsule.dart';
-import 'status_icons_capsule.dart';
 
 class ClockCapsule extends StatefulWidget {
   final double opacity;
@@ -149,10 +148,9 @@ class _ClockCapsuleState extends State<ClockCapsule> {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 8.0),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               WeatherCapsule(opacity: widget.opacity),
-              StatusIconsCapsule(opacity: widget.opacity),
             ],
           ),
         ),
