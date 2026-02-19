@@ -4,9 +4,8 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
-import 'package:installed_apps/app_info.dart';
-import 'package:installed_apps/installed_apps.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class ScreenDock extends StatefulWidget {
   const ScreenDock({super.key});
@@ -21,15 +20,11 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
   int? _weatherCode;
   bool _isLoadingWeather = false;
 
-  // Browser State
-  AppInfo? _browserApp;
-
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _initWeather();
-    _findBrowserApp();
   }
 
   @override
@@ -133,55 +128,9 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
     return Colors.white;
   }
 
-  // --- Browser Logic ---
-  Future<void> _findBrowserApp() async {
-    try {
-      List<AppInfo> apps = await InstalledApps.getInstalledApps(
-          withIcon: true, excludeSystemApps: false);
-
-      // Priority list for browsers
-      const priorityPackages = [
-        'com.android.chrome',
-        'com.google.android.apps.chrome',
-        'com.sec.android.app.sbrowser',
-        'org.mozilla.firefox',
-        'com.microsoft.emmx',
-      ];
-
-      AppInfo? foundApp;
-      for (var pkg in priorityPackages) {
-        try {
-          foundApp = apps.firstWhere((app) => app.packageName == pkg);
-          break;
-        } catch (_) {}
-      }
-
-      // Fallback to searching "browser" or "chrome"
-      if (foundApp == null) {
-        try {
-          foundApp = apps.firstWhere((app) =>
-              app.packageName.toLowerCase().contains('chrome') ||
-              app.packageName.toLowerCase().contains('browser'));
-        } catch (_) {}
-      }
-
-      if (mounted && foundApp != null) {
-        setState(() {
-          _browserApp = foundApp;
-        });
-      }
-    } catch (e) {
-      debugPrint("Error finding browser: $e");
-    }
-  }
-
   void _launchBrowser() {
-    if (_browserApp != null) {
-      InstalledApps.startApp(_browserApp!.packageName);
-    } else {
-      // Fallback if no specific browser found
-      InstalledApps.startApp('com.android.chrome');
-    }
+    launchUrl(Uri.parse('https://google.com'),
+        mode: LaunchMode.externalApplication);
   }
 
   @override
@@ -223,7 +172,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Text(
-                                "Current Forecast",
+                                "${_getWeatherDescription(_weatherCode)}, ${_temperature ?? '--'}°C",
                                 style: TextStyle(
                                   fontSize: 11.0,
                                   fontWeight: FontWeight.w500,
@@ -234,7 +183,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
                                 overflow: TextOverflow.ellipsis,
                               ),
                               Text(
-                                "${_getWeatherDescription(_weatherCode)}, ${_temperature ?? '--'}°C",
+                                "Current Forecast",
                                 style: const TextStyle(
                                   fontSize: 13.0,
                                   fontWeight: FontWeight.w600,
@@ -262,10 +211,8 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
                         SizedBox(
                           width: 32,
                           height: 32,
-                          child: _browserApp?.icon != null
-                              ? Image.memory(_browserApp!.icon!)
-                              : const Icon(Icons.public,
-                                  color: Colors.blue, size: 28),
+                          child: const Icon(Icons.public,
+                              color: Colors.blue, size: 28),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
@@ -274,7 +221,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Text(
-                                "Search The Web",
+                                "Open Web",
                                 style: TextStyle(
                                   fontSize: 11.0,
                                   fontWeight: FontWeight.w500,
@@ -285,7 +232,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
                                 overflow: TextOverflow.ellipsis,
                               ),
                               Text(
-                                "Open Chrome",
+                                "Search The Web",
                                 style: const TextStyle(
                                   fontSize: 13.0,
                                   fontWeight: FontWeight.w600,
@@ -322,9 +269,9 @@ class _GlassPill extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        height: 75.0,
+        height: 52.0,
         padding:
-            const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+            const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
         decoration: BoxDecoration(
           color: Colors.transparent,
           borderRadius: BorderRadius.circular(30.0),
