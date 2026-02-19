@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'settings_page.dart';
 import 'glass_header.dart';
 import 'app_drawer.dart';
+import 'screen_dock.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -222,6 +223,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                     opacity: 1.0,
                                   ),
                                 ),
+                                Positioned(
+                                  bottom: 0,
+                                  left: 0,
+                                  right: 0,
+                                  child: const ScreenDock(),
+                                ),
                                 if (_isDragging)
                                   Positioned(
                                     top: 0,
@@ -272,7 +279,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   Widget _buildHomeGrid(double topPadding) {
     return GridView.builder(
-      padding: EdgeInsets.fromLTRB(16, topPadding, 16, 16),
+      padding: EdgeInsets.fromLTRB(16, topPadding, 16, 130),
       itemCount: _gridColumns * _gridRows,
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: _gridColumns,

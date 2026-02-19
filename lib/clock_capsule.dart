@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:installed_apps/app_info.dart';
 import 'package:installed_apps/installed_apps.dart';
-import 'weather_capsule.dart';
 
 class ClockCapsule extends StatefulWidget {
   final double opacity;
@@ -141,17 +140,6 @@ class _ClockCapsuleState extends State<ClockCapsule> {
                 ),
               ),
             ),
-          ),
-        ),
-
-        // 3. Weather and Status Section
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 8.0),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              WeatherCapsule(opacity: widget.opacity),
-            ],
           ),
         ),
       ],
