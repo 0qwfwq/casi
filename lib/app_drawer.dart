@@ -2,7 +2,6 @@ import 'dart:ui';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:installed_apps/app_info.dart';
-import 'package:oc_liquid_glass/oc_liquid_glass.dart';
 
 class AppDrawer extends StatelessWidget {
   final List<AppInfo> apps;
@@ -134,48 +133,10 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                         ),
                       ),
 
-                      SliverPadding(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                        sliver: SliverToBoxAdapter(
-                          child: Opacity(
-                            opacity: contentOpacity,
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: TextField(
-                                    controller: _searchController,
-                                    onChanged: _updateSearch,
-                                    style: const TextStyle(color: Colors.white),
-                                    decoration: InputDecoration(
-                                      hintText: 'Search apps...',
-                                      hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
-                                      prefixIcon: const Icon(Icons.search, color: Colors.white),
-                                      filled: true,
-                                      fillColor: Colors.white.withValues(alpha: 0.1),
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(30),
-                                        borderSide: BorderSide.none,
-                                      ),
-                                      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                IconButton(
-                                  icon: const Icon(Icons.settings, color: Colors.white70),
-                                  onPressed: widget.onOpenSettings,
-                                  style: IconButton.styleFrom(backgroundColor: Colors.white.withValues(alpha: 0.1)),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-
                       SliverOpacity(
                         opacity: contentOpacity,
                         sliver: SliverPadding(
-                          padding: EdgeInsets.fromLTRB(16, 0, 16, MediaQuery.of(context).viewInsets.bottom + 16),
+                          padding: EdgeInsets.fromLTRB(16, 0, 16, MediaQuery.of(context).viewInsets.bottom + 80),
                           sliver: SliverGrid(
                             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                               crossAxisCount: 4,
@@ -225,6 +186,74 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                       ),
                     ],
                   ),
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+                    child: Opacity(
+                      opacity: contentOpacity,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          SizedBox(
+                            width: screenWidth * 0.6,
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(30),
+                              child: BackdropFilter(
+                                filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(30),
+                                    border: Border.all(
+                                      color: Colors.white.withValues(alpha: 0.5),
+                                      width: 1.2,
+                                    ),
+                                  ),
+                                  child: TextField(
+                                    controller: _searchController,
+                                    onChanged: _updateSearch,
+                                    style: const TextStyle(color: Colors.white),
+                                    decoration: InputDecoration(
+                                      hintText: 'Search apps',
+                                      hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
+                                      prefixIcon: const Icon(Icons.search, color: Colors.white),
+                                      filled: false,
+                                      border: InputBorder.none,
+                                      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            right: 16,
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(30),
+                              child: BackdropFilter(
+                                filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(30),
+                                    border: Border.all(
+                                      color: Colors.white.withValues(alpha: 0.5),
+                                      width: 1.2,
+                                    ),
+                                  ),
+                                  child: IconButton(
+                                    icon: const Icon(Icons.settings, color: Colors.white70),
+                                    onPressed: widget.onOpenSettings,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -239,7 +268,7 @@ class _LiquidBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const double borderRadius = 30.0;
+    const double borderRadius = 36.0;
     return Align(
       alignment: Alignment.bottomCenter,
       child: SizedBox(
@@ -250,22 +279,17 @@ class _LiquidBackground extends StatelessWidget {
             children: [
               Positioned.fill(
                 child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                  filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
                   child: Container(color: Colors.transparent),
-                ),
-              ),
-              Positioned.fill(
-                child: OCLiquidGlass(
-                  color: Colors.white.withValues(alpha: 0.5),
-                  child: const SizedBox(),
                 ),
               ),
               Container(
                 decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.15),
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(borderRadius)),
                   border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.2),
-                    width: 1.5,
+                    color: Colors.white.withValues(alpha: 0.5),
+                    width: 1.2,
                   ),
                 ),
               ),
