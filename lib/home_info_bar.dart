@@ -15,7 +15,7 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// Stores the list of installed applications fetched from the device.
   List<AppInfo> _apps = [];
   /// Stores the apps pinned to the home screen, mapped by their grid index.
@@ -43,20 +43,51 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _fetchApps();
     _loadSettings();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _fetchApps();
+    }
   }
 
   /// Asynchronously retrieves the list of installed apps and loads the saved layout.
   Future<void> _fetchApps() async {
     List<AppInfo> apps = await InstalledApps.getInstalledApps(excludeSystemApps: false, withIcon: true);
     apps.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    // 1. Fast load (no icons) to show UI immediately on cold start
+    if (_apps.isEmpty) {
+      final fastApps = await InstalledApps.getInstalledApps(excludeSystemApps: false, withIcon: false);
+      fastApps.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      await _loadSavedLayout(fastApps);
+      if (mounted) {
+        setState(() {
+          _apps = fastApps;
+          _isLoading = false;
+        });
+      }
+    }
 
     await _loadSavedLayout(apps);
+    // 2. Full load (with icons) to update UI with graphics
+    final fullApps = await InstalledApps.getInstalledApps(excludeSystemApps: false, withIcon: true);
+    fullApps.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    await _loadSavedLayout(fullApps);
 
     if (mounted) {
       setState(() {
         _apps = apps;
+        _apps = fullApps;
         _isLoading = false;
       });
     }
@@ -66,6 +97,7 @@ class _HomePageState extends State<HomePage> {
   Future<void> _loadSavedLayout(List<AppInfo> availableApps) async {
     final prefs = await SharedPreferences.getInstance();
     final List<String> savedLayout = prefs.getStringList('home_layout') ?? [];
+    final Map<int, AppInfo> tempLayout = {};
 
     for (String item in savedLayout) {
       final parts = item.split(':');
@@ -77,12 +109,15 @@ class _HomePageState extends State<HomePage> {
       if (index >= 0 && index < _gridColumns * _gridRows) {
         try {
           final app = availableApps.firstWhere((a) => a.packageName == packageName);
-          _homeApps[index] = app;
+          tempLayout[index] = app;
         } catch (_) {
           // App not found (uninstalled), skip it.
         }
       }
     }
+
+    _homeApps.clear();
+    _homeApps.addAll(tempLayout);
   }
 
   Future<void> _loadSettings() async {
@@ -138,7 +173,15 @@ class _HomePageState extends State<HomePage> {
     // Calculate header height (28% for clock + ~60px for status row + padding)
     final double headerHeight = (screenHeight * 0.28) + 80;
 
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) {
+        if (didPop) return;
+        if (_drawerController.isAttached && _drawerController.size > 0.1) {
+          _drawerController.animateTo(0.0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+        }
+      },
+      child: Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         children: [
@@ -214,6 +257,7 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
         ],
+      ),
       ),
     );
   }
