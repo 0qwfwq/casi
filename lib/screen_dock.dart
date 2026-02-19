@@ -188,111 +188,124 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(24.0, 0, 24.0, 40.0),
-      child: Row(
-        children: [
-          // Weather Pill
-          Expanded(
-            child: _GlassPill(
-              onTap: _fetchWeather,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.start,
-                children: [
-                  SizedBox(
-                    width: 32,
-                    height: 32,
-                    child: Icon(
-                      _getWeatherIcon(_weatherCode),
-                      color: _getWeatherIconColor(_weatherCode),
-                      size: 28,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(36.0),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 20.0, sigmaY: 20.0),
+          child: Container(
+            padding: const EdgeInsets.all(6.0),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(36.0),
+            ),
+            child: Row(
+              children: [
+                // Weather Pill
+                Expanded(
+                  child: _GlassPill(
+                    onTap: _fetchWeather,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.start,
                       children: [
-                        Text(
-                          "Current Forecast",
-                          style: TextStyle(
-                            fontSize: 11.0,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.black.withOpacity(0.7),
-                            fontFamily: 'Roboto',
+                        SizedBox(
+                          width: 32,
+                          height: 32,
+                          child: Icon(
+                            _getWeatherIcon(_weatherCode),
+                            color: _getWeatherIconColor(_weatherCode),
+                            size: 28,
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                         ),
-                        Text(
-                          "${_getWeatherDescription(_weatherCode)}, ${_temperature ?? '--'}°C",
-                          style: const TextStyle(
-                            fontSize: 13.0,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.black87,
-                            fontFamily: 'Roboto',
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                "Current Forecast",
+                                style: TextStyle(
+                                  fontSize: 11.0,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.black.withOpacity(0.7),
+                                  fontFamily: 'Roboto',
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              Text(
+                                "${_getWeatherDescription(_weatherCode)}, ${_temperature ?? '--'}°C",
+                                style: const TextStyle(
+                                  fontSize: 13.0,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.black87,
+                                  fontFamily: 'Roboto',
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                         ),
                       ],
                     ),
                   ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          // Chrome Pill
-          Expanded(
-            child: _GlassPill(
-              onTap: _launchBrowser,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.start,
-                children: [
-                  SizedBox(
-                    width: 32,
-                    height: 32,
-                    child: _browserApp?.icon != null
-                        ? Image.memory(_browserApp!.icon!)
-                        : const Icon(Icons.public,
-                            color: Colors.blue, size: 28),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
+                ),
+                const SizedBox(width: 8),
+                // Chrome Pill
+                Expanded(
+                  child: _GlassPill(
+                    onTap: _launchBrowser,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.start,
                       children: [
-                        Text(
-                          "Search The Web",
-                          style: TextStyle(
-                            fontSize: 11.0,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.black.withOpacity(0.7),
-                            fontFamily: 'Roboto',
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                        SizedBox(
+                          width: 32,
+                          height: 32,
+                          child: _browserApp?.icon != null
+                              ? Image.memory(_browserApp!.icon!)
+                              : const Icon(Icons.public,
+                                  color: Colors.blue, size: 28),
                         ),
-                        Text(
-                          "Open Chrome",
-                          style: const TextStyle(
-                            fontSize: 13.0,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.black87,
-                            fontFamily: 'Roboto',
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                "Search The Web",
+                                style: TextStyle(
+                                  fontSize: 11.0,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.black.withOpacity(0.7),
+                                  fontFamily: 'Roboto',
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              Text(
+                                "Open Chrome",
+                                style: const TextStyle(
+                                  fontSize: 13.0,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.black87,
+                                  fontFamily: 'Roboto',
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                         ),
                       ],
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
-        ],
+        ),
       ),
     );
   }
@@ -308,25 +321,19 @@ class _GlassPill extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(30.0),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20.0, sigmaY: 20.0),
-          child: Container(
-            height: 75.0,
-            padding:
-                const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.4),
-              borderRadius: BorderRadius.circular(30.0),
-              border: Border.all(
-                color: Colors.white.withOpacity(0.6),
-                width: 1.0,
-              ),
-            ),
-            child: child,
+      child: Container(
+        height: 75.0,
+        padding:
+            const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+        decoration: BoxDecoration(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(30.0),
+          border: Border.all(
+            color: Colors.white.withOpacity(0.5),
+            width: 1.2,
           ),
         ),
+        child: child,
       ),
     );
   }
