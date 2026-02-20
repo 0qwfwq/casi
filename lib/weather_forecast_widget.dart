@@ -32,13 +32,25 @@ class HourlyForecastData {
   });
 }
 
+enum ForecastViewMode { daily, hourly, details }
+
 class WeatherForecastWidget extends StatefulWidget {
   final List<DailyForecastData> forecastData;
   final List<HourlyForecastData> hourlyData;
+  
+  // Header Current Data
   final String currentTemp;
   final String currentDescription;
   final IconData currentIcon;
   final Color currentIconColor;
+
+  // Detailed Data
+  final String feelsLike;
+  final String wind;
+  final String precipitation;
+  final String humidity;
+  final String uvIndex;
+  final String sunrise;
 
   const WeatherForecastWidget({
     super.key, 
@@ -48,6 +60,12 @@ class WeatherForecastWidget extends StatefulWidget {
     this.currentDescription = "Unknown",
     this.currentIcon = CupertinoIcons.question,
     this.currentIconColor = Colors.white,
+    this.feelsLike = "--°C",
+    this.wind = "-- mph",
+    this.precipitation = "--%",
+    this.humidity = "--%",
+    this.uvIndex = "--",
+    this.sunrise = "--:-- AM",
   });
 
   @override
@@ -55,8 +73,7 @@ class WeatherForecastWidget extends StatefulWidget {
 }
 
 class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
-  // Toggle state: true = shows horizontal hourly data, false = shows vertical 5-day data
-  bool _showHourly = false; 
+  ForecastViewMode _viewMode = ForecastViewMode.daily; 
 
   @override
   Widget build(BuildContext context) {
@@ -85,18 +102,18 @@ class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Dynamic Header
-                  _showHourly ? _buildHourlyHeader() : _buildDailyHeader(),
+                  _viewMode == ForecastViewMode.daily ? _buildDailyHeader() : _buildHourlyHeader(),
                   
                   const SizedBox(height: 24),
                   
                   // Forecast Content area
-                  if (widget.forecastData.isEmpty || (widget.hourlyData.isEmpty && _showHourly))
+                  if (widget.forecastData.isEmpty || (widget.hourlyData.isEmpty && _viewMode == ForecastViewMode.hourly))
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 20),
                       child: Center(child: CircularProgressIndicator(color: Colors.black54)),
                     )
                   else
-                    _showHourly ? _buildHourlyContent() : _buildDailyContent(),
+                    _buildActiveContent(),
                   
                   const SizedBox(height: 28),
                   
@@ -137,6 +154,17 @@ class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
         color: Colors.black87,
       ),
     );
+  }
+
+  Widget _buildActiveContent() {
+    switch (_viewMode) {
+      case ForecastViewMode.daily:
+        return _buildDailyContent();
+      case ForecastViewMode.hourly:
+        return _buildHourlyContent();
+      case ForecastViewMode.details:
+        return _buildDetailsContent();
+    }
   }
 
   Widget _buildHourlyContent() {
@@ -183,6 +211,55 @@ class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
           ],
         );
       }).toList(),
+    );
+  }
+
+  Widget _buildDetailsContent() {
+    return Container(
+      decoration: const BoxDecoration(
+        // The faint horizontal line between rows
+      ),
+      child: Column(
+        children: [
+          IntrinsicHeight(
+            child: Row(
+              children: [
+                Expanded(child: _buildDetailItem("Feels Like", widget.feelsLike)),
+                const VerticalDivider(color: Colors.black12, thickness: 1, width: 1),
+                Expanded(child: _buildDetailItem("Wind", widget.wind)),
+                const VerticalDivider(color: Colors.black12, thickness: 1, width: 1),
+                Expanded(child: _buildDetailItem("Precipitation", widget.precipitation)),
+              ],
+            ),
+          ),
+          const Divider(color: Colors.black12, height: 1, thickness: 1),
+          IntrinsicHeight(
+            child: Row(
+              children: [
+                Expanded(child: _buildDetailItem("Humidity", widget.humidity)),
+                const VerticalDivider(color: Colors.black12, thickness: 1, width: 1),
+                Expanded(child: _buildDetailItem("UV Index", widget.uvIndex)),
+                const VerticalDivider(color: Colors.black12, thickness: 1, width: 1),
+                Expanded(child: _buildDetailItem("Sunrise", widget.sunrise)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailItem(String title, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12.0),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(title, style: const TextStyle(fontSize: 13, color: Colors.black87, fontWeight: FontWeight.w500)),
+          const SizedBox(height: 4),
+          Text(value, style: const TextStyle(fontSize: 15, color: Colors.black87, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+        ],
+      ),
     );
   }
 
@@ -235,16 +312,38 @@ class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
   }
 
   Widget _buildActionButtons() {
+    String leftText;
+    ForecastViewMode leftMode;
+    String rightTitle;
+    String rightSubtitle;
+    ForecastViewMode rightMode;
+
+    if (_viewMode == ForecastViewMode.daily) {
+      leftText = "Show Hourly\nWeather";
+      leftMode = ForecastViewMode.hourly;
+      rightTitle = "More Details";
+      rightSubtitle = "View Full Breakdown";
+      rightMode = ForecastViewMode.details;
+    } else if (_viewMode == ForecastViewMode.hourly) {
+      leftText = "Show Daily\nWeather";
+      leftMode = ForecastViewMode.daily;
+      rightTitle = "More Details";
+      rightSubtitle = "View Full Breakdown";
+      rightMode = ForecastViewMode.details;
+    } else {
+      leftText = "Show Daily\nWeather";
+      leftMode = ForecastViewMode.daily;
+      rightTitle = "View Hourly";
+      rightSubtitle = "";
+      rightMode = ForecastViewMode.hourly;
+    }
+
     return Row(
       children: [
-        // Button 1: Toggle Hourly / Daily
+        // Primary White Button (Left)
         Expanded(
           child: GestureDetector(
-            onTap: () {
-              setState(() {
-                _showHourly = !_showHourly;
-              });
-            },
+            onTap: () => setState(() => _viewMode = leftMode),
             child: Container(
               height: 54,
               decoration: BoxDecoration(
@@ -253,7 +352,7 @@ class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
               ),
               alignment: Alignment.center,
               child: Text(
-                _showHourly ? "Show 5-Day\nForecast" : "Show Hourly\nWeather",
+                leftText,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   fontSize: 13,
@@ -268,69 +367,89 @@ class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
         
         const SizedBox(width: 8),
         
-        // Button 2: View More Details (matches the image reference styling)
+        // Secondary Transparent Outline Button (Right)
         Expanded(
-          child: Container(
-            height: 54,
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            decoration: BoxDecoration(
-              color: Colors.transparent,
-              borderRadius: BorderRadius.circular(27),
-              border: Border.all(
-                color: Colors.white.withOpacity(0.6), 
-                width: 1.2,
-              ),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // Custom layered Sun/Moon Sparkle Icon
-                SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: Stack(
-                    children: [
-                      Positioned(
-                        top: 1,
-                        left: 0,
-                        child: Icon(CupertinoIcons.sun_max_fill, color: Colors.amber.shade400, size: 16),
-                      ),
-                      Positioned(
-                        bottom: 0,
-                        right: 0,
-                        child: Icon(CupertinoIcons.moon_stars_fill, color: Colors.indigo.shade400, size: 14),
-                      ),
-                    ],
-                  ),
+          child: GestureDetector(
+            onTap: () => setState(() => _viewMode = rightMode),
+            child: Container(
+              height: 54,
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              decoration: BoxDecoration(
+                color: Colors.transparent,
+                borderRadius: BorderRadius.circular(27),
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.6), 
+                  width: 1.2,
                 ),
-                const SizedBox(width: 8),
-                const Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (rightSubtitle.isNotEmpty) _buildSparkleIcon(),
+                  if (rightSubtitle.isNotEmpty) const SizedBox(width: 8),
+                  
+                  if (rightSubtitle.isNotEmpty)
+                    Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          rightTitle,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        Text(
+                          rightSubtitle,
+                          style: const TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black54,
+                          ),
+                        ),
+                      ],
+                    )
+                  else
                     Text(
-                      "More Details",
-                      style: TextStyle(
-                        fontSize: 12,
+                      rightTitle,
+                      style: const TextStyle(
+                        fontSize: 13,
                         fontWeight: FontWeight.w800,
                         color: Colors.black87,
                       ),
                     ),
-                    Text(
-                      "View Full Breakdown",
-                      style: TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.black54,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+                  
+                  if (rightSubtitle.isEmpty) const SizedBox(width: 8),
+                  if (rightSubtitle.isEmpty) _buildSparkleIcon(),
+                ],
+              ),
             ),
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildSparkleIcon() {
+    return SizedBox(
+      width: 24,
+      height: 24,
+      child: Stack(
+        children: [
+          Positioned(
+            top: 1,
+            left: 0,
+            child: Icon(CupertinoIcons.sun_max_fill, color: Colors.amber.shade400, size: 16),
+          ),
+          Positioned(
+            bottom: 0,
+            right: 0,
+            child: Icon(CupertinoIcons.moon_stars_fill, color: Colors.indigo.shade400, size: 14),
+          ),
+        ],
+      ),
     );
   }
 }

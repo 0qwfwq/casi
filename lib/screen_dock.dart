@@ -29,6 +29,14 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
   IconData _currentIcon = CupertinoIcons.question;
   Color _currentIconColor = Colors.white;
 
+  // Detailed Data passed to Widget
+  String _feelsLike = "--°C";
+  String _wind = "-- mph";
+  String _precipitation = "--%";
+  String _humidity = "--%";
+  String _uvIndex = "--";
+  String _sunrise = "--:-- AM";
+
   bool _isLoadingWeather = false;
   bool _showForecast = false;
 
@@ -85,23 +93,41 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
       Position position = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.low);
 
-      // Added hourly=temperature_2m,weathercode,is_day to grab hourly details
+      // Fetch expanded data including current detailed parameters, hourly precip_probability, and daily sunrise/UV.
       final url = Uri.parse(
-          'https://api.open-meteo.com/v1/forecast?latitude=${position.latitude}&longitude=${position.longitude}&current_weather=true&hourly=temperature_2m,weathercode,is_day&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=auto');
+          'https://api.open-meteo.com/v1/forecast?latitude=${position.latitude}&longitude=${position.longitude}'
+          '&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weathercode,wind_speed_10m,wind_direction_10m'
+          '&hourly=temperature_2m,weathercode,is_day,precipitation_probability'
+          '&daily=weathercode,temperature_2m_max,temperature_2m_min,sunrise,uv_index_max'
+          '&wind_speed_unit=mph&timezone=auto');
+      
       final response = await http.get(url);
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (mounted) {
           // Parse Current Weather
-          final current = data['current_weather'];
-          final temp = (current['temperature'] as num).round();
+          final current = data['current'];
+          final temp = (current['temperature_2m'] as num).round();
           final code = (current['weathercode'] as num).toInt();
-          final currentIsDay = current['is_day'] == 1;
+          final currentIsDay = (current['is_day'] as num).toInt() == 1;
           
           final String currentDesc = _getWeatherDescription(code);
           final IconData curIcon = _getWeatherIcon(code, currentIsDay);
           final Color curIconColor = _getWeatherIconColor(code, currentIsDay);
+
+          // Parse Detailed Current Fields
+          final feelsLikeNum = (current['apparent_temperature'] as num).round();
+          final humidityNum = (current['relative_humidity_2m'] as num).round();
+          final windSpeedNum = (current['wind_speed_10m'] as num).round();
+          final windDirDegrees = (current['wind_direction_10m'] as num).toInt();
+          final String windDir = _getWindDirection(windDirDegrees);
+          
+          final double uvIndexRaw = (data['daily']['uv_index_max'][0] as num).toDouble();
+          final String uvIndexStr = "${uvIndexRaw.round()} (${_getUvDescription(uvIndexRaw)})";
+          
+          final String sunriseIso = data['daily']['sunrise'][0] as String;
+          final String sunriseTime = _formatTime(sunriseIso);
 
           // Parse Daily Data
           List<DailyForecastData> dailyList = [];
@@ -120,7 +146,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
 
               dailyList.add(DailyForecastData(
                 day: _getDayName(date.weekday),
-                icon: _getWeatherIcon(dCode, true), // Assume day icons for daily overview
+                icon: _getWeatherIcon(dCode, true), 
                 iconColor: _getWeatherIconColor(dCode, true),
                 temp: "$dMax°/$dMin°",
                 description: _getWeatherDescription(dCode),
@@ -130,24 +156,29 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
 
           // Parse Hourly Data
           List<HourlyForecastData> hourlyList = [];
+          int precipProbNum = 0; // fallback
+
           if (data['hourly'] != null) {
             final hourly = data['hourly'];
             final times = hourly['time'] as List;
             final codes = hourly['weathercode'] as List;
             final temps = hourly['temperature_2m'] as List;
             final isDays = hourly['is_day'] as List;
+            final precipProbs = hourly['precipitation_probability'] as List;
 
             // Find the index for the current hour
             DateTime now = DateTime.now();
             int currentIndex = 0;
             for (int i = 0; i < times.length; i++) {
               DateTime t = DateTime.parse(times[i]);
-              // Grab the first hour that matches or exceeds our current time
               if (t.isAfter(now) || (t.hour == now.hour && t.day == now.day)) {
                 currentIndex = i;
                 break;
               }
             }
+
+            // Grab current precipitation probability
+            precipProbNum = (precipProbs[currentIndex] as num).round();
 
             // Grab the next 6 hours of forecasts
             for (int i = currentIndex; i < currentIndex + 6 && i < times.length; i++) {
@@ -171,6 +202,14 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
             _currentDescription = currentDesc;
             _currentIcon = curIcon;
             _currentIconColor = curIconColor;
+            
+            _feelsLike = "$feelsLikeNum°C";
+            _humidity = "$humidityNum%";
+            _wind = "$windSpeedNum mph $windDir";
+            _precipitation = "$precipProbNum%";
+            _uvIndex = uvIndexStr;
+            _sunrise = sunriseTime;
+
             _forecastData = dailyList;
             _hourlyData = hourlyList;
           });
@@ -198,6 +237,31 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
     if (hour < 12) return "$hour AM";
     if (hour == 12) return "12 PM";
     return "${hour - 12} PM";
+  }
+
+  String _formatTime(String isoTime) {
+    DateTime time = DateTime.parse(isoTime);
+    int hour = time.hour;
+    int minute = time.minute;
+    String ampm = hour >= 12 ? "PM" : "AM";
+    hour = hour % 12;
+    if (hour == 0) hour = 12;
+    String minuteStr = minute.toString().padLeft(2, '0');
+    return "$hour:$minuteStr $ampm";
+  }
+
+  String _getWindDirection(int degrees) {
+    const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+    int index = ((degrees + 22.5) % 360 / 45).floor();
+    return directions[index];
+  }
+
+  String _getUvDescription(double uv) {
+    if (uv < 3) return "Low";
+    if (uv < 6) return "Moderate";
+    if (uv < 8) return "High";
+    if (uv < 11) return "Very High";
+    return "Extreme";
   }
 
   String _getWeatherDescription(int? code) {
@@ -268,6 +332,12 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
                   currentDescription: _currentDescription,
                   currentIcon: _currentIcon,
                   currentIconColor: _currentIconColor,
+                  feelsLike: _feelsLike,
+                  wind: _wind,
+                  precipitation: _precipitation,
+                  humidity: _humidity,
+                  uvIndex: _uvIndex,
+                  sunrise: _sunrise,
                 ),
               )
             : Container(
