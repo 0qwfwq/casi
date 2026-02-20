@@ -77,49 +77,61 @@ class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(36),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
-        child: AnimatedSize(
-          duration: const Duration(milliseconds: 350),
-          curve: Curves.easeOutCubic,
-          alignment: Alignment.topCenter,
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.35), // Light frosty background
-              borderRadius: BorderRadius.circular(36),
-              border: Border.all(
-                color: Colors.white.withOpacity(0.5),
-                width: 1.5,
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(32),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          )
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(32),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 25.0, sigmaY: 25.0), // Matches Dock
+          child: AnimatedSize(
+            duration: const Duration(milliseconds: 350),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.bottomCenter, // Grows upwards smoothly
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2), // Matches Dock exactly
+                borderRadius: BorderRadius.circular(32),
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.3),
+                  width: 1.2,
+                ),
               ),
-            ),
-            child: SingleChildScrollView(
-              physics: const NeverScrollableScrollPhysics(),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Dynamic Header
-                  _viewMode == ForecastViewMode.daily ? _buildDailyHeader() : _buildHourlyHeader(),
-                  
-                  const SizedBox(height: 24),
-                  
-                  // Forecast Content area
-                  if (widget.forecastData.isEmpty || (widget.hourlyData.isEmpty && _viewMode == ForecastViewMode.hourly))
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 20),
-                      child: Center(child: CircularProgressIndicator(color: Colors.black54)),
-                    )
-                  else
-                    _buildActiveContent(),
-                  
-                  const SizedBox(height: 28),
-                  
-                  // Bottom Action Buttons
-                  _buildActionButtons(),
-                ],
+              child: SingleChildScrollView(
+                physics: const NeverScrollableScrollPhysics(),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Dynamic Header
+                    _viewMode == ForecastViewMode.daily ? _buildDailyHeader() : _buildHourlyHeader(),
+                    
+                    const SizedBox(height: 24),
+                    
+                    // Forecast Content area
+                    if (widget.forecastData.isEmpty || (widget.hourlyData.isEmpty && _viewMode == ForecastViewMode.hourly))
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 20),
+                        child: Center(child: CircularProgressIndicator(color: Colors.white54)),
+                      )
+                    else
+                      _buildActiveContent(),
+                    
+                    const SizedBox(height: 28),
+                    
+                    // Bottom Action Buttons
+                    _buildActionButtons(),
+                  ],
+                ),
               ),
             ),
           ),
@@ -137,8 +149,8 @@ class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
           "${widget.currentDescription}, ${widget.currentTemp}",
           style: const TextStyle(
             fontSize: 16,
-            fontWeight: FontWeight.w700,
-            color: Colors.black87,
+            fontWeight: FontWeight.w600,
+            color: Colors.white,
           ),
         ),
       ],
@@ -150,8 +162,8 @@ class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
       "5-Day Forecast",
       style: TextStyle(
         fontSize: 18,
-        fontWeight: FontWeight.bold,
-        color: Colors.black87,
+        fontWeight: FontWeight.w600,
+        color: Colors.white,
       ),
     );
   }
@@ -177,8 +189,8 @@ class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
               data.time,
               style: const TextStyle(
                 fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: Colors.black87,
+                fontWeight: FontWeight.w500,
+                color: Colors.white,
               ),
             ),
             const SizedBox(height: 12),
@@ -189,7 +201,7 @@ class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
               style: const TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w600,
-                color: Colors.black87,
+                color: Colors.white,
               ),
             ),
           ],
@@ -216,30 +228,28 @@ class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
 
   Widget _buildDetailsContent() {
     return Container(
-      decoration: const BoxDecoration(
-        // The faint horizontal line between rows
-      ),
+      decoration: const BoxDecoration(),
       child: Column(
         children: [
           IntrinsicHeight(
             child: Row(
               children: [
                 Expanded(child: _buildDetailItem("Feels Like", widget.feelsLike)),
-                const VerticalDivider(color: Colors.black12, thickness: 1, width: 1),
+                Container(width: 1, color: Colors.white24),
                 Expanded(child: _buildDetailItem("Wind", widget.wind)),
-                const VerticalDivider(color: Colors.black12, thickness: 1, width: 1),
+                Container(width: 1, color: Colors.white24),
                 Expanded(child: _buildDetailItem("Precipitation", widget.precipitation)),
               ],
             ),
           ),
-          const Divider(color: Colors.black12, height: 1, thickness: 1),
+          const Divider(color: Colors.white24, height: 1, thickness: 1),
           IntrinsicHeight(
             child: Row(
               children: [
                 Expanded(child: _buildDetailItem("Humidity", widget.humidity)),
-                const VerticalDivider(color: Colors.black12, thickness: 1, width: 1),
+                Container(width: 1, color: Colors.white24),
                 Expanded(child: _buildDetailItem("UV Index", widget.uvIndex)),
-                const VerticalDivider(color: Colors.black12, thickness: 1, width: 1),
+                Container(width: 1, color: Colors.white24),
                 Expanded(child: _buildDetailItem("Sunrise", widget.sunrise)),
               ],
             ),
@@ -255,9 +265,9 @@ class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(title, style: const TextStyle(fontSize: 13, color: Colors.black87, fontWeight: FontWeight.w500)),
+          Text(title, style: const TextStyle(fontSize: 12, color: Colors.white70, fontWeight: FontWeight.w500)),
           const SizedBox(height: 4),
-          Text(value, style: const TextStyle(fontSize: 15, color: Colors.black87, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+          Text(value, style: const TextStyle(fontSize: 15, color: Colors.white, fontWeight: FontWeight.w600), textAlign: TextAlign.center),
         ],
       ),
     );
@@ -274,7 +284,7 @@ class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
             style: const TextStyle(
               fontSize: 16, 
               fontWeight: FontWeight.w500, 
-              color: Colors.black87,
+              color: Colors.white,
             ),
           ),
         ),
@@ -289,7 +299,7 @@ class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
           style: const TextStyle(
             fontSize: 16, 
             fontWeight: FontWeight.w500, 
-            color: Colors.black87,
+            color: Colors.white,
           ),
         ),
         
@@ -301,8 +311,8 @@ class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
               desc,
               style: const TextStyle(
                 fontSize: 15, 
-                fontWeight: FontWeight.w500, 
-                color: Colors.black87,
+                fontWeight: FontWeight.w400, 
+                color: Colors.white70,
               ),
             ),
           ),
@@ -340,15 +350,15 @@ class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
 
     return Row(
       children: [
-        // Primary White Button (Left)
+        // Primary Button (Left) - Glass filled
         Expanded(
           child: GestureDetector(
             onTap: () => setState(() => _viewMode = leftMode),
             child: Container(
-              height: 54,
+              height: 50,
               decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(27),
+                color: Colors.white.withOpacity(0.2), // Matches glass theme nicely
+                borderRadius: BorderRadius.circular(25),
               ),
               alignment: Alignment.center,
               child: Text(
@@ -356,8 +366,8 @@ class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.black87,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
                   height: 1.2,
                 ),
               ),
@@ -372,13 +382,13 @@ class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
           child: GestureDetector(
             onTap: () => setState(() => _viewMode = rightMode),
             child: Container(
-              height: 54,
+              height: 50,
               padding: const EdgeInsets.symmetric(horizontal: 4),
               decoration: BoxDecoration(
                 color: Colors.transparent,
-                borderRadius: BorderRadius.circular(27),
+                borderRadius: BorderRadius.circular(25),
                 border: Border.all(
-                  color: Colors.white.withOpacity(0.6), 
+                  color: Colors.white.withOpacity(0.4), 
                   width: 1.2,
                 ),
               ),
@@ -397,16 +407,16 @@ class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
                           rightTitle,
                           style: const TextStyle(
                             fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.black87,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
                           ),
                         ),
                         Text(
                           rightSubtitle,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 9,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.black54,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.white.withOpacity(0.7),
                           ),
                         ),
                       ],
@@ -416,8 +426,8 @@ class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
                       rightTitle,
                       style: const TextStyle(
                         fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.black87,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
                       ),
                     ),
                   
@@ -441,12 +451,12 @@ class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
           Positioned(
             top: 1,
             left: 0,
-            child: Icon(CupertinoIcons.sun_max_fill, color: Colors.amber.shade400, size: 16),
+            child: Icon(CupertinoIcons.sun_max_fill, color: Colors.amber.shade300, size: 16),
           ),
           Positioned(
             bottom: 0,
             right: 0,
-            child: Icon(CupertinoIcons.moon_stars_fill, color: Colors.indigo.shade400, size: 14),
+            child: Icon(CupertinoIcons.moon_stars_fill, color: Colors.indigo.shade200, size: 14),
           ),
         ],
       ),

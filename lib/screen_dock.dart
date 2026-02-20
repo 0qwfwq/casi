@@ -66,7 +66,6 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      // Use throttled check instead of forcing a fetch every single resume
       _checkAndFetchWeather();
     }
   }
@@ -75,7 +74,6 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
   Future<void> _initWeather() async {
     final prefs = await SharedPreferences.getInstance();
     
-    // 1. Load full cached weather JSON so UI renders instantly without waiting
     final String? cachedWeatherJson = prefs.getString('weather_json_cache');
     if (cachedWeatherJson != null) {
       try {
@@ -85,7 +83,6 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
         debugPrint("Cache parse error: $e");
       }
     } else {
-      // Fallback to basic prefs if JSON doesn't exist yet
       if (mounted) {
         setState(() {
           _temperature = prefs.getInt('last_temperature');
@@ -97,7 +94,6 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
       }
     }
 
-    // 2. See if we need to update the data quietly in the background
     _checkAndFetchWeather();
   }
 
@@ -106,8 +102,6 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
     final lastFetchMs = prefs.getInt('last_fetch_time_ms') ?? 0;
     final lastFetch = DateTime.fromMillisecondsSinceEpoch(lastFetchMs);
     
-    // Only hit the API if the data is older than 30 minutes, or we have no data at all.
-    // This prevents locking up the UI when quickly switching apps!
     if (DateTime.now().difference(lastFetch).inMinutes > 30 || _temperature == null) {
       _fetchWeather();
     }
@@ -164,7 +158,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
 
     // Parse Hourly Data
     List<HourlyForecastData> hourlyList = [];
-    int precipProbNum = 0; // fallback
+    int precipProbNum = 0;
 
     if (data['hourly'] != null) {
       final hourly = data['hourly'];
@@ -174,7 +168,6 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
       final isDays = hourly['is_day'] as List;
       final precipProbs = hourly['precipitation_probability'] as List;
 
-      // Find the index for the current hour
       DateTime now = DateTime.now();
       int currentIndex = 0;
       for (int i = 0; i < times.length; i++) {
@@ -185,10 +178,8 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
         }
       }
 
-      // Grab current precipitation probability
       precipProbNum = (precipProbs[currentIndex] as num).round();
 
-      // Grab the next 6 hours of forecasts
       for (int i = currentIndex; i < currentIndex + 6 && i < times.length; i++) {
         DateTime t = DateTime.parse(times[i]);
         int hCode = (codes[i] as num).toInt();
@@ -240,13 +231,11 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
       }
       if (permission == LocationPermission.deniedForever) return;
 
-      // Use getLastKnownPosition to prevent the UI from locking up waiting for a fresh GPS lock
       Position? position;
       try {
         position = await Geolocator.getLastKnownPosition();
       } catch (_) {}
       
-      // Fallback only if no previous location exists
       position ??= await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.low);
 
       final url = Uri.parse(
@@ -261,12 +250,9 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         
-        // Cache the raw JSON instantly so next startup is lightning fast
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('weather_json_cache', response.body);
         await prefs.setInt('last_fetch_time_ms', DateTime.now().millisecondsSinceEpoch);
-        
-        // Keep the legacy small values as fallbacks
         await prefs.setInt('last_temperature', (data['current']['temperature_2m'] as num).round());
         await prefs.setInt('last_weather_code', (data['current']['weathercode'] as num).toInt());
 
@@ -342,9 +328,9 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
   }
 
   Color _getWeatherIconColor(int? code, [bool isDay = true]) {
-    if (code == 0) return isDay ? Colors.orange : Colors.indigo.shade300;
+    if (code == 0) return isDay ? Colors.orange.shade300 : Colors.indigo.shade300;
     if (code != null && code >= 1 && code <= 3) return isDay ? Colors.white : Colors.indigo.shade200;
-    return Colors.white; // Default for snow, rain, etc.
+    return Colors.white; 
   }
 
   void _launchBrowser() {
@@ -355,76 +341,80 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
   Widget _buildNormalRow() {
     return Row(
       key: const ValueKey('normal_row'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Weather Pill
+        // Weather Action
         Expanded(
-          child: _GlassPill(
+          child: InkWell(
             onTap: () {
               _checkAndFetchWeather();
-              setState(() {
-                _showForecast = true;
-              });
+              setState(() => _showForecast = true);
             },
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Icon(
-                  _currentIcon,
-                  color: _currentIconColor,
-                  size: 24,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      "$_currentDescription, ${_temperature ?? '--'}°C",
-                      style: const TextStyle(
-                        fontSize: 13.0,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.black87,
-                        fontFamily: 'Roboto',
+            borderRadius: const BorderRadius.horizontal(left: Radius.circular(32)),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(_currentIcon, color: _currentIconColor, size: 20),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        "$_currentDescription, ${_temperature ?? '--'}°C",
+                        style: const TextStyle(
+                          fontSize: 13.0,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                          fontFamily: 'Roboto',
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                  ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ),
-        const SizedBox(width: 8),
-        // Chrome Pill
+        
+        // Crisp frosted divider
+        Center(
+          child: Container(
+            width: 1, 
+            height: 24, 
+            color: Colors.white.withOpacity(0.3)
+          ),
+        ),
+        
+        // Browser Action
         Expanded(
-          child: _GlassPill(
+          child: InkWell(
             onTap: _launchBrowser,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                const Icon(
-                  Icons.public,
-                  color: Colors.blue, 
-                  size: 24,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerLeft,
-                    child: const Text(
-                      "Open Web",
-                      style: TextStyle(
-                        fontSize: 13.0,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.black87,
-                        fontFamily: 'Roboto',
+            borderRadius: const BorderRadius.horizontal(right: Radius.circular(32)),
+            child: const Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8.0),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(CupertinoIcons.globe, color: Colors.white, size: 20),
+                    SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        "Open Web",
+                        style: TextStyle(
+                          fontSize: 13.0,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                          fontFamily: 'Roboto',
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                  ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ),
@@ -435,83 +425,70 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
   Widget _buildDraggingRow() {
     return Row(
       key: const ValueKey('dragging_row'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Remove from Home Screen Pill
+        // Remove from Home Screen
         Expanded(
           child: DragTarget<AppInfo>(
             onAcceptWithDetails: (details) => widget.onRemove?.call(details.data),
             builder: (context, candidateData, rejectedData) {
               final isHovered = candidateData.isNotEmpty;
-              return _GlassPill(
-                backgroundColor: isHovered ? Colors.red.withOpacity(0.7) : Colors.red.withOpacity(0.2),
-                borderColor: isHovered ? Colors.red.shade300 : Colors.white.withOpacity(0.5),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    const Icon(
-                      Icons.close,
-                      color: Colors.white,
-                      size: 22,
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: Alignment.centerLeft,
-                        child: const Text(
-                          "Remove",
-                          style: TextStyle(
-                            fontSize: 13.0,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                            fontFamily: 'Roboto',
-                          ),
-                        ),
+              return AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                decoration: BoxDecoration(
+                  color: isHovered ? Colors.red.withOpacity(0.6) : Colors.transparent,
+                  borderRadius: const BorderRadius.horizontal(left: Radius.circular(32.0)),
+                ),
+                child: const Center(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(CupertinoIcons.clear_circled, color: Colors.white, size: 20),
+                      SizedBox(width: 6),
+                      Text(
+                        "Remove",
+                        style: TextStyle(fontSize: 13.0, fontWeight: FontWeight.w600, color: Colors.white),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               );
             },
           ),
         ),
-        const SizedBox(width: 8),
-        // Uninstall Pill
+        
+        Center(
+          child: Container(
+            width: 1, 
+            height: 24, 
+            color: Colors.white.withOpacity(0.3)
+          ),
+        ),
+        
+        // Uninstall App
         Expanded(
           child: DragTarget<AppInfo>(
             onAcceptWithDetails: (details) => widget.onUninstall?.call(details.data),
             builder: (context, candidateData, rejectedData) {
               final isHovered = candidateData.isNotEmpty;
-              return _GlassPill(
-                backgroundColor: isHovered ? Colors.orange.withOpacity(0.8) : Colors.orange.withOpacity(0.2),
-                borderColor: isHovered ? Colors.orange.shade300 : Colors.white.withOpacity(0.5),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    const Icon(
-                      Icons.delete_forever,
-                      color: Colors.white,
-                      size: 22,
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: Alignment.centerLeft,
-                        child: const Text(
-                          "Uninstall",
-                          style: TextStyle(
-                            fontSize: 13.0,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                            fontFamily: 'Roboto',
-                          ),
-                        ),
+              return AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                decoration: BoxDecoration(
+                  color: isHovered ? Colors.orange.withOpacity(0.6) : Colors.transparent,
+                  borderRadius: const BorderRadius.horizontal(right: Radius.circular(32.0)),
+                ),
+                child: const Center(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(CupertinoIcons.delete, color: Colors.white, size: 20),
+                      SizedBox(width: 6),
+                      Text(
+                        "Uninstall",
+                        style: TextStyle(fontSize: 13.0, fontWeight: FontWeight.w600, color: Colors.white),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               );
             },
@@ -543,12 +520,11 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
             opacity: animation,
             child: SizeTransition(
               sizeFactor: animation,
-              axisAlignment: 1.0,
+              axisAlignment: 1.0, // Anchors the animation to grow upwards
               child: child,
             ),
           );
         },
-        // Precedence: show drag layout if currently dragging an app, else normal flow
         child: (_showForecast && !widget.isDragging)
             ? TapRegion(
                 key: const ValueKey('forecast'),
@@ -574,59 +550,41 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
               )
             : Container(
                 key: const ValueKey('dock_pill'),
+                height: 60.0, // Sleek, unified bar
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(32.0),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    )
+                  ],
+                ),
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(36.0),
+                  borderRadius: BorderRadius.circular(32.0),
                   child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 20.0, sigmaY: 20.0),
+                    filter: ImageFilter.blur(sigmaX: 25.0, sigmaY: 25.0),
                     child: Container(
-                      padding: const EdgeInsets.fromLTRB(20.0, 16.0, 20.0, 16.0),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(36.0),
+                        color: Colors.white.withOpacity(0.2), // Matches weather widget
+                        borderRadius: BorderRadius.circular(32.0),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.3),
+                          width: 1.2,
+                        ),
                       ),
-                      child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 300),
-                        child: widget.isDragging ? _buildDraggingRow() : _buildNormalRow(),
+                      child: Material(
+                        color: Colors.transparent, // Required for InkWell ripples
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 300),
+                          child: widget.isDragging ? _buildDraggingRow() : _buildNormalRow(),
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
-      ),
-    );
-  }
-}
-
-class _GlassPill extends StatelessWidget {
-  final Widget child;
-  final VoidCallback? onTap;
-  final Color backgroundColor;
-  final Color borderColor;
-
-  const _GlassPill({
-    required this.child, 
-    this.onTap,
-    this.backgroundColor = Colors.transparent,
-    this.borderColor = const Color(0x80FFFFFF), // Colors.white.withOpacity(0.5) equivalent
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        height: 54.0,
-        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-        decoration: BoxDecoration(
-          color: backgroundColor,
-          borderRadius: BorderRadius.circular(27.0),
-          border: Border.all(
-            color: borderColor,
-            width: 1.2,
-          ),
-        ),
-        child: child,
       ),
     );
   }
