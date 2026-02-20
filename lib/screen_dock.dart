@@ -139,12 +139,23 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(40.0, 0, 40.0, 40.0),
-      child: AnimatedSize(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-        alignment: Alignment.bottomCenter,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 350),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        transitionBuilder: (Widget child, Animation<double> animation) {
+          return FadeTransition(
+            opacity: animation,
+            child: SizeTransition(
+              sizeFactor: animation,
+              axisAlignment: 1.0,
+              child: child,
+            ),
+          );
+        },
         child: _showForecast
             ? TapRegion(
+                key: const ValueKey('forecast'),
                 onTapOutside: (event) {
                   setState(() {
                     _showForecast = false;
@@ -152,7 +163,9 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
                 },
                 child: const WeatherForecastWidget(),
               )
-            : ClipRRect(
+            : Container(
+                key: const ValueKey('dock_pill'),
+                child: ClipRRect(
                 borderRadius: BorderRadius.circular(36.0),
                 child: BackdropFilter(
                   filter: ImageFilter.blur(sigmaX: 20.0, sigmaY: 20.0),
@@ -242,6 +255,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
                     ),
                   ),
                 ),
+              ),
             ),
       ),
     );
