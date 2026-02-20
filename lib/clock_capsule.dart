@@ -96,46 +96,61 @@ class _ClockCapsuleState extends State<ClockCapsule> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // 1. The Date (Small, standard sans-serif, centered)
+        // 1. The Date (Lightened, added soft shadow for depth)
         Padding(
-          padding: const EdgeInsets.only(bottom: 4.0), // Slight gap between date and time
+          padding: const EdgeInsets.only(bottom: 6.0), 
           child: Text(
             _getFormattedDate(),
             style: TextStyle(
-              color: Colors.white.withOpacity(0.9),
-              fontSize: 18,
-              fontWeight: FontWeight.w500,
+              color: Colors.white.withOpacity(0.95),
+              fontSize: 20, // Slightly larger to match the new proportions
+              fontWeight: FontWeight.w400, // Regular weight
               letterSpacing: 0.5,
-              fontFamily: 'Roboto', // Or system default
+              fontFamily: 'Roboto', 
+              shadows: [
+                Shadow(
+                  offset: const Offset(0, 2),
+                  blurRadius: 4.0,
+                  color: Colors.black.withOpacity(0.4),
+                ),
+              ],
             ),
           ),
         ),
 
-        // 2. The Clock (Massive, Extra-Condensed)
+        // 2. The Clock (Thinner, elegant, with a subtle drop shadow)
         SizedBox(
-          // Increased height allocation to allow for the tall font stretching
-          height: screenHeight * 0.20, 
+          // Slightly reduced height allocation since the font isn't being stretched anymore
+          height: screenHeight * 0.17, 
           width: double.infinity,
           child: GestureDetector(
             onTap: () => _launchApp(_clockPackage),
             child: FittedBox(
               fit: BoxFit.contain,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                child: Transform(
-                  alignment: Alignment.center,
-                  // X=0.85 (Squeeze width), Y=2.0 (Stretch height) -> Creates "Extra Condensed" look
-                  transform: Matrix4.diagonal3Values(0.85, 1.0, 1.0),
-                  child: Text(
-                    "$hour:$minute",
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      // Using a bold weight helps the font retain visibility when squeezed
-                      fontWeight: FontWeight.bold, 
-                      height: 1.0,
-                      letterSpacing: -2.0, // Tighten the gap between numbers
-                    ),
+                padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                child: Text(
+                  "$hour:$minute",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white,
+                    // w200 (ExtraLight) gives it that premium, airy look
+                    fontWeight: FontWeight.w200, 
+                    height: 1.0,
+                    letterSpacing: -1.0, // Relaxed letter spacing
+                    shadows: [
+                      Shadow(
+                        offset: const Offset(0, 8),
+                        blurRadius: 16.0,
+                        color: Colors.black.withOpacity(0.35), // Soft, diffuse shadow
+                      ),
+                      Shadow(
+                        // Inner tight shadow for crispness against bright clouds
+                        offset: const Offset(0, 2),
+                        blurRadius: 4.0,
+                        color: Colors.black.withOpacity(0.2), 
+                      ),
+                    ],
                   ),
                 ),
               ),
