@@ -502,89 +502,90 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(40.0, 0, 40.0, 40.0),
-      child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 350),
-        switchInCurve: Curves.easeOutCubic,
-        switchOutCurve: Curves.easeInCubic,
-        layoutBuilder: (Widget? currentChild, List<Widget> previousChildren) {
-          return Stack(
-            alignment: Alignment.bottomCenter,
-            children: <Widget>[
-              ...previousChildren,
-              if (currentChild != null) currentChild,
-            ],
-          );
-        },
-        transitionBuilder: (Widget child, Animation<double> animation) {
-          return FadeTransition(
-            opacity: animation,
-            child: SizeTransition(
-              sizeFactor: animation,
-              axisAlignment: 1.0, // Anchors the animation to grow upwards
-              child: child,
-            ),
-          );
-        },
-        child: (_showForecast && !widget.isDragging)
-            ? TapRegion(
-                key: const ValueKey('forecast'),
-                onTapOutside: (event) {
-                  setState(() {
-                    _showForecast = false;
-                  });
-                },
-                child: WeatherForecastWidget(
-                  forecastData: _forecastData,
-                  hourlyData: _hourlyData,
-                  currentTemp: "${_temperature ?? '--'}°C",
-                  currentDescription: _currentDescription,
-                  currentIcon: _currentIcon,
-                  currentIconColor: _currentIconColor,
-                  feelsLike: _feelsLike,
-                  wind: _wind,
-                  precipitation: _precipitation,
-                  humidity: _humidity,
-                  uvIndex: _uvIndex,
-                  sunrise: _sunrise,
-                ),
-              )
-            : Container(
-                key: const ValueKey('dock_pill'),
-                height: 60.0, // Sleek, unified bar
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(32.0),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    )
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(32.0),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 25.0, sigmaY: 25.0),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2), // Matches weather widget
-                        borderRadius: BorderRadius.circular(32.0),
-                        border: Border.all(
-                          color: Colors.white.withOpacity(0.3),
-                          width: 1.2,
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(32.0),
+          border: Border.all(
+            color: Colors.white.withOpacity(0.3),
+            width: 1.2,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            )
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(31.0), 
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 25.0, sigmaY: 25.0),
+            child: AnimatedSize(
+              duration: const Duration(milliseconds: 350),
+              curve: Curves.easeOutCubic,
+              alignment: Alignment.bottomCenter, // Grows upwards smoothly
+              clipBehavior: Clip.none, 
+              child: Container(
+                color: Colors.white.withOpacity(0.2), 
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  transitionBuilder: (Widget child, Animation<double> animation) {
+                    return FadeTransition(opacity: animation, child: child);
+                  },
+                  // Fixes the lag! Prevents old widget from forcing the container to stay open.
+                  layoutBuilder: (Widget? currentChild, List<Widget> previousChildren) {
+                    return Stack(
+                      alignment: Alignment.bottomCenter,
+                      children: <Widget>[
+                        ...previousChildren.map((Widget child) {
+                          return Positioned(
+                            bottom: 0,
+                            left: 0,
+                            right: 0,
+                            child: child,
+                          );
+                        }),
+                        if (currentChild != null) currentChild,
+                      ],
+                    );
+                  },
+                  child: (_showForecast && !widget.isDragging)
+                      ? TapRegion(
+                          key: const ValueKey('forecast'),
+                          onTapOutside: (event) {
+                            setState(() {
+                              _showForecast = false;
+                            });
+                          },
+                          child: WeatherForecastWidget(
+                            forecastData: _forecastData,
+                            hourlyData: _hourlyData,
+                            currentTemp: "${_temperature ?? '--'}°C",
+                            currentDescription: _currentDescription,
+                            currentIcon: _currentIcon,
+                            currentIconColor: _currentIconColor,
+                            feelsLike: _feelsLike,
+                            wind: _wind,
+                            precipitation: _precipitation,
+                            humidity: _humidity,
+                            uvIndex: _uvIndex,
+                            sunrise: _sunrise,
+                          ),
+                        )
+                      : SizedBox(
+                          key: const ValueKey('dock_pill'),
+                          height: 60.0, // Sleek, unified bar
+                          child: Material(
+                            color: Colors.transparent, // Required for InkWell ripples
+                            child: widget.isDragging ? _buildDraggingRow() : _buildNormalRow(),
+                          ),
                         ),
-                      ),
-                      child: Material(
-                        color: Colors.transparent, // Required for InkWell ripples
-                        child: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 300),
-                          child: widget.isDragging ? _buildDraggingRow() : _buildNormalRow(),
-                        ),
-                      ),
-                    ),
-                  ),
                 ),
               ),
+            ),
+          ),
+        ),
       ),
     );
   }

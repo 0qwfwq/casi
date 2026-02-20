@@ -77,64 +77,64 @@ class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(32),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          )
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(32),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 25.0, sigmaY: 25.0), // Matches Dock
-          child: AnimatedSize(
-            duration: const Duration(milliseconds: 350),
-            curve: Curves.easeOutCubic,
-            alignment: Alignment.bottomCenter, // Grows upwards smoothly
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2), // Matches Dock exactly
-                borderRadius: BorderRadius.circular(32),
-                border: Border.all(
-                  color: Colors.white.withOpacity(0.3),
-                  width: 1.2,
+    // We removed the glass and sizing containers from here! 
+    // The ScreenDock now provides a single seamless glass container that wraps this.
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
+      child: SingleChildScrollView(
+        physics: const NeverScrollableScrollPhysics(),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Dynamic Header
+            _viewMode == ForecastViewMode.daily ? _buildDailyHeader() : _buildHourlyHeader(),
+            
+            const SizedBox(height: 24),
+            
+            // Forecast Content area
+            if (widget.forecastData.isEmpty || (widget.hourlyData.isEmpty && _viewMode == ForecastViewMode.hourly))
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 20),
+                child: Center(child: CircularProgressIndicator(color: Colors.white54)),
+              )
+            else
+              // Smooth crossfade AND smooth resize when switching between Daily/Hourly/Details
+              AnimatedSize(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOutCubic,
+                alignment: Alignment.topCenter,
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 250),
+                  // This layout builder prevents the height from "snapping" after the fade completes
+                  layoutBuilder: (Widget? currentChild, List<Widget> previousChildren) {
+                    return Stack(
+                      alignment: Alignment.topCenter,
+                      children: <Widget>[
+                        ...previousChildren.map((Widget child) {
+                          return Positioned(
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            child: child,
+                          );
+                        }),
+                        if (currentChild != null) currentChild,
+                      ],
+                    );
+                  },
+                  child: Container(
+                    key: ValueKey(_viewMode),
+                    child: _buildActiveContent(),
+                  ),
                 ),
               ),
-              child: SingleChildScrollView(
-                physics: const NeverScrollableScrollPhysics(),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Dynamic Header
-                    _viewMode == ForecastViewMode.daily ? _buildDailyHeader() : _buildHourlyHeader(),
-                    
-                    const SizedBox(height: 24),
-                    
-                    // Forecast Content area
-                    if (widget.forecastData.isEmpty || (widget.hourlyData.isEmpty && _viewMode == ForecastViewMode.hourly))
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 20),
-                        child: Center(child: CircularProgressIndicator(color: Colors.white54)),
-                      )
-                    else
-                      _buildActiveContent(),
-                    
-                    const SizedBox(height: 28),
-                    
-                    // Bottom Action Buttons
-                    _buildActionButtons(),
-                  ],
-                ),
-              ),
-            ),
-          ),
+            
+            const SizedBox(height: 28),
+            
+            // Bottom Action Buttons
+            _buildActionButtons(),
+          ],
         ),
       ),
     );
@@ -227,35 +227,32 @@ class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
   }
 
   Widget _buildDetailsContent() {
-    return Container(
-      decoration: const BoxDecoration(),
-      child: Column(
-        children: [
-          IntrinsicHeight(
-            child: Row(
-              children: [
-                Expanded(child: _buildDetailItem("Feels Like", widget.feelsLike)),
-                Container(width: 1, color: Colors.white24),
-                Expanded(child: _buildDetailItem("Wind", widget.wind)),
-                Container(width: 1, color: Colors.white24),
-                Expanded(child: _buildDetailItem("Precipitation", widget.precipitation)),
-              ],
-            ),
+    return Column(
+      children: [
+        IntrinsicHeight(
+          child: Row(
+            children: [
+              Expanded(child: _buildDetailItem("Feels Like", widget.feelsLike)),
+              Container(width: 1, color: Colors.white24),
+              Expanded(child: _buildDetailItem("Wind", widget.wind)),
+              Container(width: 1, color: Colors.white24),
+              Expanded(child: _buildDetailItem("Precipitation", widget.precipitation)),
+            ],
           ),
-          const Divider(color: Colors.white24, height: 1, thickness: 1),
-          IntrinsicHeight(
-            child: Row(
-              children: [
-                Expanded(child: _buildDetailItem("Humidity", widget.humidity)),
-                Container(width: 1, color: Colors.white24),
-                Expanded(child: _buildDetailItem("UV Index", widget.uvIndex)),
-                Container(width: 1, color: Colors.white24),
-                Expanded(child: _buildDetailItem("Sunrise", widget.sunrise)),
-              ],
-            ),
+        ),
+        const Divider(color: Colors.white24, height: 1, thickness: 1),
+        IntrinsicHeight(
+          child: Row(
+            children: [
+              Expanded(child: _buildDetailItem("Humidity", widget.humidity)),
+              Container(width: 1, color: Colors.white24),
+              Expanded(child: _buildDetailItem("UV Index", widget.uvIndex)),
+              Container(width: 1, color: Colors.white24),
+              Expanded(child: _buildDetailItem("Sunrise", widget.sunrise)),
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
