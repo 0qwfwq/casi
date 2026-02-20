@@ -56,23 +56,163 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _fetchWeather();
+      // Use throttled check instead of forcing a fetch every single resume
+      _checkAndFetchWeather();
     }
   }
 
   // --- Weather Logic ---
   Future<void> _initWeather() async {
     final prefs = await SharedPreferences.getInstance();
+    
+    // 1. Load full cached weather JSON so UI renders instantly without waiting
+    final String? cachedWeatherJson = prefs.getString('weather_json_cache');
+    if (cachedWeatherJson != null) {
+      try {
+        final data = jsonDecode(cachedWeatherJson);
+        _parseWeatherData(data);
+      } catch (e) {
+        debugPrint("Cache parse error: $e");
+      }
+    } else {
+      // Fallback to basic prefs if JSON doesn't exist yet
+      if (mounted) {
+        setState(() {
+          _temperature = prefs.getInt('last_temperature');
+          _weatherCode = prefs.getInt('last_weather_code');
+          _currentDescription = _getWeatherDescription(_weatherCode);
+          _currentIcon = _getWeatherIcon(_weatherCode, true);
+          _currentIconColor = _getWeatherIconColor(_weatherCode, true);
+        });
+      }
+    }
+
+    // 2. See if we need to update the data quietly in the background
+    _checkAndFetchWeather();
+  }
+
+  Future<void> _checkAndFetchWeather() async {
+    final prefs = await SharedPreferences.getInstance();
+    final lastFetchMs = prefs.getInt('last_fetch_time_ms') ?? 0;
+    final lastFetch = DateTime.fromMillisecondsSinceEpoch(lastFetchMs);
+    
+    // Only hit the API if the data is older than 30 minutes, or we have no data at all.
+    // This prevents locking up the UI when quickly switching apps!
+    if (DateTime.now().difference(lastFetch).inMinutes > 30 || _temperature == null) {
+      _fetchWeather();
+    }
+  }
+
+  void _parseWeatherData(Map<String, dynamic> data) {
+    // Parse Current Weather
+    final current = data['current'];
+    final temp = (current['temperature_2m'] as num).round();
+    final code = (current['weathercode'] as num).toInt();
+    final currentIsDay = (current['is_day'] as num).toInt() == 1;
+    
+    final String currentDesc = _getWeatherDescription(code);
+    final IconData curIcon = _getWeatherIcon(code, currentIsDay);
+    final Color curIconColor = _getWeatherIconColor(code, currentIsDay);
+
+    // Parse Detailed Current Fields
+    final feelsLikeNum = (current['apparent_temperature'] as num).round();
+    final humidityNum = (current['relative_humidity_2m'] as num).round();
+    final windSpeedNum = (current['wind_speed_10m'] as num).round();
+    final windDirDegrees = (current['wind_direction_10m'] as num).toInt();
+    final String windDir = _getWindDirection(windDirDegrees);
+    
+    final double uvIndexRaw = (data['daily']['uv_index_max'][0] as num).toDouble();
+    final String uvIndexStr = "${uvIndexRaw.round()} (${_getUvDescription(uvIndexRaw)})";
+    
+    final String sunriseIso = data['daily']['sunrise'][0] as String;
+    final String sunriseTime = _formatTime(sunriseIso);
+
+    // Parse Daily Data
+    List<DailyForecastData> dailyList = [];
+    if (data['daily'] != null) {
+      final daily = data['daily'];
+      final times = daily['time'] as List;
+      final codes = daily['weathercode'] as List;
+      final maxs = daily['temperature_2m_max'] as List;
+      final mins = daily['temperature_2m_min'] as List;
+
+      for (int i = 0; i < times.length && i < 5; i++) {
+        DateTime date = DateTime.parse(times[i]);
+        int dCode = (codes[i] as num).toInt();
+        int dMax = (maxs[i] as num).round();
+        int dMin = (mins[i] as num).round();
+
+        dailyList.add(DailyForecastData(
+          day: _getDayName(date.weekday),
+          icon: _getWeatherIcon(dCode, true), 
+          iconColor: _getWeatherIconColor(dCode, true),
+          temp: "$dMax°/$dMin°",
+          description: _getWeatherDescription(dCode),
+        ));
+      }
+    }
+
+    // Parse Hourly Data
+    List<HourlyForecastData> hourlyList = [];
+    int precipProbNum = 0; // fallback
+
+    if (data['hourly'] != null) {
+      final hourly = data['hourly'];
+      final times = hourly['time'] as List;
+      final codes = hourly['weathercode'] as List;
+      final temps = hourly['temperature_2m'] as List;
+      final isDays = hourly['is_day'] as List;
+      final precipProbs = hourly['precipitation_probability'] as List;
+
+      // Find the index for the current hour
+      DateTime now = DateTime.now();
+      int currentIndex = 0;
+      for (int i = 0; i < times.length; i++) {
+        DateTime t = DateTime.parse(times[i]);
+        if (t.isAfter(now) || (t.hour == now.hour && t.day == now.day)) {
+          currentIndex = i;
+          break;
+        }
+      }
+
+      // Grab current precipitation probability
+      precipProbNum = (precipProbs[currentIndex] as num).round();
+
+      // Grab the next 6 hours of forecasts
+      for (int i = currentIndex; i < currentIndex + 6 && i < times.length; i++) {
+        DateTime t = DateTime.parse(times[i]);
+        int hCode = (codes[i] as num).toInt();
+        int hTemp = (temps[i] as num).round();
+        bool hIsDay = (isDays[i] as num).toInt() == 1;
+
+        hourlyList.add(HourlyForecastData(
+          time: _getFormattedHour(t),
+          icon: _getWeatherIcon(hCode, hIsDay),
+          iconColor: _getWeatherIconColor(hCode, hIsDay),
+          temp: "$hTemp°C",
+        ));
+      }
+    }
+
     if (mounted) {
       setState(() {
-        _temperature = prefs.getInt('last_temperature');
-        _weatherCode = prefs.getInt('last_weather_code');
-        _currentDescription = _getWeatherDescription(_weatherCode);
-        _currentIcon = _getWeatherIcon(_weatherCode, true);
-        _currentIconColor = _getWeatherIconColor(_weatherCode, true);
+        _temperature = temp;
+        _weatherCode = code;
+        _currentDescription = currentDesc;
+        _currentIcon = curIcon;
+        _currentIconColor = curIconColor;
+        
+        _feelsLike = "$feelsLikeNum°C";
+        _humidity = "$humidityNum%";
+        _wind = "$windSpeedNum mph $windDir";
+        _precipitation = "$precipProbNum%";
+        _uvIndex = uvIndexStr;
+        _sunrise = sunriseTime;
+
+        _forecastData = dailyList;
+        _hourlyData = hourlyList;
       });
     }
-    _fetchWeather();
   }
 
   Future<void> _fetchWeather() async {
@@ -90,10 +230,15 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
       }
       if (permission == LocationPermission.deniedForever) return;
 
-      Position position = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.low);
+      // Use getLastKnownPosition to prevent the UI from locking up waiting for a fresh GPS lock
+      Position? position;
+      try {
+        position = await Geolocator.getLastKnownPosition();
+      } catch (_) {}
+      
+      // Fallback only if no previous location exists
+      position ??= await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.low);
 
-      // Fetch expanded data including current detailed parameters, hourly precip_probability, and daily sunrise/UV.
       final url = Uri.parse(
           'https://api.open-meteo.com/v1/forecast?latitude=${position.latitude}&longitude=${position.longitude}'
           '&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weathercode,wind_speed_10m,wind_direction_10m'
@@ -105,119 +250,17 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        if (mounted) {
-          // Parse Current Weather
-          final current = data['current'];
-          final temp = (current['temperature_2m'] as num).round();
-          final code = (current['weathercode'] as num).toInt();
-          final currentIsDay = (current['is_day'] as num).toInt() == 1;
-          
-          final String currentDesc = _getWeatherDescription(code);
-          final IconData curIcon = _getWeatherIcon(code, currentIsDay);
-          final Color curIconColor = _getWeatherIconColor(code, currentIsDay);
+        
+        // Cache the raw JSON instantly so next startup is lightning fast
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('weather_json_cache', response.body);
+        await prefs.setInt('last_fetch_time_ms', DateTime.now().millisecondsSinceEpoch);
+        
+        // Keep the legacy small values as fallbacks
+        await prefs.setInt('last_temperature', (data['current']['temperature_2m'] as num).round());
+        await prefs.setInt('last_weather_code', (data['current']['weathercode'] as num).toInt());
 
-          // Parse Detailed Current Fields
-          final feelsLikeNum = (current['apparent_temperature'] as num).round();
-          final humidityNum = (current['relative_humidity_2m'] as num).round();
-          final windSpeedNum = (current['wind_speed_10m'] as num).round();
-          final windDirDegrees = (current['wind_direction_10m'] as num).toInt();
-          final String windDir = _getWindDirection(windDirDegrees);
-          
-          final double uvIndexRaw = (data['daily']['uv_index_max'][0] as num).toDouble();
-          final String uvIndexStr = "${uvIndexRaw.round()} (${_getUvDescription(uvIndexRaw)})";
-          
-          final String sunriseIso = data['daily']['sunrise'][0] as String;
-          final String sunriseTime = _formatTime(sunriseIso);
-
-          // Parse Daily Data
-          List<DailyForecastData> dailyList = [];
-          if (data['daily'] != null) {
-            final daily = data['daily'];
-            final times = daily['time'] as List;
-            final codes = daily['weathercode'] as List;
-            final maxs = daily['temperature_2m_max'] as List;
-            final mins = daily['temperature_2m_min'] as List;
-
-            for (int i = 0; i < times.length && i < 5; i++) {
-              DateTime date = DateTime.parse(times[i]);
-              int dCode = (codes[i] as num).toInt();
-              int dMax = (maxs[i] as num).round();
-              int dMin = (mins[i] as num).round();
-
-              dailyList.add(DailyForecastData(
-                day: _getDayName(date.weekday),
-                icon: _getWeatherIcon(dCode, true), 
-                iconColor: _getWeatherIconColor(dCode, true),
-                temp: "$dMax°/$dMin°",
-                description: _getWeatherDescription(dCode),
-              ));
-            }
-          }
-
-          // Parse Hourly Data
-          List<HourlyForecastData> hourlyList = [];
-          int precipProbNum = 0; // fallback
-
-          if (data['hourly'] != null) {
-            final hourly = data['hourly'];
-            final times = hourly['time'] as List;
-            final codes = hourly['weathercode'] as List;
-            final temps = hourly['temperature_2m'] as List;
-            final isDays = hourly['is_day'] as List;
-            final precipProbs = hourly['precipitation_probability'] as List;
-
-            // Find the index for the current hour
-            DateTime now = DateTime.now();
-            int currentIndex = 0;
-            for (int i = 0; i < times.length; i++) {
-              DateTime t = DateTime.parse(times[i]);
-              if (t.isAfter(now) || (t.hour == now.hour && t.day == now.day)) {
-                currentIndex = i;
-                break;
-              }
-            }
-
-            // Grab current precipitation probability
-            precipProbNum = (precipProbs[currentIndex] as num).round();
-
-            // Grab the next 6 hours of forecasts
-            for (int i = currentIndex; i < currentIndex + 6 && i < times.length; i++) {
-              DateTime t = DateTime.parse(times[i]);
-              int hCode = (codes[i] as num).toInt();
-              int hTemp = (temps[i] as num).round();
-              bool hIsDay = (isDays[i] as num).toInt() == 1;
-
-              hourlyList.add(HourlyForecastData(
-                time: _getFormattedHour(t),
-                icon: _getWeatherIcon(hCode, hIsDay),
-                iconColor: _getWeatherIconColor(hCode, hIsDay),
-                temp: "$hTemp°C",
-              ));
-            }
-          }
-
-          setState(() {
-            _temperature = temp;
-            _weatherCode = code;
-            _currentDescription = currentDesc;
-            _currentIcon = curIcon;
-            _currentIconColor = curIconColor;
-            
-            _feelsLike = "$feelsLikeNum°C";
-            _humidity = "$humidityNum%";
-            _wind = "$windSpeedNum mph $windDir";
-            _precipitation = "$precipProbNum%";
-            _uvIndex = uvIndexStr;
-            _sunrise = sunriseTime;
-
-            _forecastData = dailyList;
-            _hourlyData = hourlyList;
-          });
-
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setInt('last_temperature', temp);
-          await prefs.setInt('last_weather_code', code);
-        }
+        _parseWeatherData(data);
       }
     } catch (e) {
       debugPrint("Error fetching weather: $e");
@@ -369,7 +412,8 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
                           Expanded(
                             child: _GlassPill(
                               onTap: () {
-                                _fetchWeather();
+                                // Force an update check if manually tapped, just in case
+                                _checkAndFetchWeather();
                                 setState(() {
                                   _showForecast = true;
                                 });
