@@ -279,19 +279,27 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                   bottom: 0,
                                   left: 0,
                                   right: 0,
-                                  child: const ScreenDock(),
-                                ),
-                                if (_isDragging)
-                                  Positioned(
-                                    top: 0,
-                                    left: 0,
-                                    right: 0,
-                                    height: 60,
-                                    child: Opacity(
-                                      opacity: opacity,
-                                      child: _buildRemoveZone(),
-                                    ),
+                                  child: ScreenDock(
+                                    isDragging: _isDragging,
+                                    onRemove: (app) {
+                                      setState(() {
+                                        _homeApps.removeWhere((key, value) => value.packageName == app.packageName);
+                                      });
+                                      _saveLayout();
+                                    },
+                                    onUninstall: (app) {
+                                      setState(() {
+                                        _homeApps.removeWhere((key, value) => value.packageName == app.packageName);
+                                      });
+                                      _saveLayout();
+                                      try {
+                                        InstalledApps.uninstallApp(app.packageName);
+                                      } catch (e) {
+                                        debugPrint("Uninstall error: $e");
+                                      }
+                                    },
                                   ),
+                                ),
                               ],
                             );
                           },
@@ -394,32 +402,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         borderRadius: BorderRadius.circular(12),
         child: _buildAppIconVisual(app),
       ),
-    );
-  }
-
-  Widget _buildRemoveZone() {
-    return DragTarget<AppInfo>(
-      onAcceptWithDetails: (details) {
-        setState(() {
-          _homeApps.removeWhere((key, value) => value.packageName == details.data.packageName);
-        });
-        _saveLayout();
-      },
-      builder: (context, candidateData, rejectedData) {
-        return Container(
-          color: candidateData.isNotEmpty ? Colors.red.withValues(alpha: 0.5) : Colors.red.withValues(alpha: 0.2),
-          child: const Center(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.delete, color: Colors.white),
-                SizedBox(width: 8),
-                Text("Remove", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-              ],
-            ),
-          ),
-        );
-      },
     );
   }
 

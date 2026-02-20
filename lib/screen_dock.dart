@@ -4,12 +4,22 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
+import 'package:installed_apps/app_info.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:casi/weather_forecast_widget.dart';
 
 class ScreenDock extends StatefulWidget {
-  const ScreenDock({super.key});
+  final bool isDragging;
+  final void Function(AppInfo)? onRemove;
+  final void Function(AppInfo)? onUninstall;
+
+  const ScreenDock({
+    super.key,
+    this.isDragging = false,
+    this.onRemove,
+    this.onUninstall,
+  });
 
   @override
   State<ScreenDock> createState() => _ScreenDockState();
@@ -342,6 +352,175 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
         mode: LaunchMode.externalApplication);
   }
 
+  Widget _buildNormalRow() {
+    return Row(
+      key: const ValueKey('normal_row'),
+      children: [
+        // Weather Pill
+        Expanded(
+          child: _GlassPill(
+            onTap: () {
+              _checkAndFetchWeather();
+              setState(() {
+                _showForecast = true;
+              });
+            },
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Icon(
+                  _currentIcon,
+                  color: _currentIconColor,
+                  size: 24,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      "$_currentDescription, ${_temperature ?? '--'}°C",
+                      style: const TextStyle(
+                        fontSize: 13.0,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.black87,
+                        fontFamily: 'Roboto',
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        // Chrome Pill
+        Expanded(
+          child: _GlassPill(
+            onTap: _launchBrowser,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const Icon(
+                  Icons.public,
+                  color: Colors.blue, 
+                  size: 24,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: const Text(
+                      "Open Web",
+                      style: TextStyle(
+                        fontSize: 13.0,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.black87,
+                        fontFamily: 'Roboto',
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDraggingRow() {
+    return Row(
+      key: const ValueKey('dragging_row'),
+      children: [
+        // Remove from Home Screen Pill
+        Expanded(
+          child: DragTarget<AppInfo>(
+            onAcceptWithDetails: (details) => widget.onRemove?.call(details.data),
+            builder: (context, candidateData, rejectedData) {
+              final isHovered = candidateData.isNotEmpty;
+              return _GlassPill(
+                backgroundColor: isHovered ? Colors.red.withOpacity(0.7) : Colors.red.withOpacity(0.2),
+                borderColor: isHovered ? Colors.red.shade300 : Colors.white.withOpacity(0.5),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.close,
+                      color: Colors.white,
+                      size: 22,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: const Text(
+                          "Remove",
+                          style: TextStyle(
+                            fontSize: 13.0,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                            fontFamily: 'Roboto',
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(width: 8),
+        // Uninstall Pill
+        Expanded(
+          child: DragTarget<AppInfo>(
+            onAcceptWithDetails: (details) => widget.onUninstall?.call(details.data),
+            builder: (context, candidateData, rejectedData) {
+              final isHovered = candidateData.isNotEmpty;
+              return _GlassPill(
+                backgroundColor: isHovered ? Colors.orange.withOpacity(0.8) : Colors.orange.withOpacity(0.2),
+                borderColor: isHovered ? Colors.orange.shade300 : Colors.white.withOpacity(0.5),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.delete_forever,
+                      color: Colors.white,
+                      size: 22,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: const Text(
+                          "Uninstall",
+                          style: TextStyle(
+                            fontSize: 13.0,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                            fontFamily: 'Roboto',
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -350,7 +529,6 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
         duration: const Duration(milliseconds: 350),
         switchInCurve: Curves.easeOutCubic,
         switchOutCurve: Curves.easeInCubic,
-        // Enforce bottom alignment during the layout transition so elements do not jump!
         layoutBuilder: (Widget? currentChild, List<Widget> previousChildren) {
           return Stack(
             alignment: Alignment.bottomCenter,
@@ -370,7 +548,8 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
             ),
           );
         },
-        child: _showForecast
+        // Precedence: show drag layout if currently dragging an app, else normal flow
+        child: (_showForecast && !widget.isDragging)
             ? TapRegion(
                 key: const ValueKey('forecast'),
                 onTapOutside: (event) {
@@ -400,88 +579,14 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
                   child: BackdropFilter(
                     filter: ImageFilter.blur(sigmaX: 20.0, sigmaY: 20.0),
                     child: Container(
-                      // Matched exactly to the bottom padding of WeatherForecastWidget!
                       padding: const EdgeInsets.fromLTRB(20.0, 16.0, 20.0, 16.0),
                       decoration: BoxDecoration(
                         color: Colors.white.withOpacity(0.15),
                         borderRadius: BorderRadius.circular(36.0),
                       ),
-                      child: Row(
-                        children: [
-                          // Weather Pill
-                          Expanded(
-                            child: _GlassPill(
-                              onTap: () {
-                                // Force an update check if manually tapped, just in case
-                                _checkAndFetchWeather();
-                                setState(() {
-                                  _showForecast = true;
-                                });
-                              },
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                crossAxisAlignment: CrossAxisAlignment.center, // Lock vertical alignment
-                                children: [
-                                  Icon(
-                                    _currentIcon,
-                                    color: _currentIconColor,
-                                    size: 24, // Reduced from 28 to balance exactly with 13pt font
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: FittedBox(
-                                      fit: BoxFit.scaleDown,
-                                      alignment: Alignment.centerLeft,
-                                      child: Text(
-                                        "$_currentDescription, ${_temperature ?? '--'}°C",
-                                        style: const TextStyle(
-                                          fontSize: 13.0,
-                                          fontWeight: FontWeight.w600,
-                                          color: Colors.black87,
-                                          fontFamily: 'Roboto',
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          // Chrome Pill
-                          Expanded(
-                            child: _GlassPill(
-                              onTap: _launchBrowser,
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                crossAxisAlignment: CrossAxisAlignment.center,
-                                children: [
-                                  const Icon(
-                                    Icons.public,
-                                    color: Colors.blue, 
-                                    size: 24,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: FittedBox(
-                                      fit: BoxFit.scaleDown,
-                                      alignment: Alignment.centerLeft,
-                                      child: Text(
-                                        "Open Web",
-                                        style: const TextStyle(
-                                          fontSize: 13.0,
-                                          fontWeight: FontWeight.w600,
-                                          color: Colors.black87,
-                                          fontFamily: 'Roboto',
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 300),
+                        child: widget.isDragging ? _buildDraggingRow() : _buildNormalRow(),
                       ),
                     ),
                   ),
@@ -495,22 +600,29 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
 class _GlassPill extends StatelessWidget {
   final Widget child;
   final VoidCallback? onTap;
+  final Color backgroundColor;
+  final Color borderColor;
 
-  const _GlassPill({required this.child, this.onTap});
+  const _GlassPill({
+    required this.child, 
+    this.onTap,
+    this.backgroundColor = Colors.transparent,
+    this.borderColor = const Color(0x80FFFFFF), // Colors.white.withOpacity(0.5) equivalent
+  });
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
         height: 54.0,
-        padding:
-            const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
         decoration: BoxDecoration(
-          color: Colors.transparent,
+          color: backgroundColor,
           borderRadius: BorderRadius.circular(27.0),
           border: Border.all(
-            color: Colors.white.withOpacity(0.5),
+            color: borderColor,
             width: 1.2,
           ),
         ),
