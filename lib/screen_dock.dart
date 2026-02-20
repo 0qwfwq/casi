@@ -19,7 +19,16 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
   // Weather State
   int? _temperature;
   int? _weatherCode;
+  
+  // Data lists for the widget
   List<DailyForecastData> _forecastData = [];
+  List<HourlyForecastData> _hourlyData = [];
+  
+  // Current Weather Info passed to Widget
+  String _currentDescription = "Unknown";
+  IconData _currentIcon = CupertinoIcons.question;
+  Color _currentIconColor = Colors.white;
+
   bool _isLoadingWeather = false;
   bool _showForecast = false;
 
@@ -50,6 +59,9 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
       setState(() {
         _temperature = prefs.getInt('last_temperature');
         _weatherCode = prefs.getInt('last_weather_code');
+        _currentDescription = _getWeatherDescription(_weatherCode);
+        _currentIcon = _getWeatherIcon(_weatherCode, true);
+        _currentIconColor = _getWeatherIconColor(_weatherCode, true);
       });
     }
     _fetchWeather();
@@ -73,17 +85,25 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
       Position position = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.low);
 
+      // Added hourly=temperature_2m,weathercode,is_day to grab hourly details
       final url = Uri.parse(
-          'https://api.open-meteo.com/v1/forecast?latitude=${position.latitude}&longitude=${position.longitude}&current_weather=true&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=auto');
+          'https://api.open-meteo.com/v1/forecast?latitude=${position.latitude}&longitude=${position.longitude}&current_weather=true&hourly=temperature_2m,weathercode,is_day&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=auto');
       final response = await http.get(url);
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (mounted) {
+          // Parse Current Weather
           final current = data['current_weather'];
           final temp = (current['temperature'] as num).round();
           final code = (current['weathercode'] as num).toInt();
+          final currentIsDay = current['is_day'] == 1;
+          
+          final String currentDesc = _getWeatherDescription(code);
+          final IconData curIcon = _getWeatherIcon(code, currentIsDay);
+          final Color curIconColor = _getWeatherIconColor(code, currentIsDay);
 
+          // Parse Daily Data
           List<DailyForecastData> dailyList = [];
           if (data['daily'] != null) {
             final daily = data['daily'];
@@ -100,10 +120,47 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
 
               dailyList.add(DailyForecastData(
                 day: _getDayName(date.weekday),
-                icon: _getWeatherIcon(dCode),
-                iconColor: _getWeatherIconColor(dCode),
+                icon: _getWeatherIcon(dCode, true), // Assume day icons for daily overview
+                iconColor: _getWeatherIconColor(dCode, true),
                 temp: "$dMax°/$dMin°",
                 description: _getWeatherDescription(dCode),
+              ));
+            }
+          }
+
+          // Parse Hourly Data
+          List<HourlyForecastData> hourlyList = [];
+          if (data['hourly'] != null) {
+            final hourly = data['hourly'];
+            final times = hourly['time'] as List;
+            final codes = hourly['weathercode'] as List;
+            final temps = hourly['temperature_2m'] as List;
+            final isDays = hourly['is_day'] as List;
+
+            // Find the index for the current hour
+            DateTime now = DateTime.now();
+            int currentIndex = 0;
+            for (int i = 0; i < times.length; i++) {
+              DateTime t = DateTime.parse(times[i]);
+              // Grab the first hour that matches or exceeds our current time
+              if (t.isAfter(now) || (t.hour == now.hour && t.day == now.day)) {
+                currentIndex = i;
+                break;
+              }
+            }
+
+            // Grab the next 6 hours of forecasts
+            for (int i = currentIndex; i < currentIndex + 6 && i < times.length; i++) {
+              DateTime t = DateTime.parse(times[i]);
+              int hCode = (codes[i] as num).toInt();
+              int hTemp = (temps[i] as num).round();
+              bool hIsDay = (isDays[i] as num).toInt() == 1;
+
+              hourlyList.add(HourlyForecastData(
+                time: _getFormattedHour(t),
+                icon: _getWeatherIcon(hCode, hIsDay),
+                iconColor: _getWeatherIconColor(hCode, hIsDay),
+                temp: "$hTemp°C",
               ));
             }
           }
@@ -111,7 +168,11 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
           setState(() {
             _temperature = temp;
             _weatherCode = code;
+            _currentDescription = currentDesc;
+            _currentIcon = curIcon;
+            _currentIconColor = curIconColor;
             _forecastData = dailyList;
+            _hourlyData = hourlyList;
           });
 
           final prefs = await SharedPreferences.getInstance();
@@ -131,6 +192,14 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
     return days[weekday - 1];
   }
 
+  String _getFormattedHour(DateTime time) {
+    int hour = time.hour;
+    if (hour == 0) return "12 AM";
+    if (hour < 12) return "$hour AM";
+    if (hour == 12) return "12 PM";
+    return "${hour - 12} PM";
+  }
+
   String _getWeatherDescription(int? code) {
     if (code == null) return "Unknown";
     if (code == 0) return "Clear";
@@ -143,22 +212,22 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
     return "Clear";
   }
 
-  IconData _getWeatherIcon(int? code) {
+  IconData _getWeatherIcon(int? code, [bool isDay = true]) {
     if (code == null) return CupertinoIcons.question;
-    if (code == 0) return CupertinoIcons.sun_max_fill;
-    if (code >= 1 && code <= 3) return CupertinoIcons.cloud_fill;
+    if (code == 0) return isDay ? CupertinoIcons.sun_max_fill : CupertinoIcons.moon_stars_fill;
+    if (code >= 1 && code <= 3) return isDay ? CupertinoIcons.cloud_sun_fill : CupertinoIcons.cloud_moon_fill;
     if (code >= 45 && code <= 48) return CupertinoIcons.cloud_fog_fill;
     if (code >= 51 && code <= 67) return CupertinoIcons.cloud_rain_fill;
     if (code >= 71 && code <= 77) return CupertinoIcons.snow;
     if (code >= 80 && code <= 82) return CupertinoIcons.cloud_heavyrain_fill;
     if (code >= 95 && code <= 99) return CupertinoIcons.cloud_bolt_fill;
-    return CupertinoIcons.sun_max_fill;
+    return isDay ? CupertinoIcons.sun_max_fill : CupertinoIcons.moon_stars_fill;
   }
 
-  Color _getWeatherIconColor(int? code) {
-    if (code == 0) return Colors.orange;
-    if (code != null && code >= 1 && code <= 3) return Colors.white;
-    return Colors.white;
+  Color _getWeatherIconColor(int? code, [bool isDay = true]) {
+    if (code == 0) return isDay ? Colors.orange : Colors.indigo.shade300;
+    if (code != null && code >= 1 && code <= 3) return isDay ? Colors.white : Colors.indigo.shade200;
+    return Colors.white; // Default for snow, rain, etc.
   }
 
   void _launchBrowser() {
@@ -192,7 +261,14 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
                     _showForecast = false;
                   });
                 },
-                child: WeatherForecastWidget(forecastData: _forecastData),
+                child: WeatherForecastWidget(
+                  forecastData: _forecastData,
+                  hourlyData: _hourlyData,
+                  currentTemp: "${_temperature ?? '--'}°C",
+                  currentDescription: _currentDescription,
+                  currentIcon: _currentIcon,
+                  currentIconColor: _currentIconColor,
+                ),
               )
             : Container(
                 key: const ValueKey('dock_pill'),
@@ -226,15 +302,15 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
                                   width: 32,
                                   height: 32,
                                   child: Icon(
-                                    _getWeatherIcon(_weatherCode),
-                                    color: _getWeatherIconColor(_weatherCode),
+                                    _currentIcon,
+                                    color: _currentIconColor,
                                     size: 28,
                                   ),
                                 ),
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Text(
-                                    "${_getWeatherDescription(_weatherCode)}, ${_temperature ?? '--'}°C",
+                                    "$_currentDescription, ${_temperature ?? '--'}°C",
                                     style: const TextStyle(
                                       fontSize: 13.0,
                                       fontWeight: FontWeight.w600,
