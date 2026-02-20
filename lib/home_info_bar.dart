@@ -17,10 +17,15 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
+  /// Static cache to survive Flutter Activity recreation when OS memory is low.
+  /// This ensures returning home is instant, like a native launcher.
+  static List<AppInfo>? _cachedFullApps;
+
   /// Stores the list of installed applications fetched from the device.
   List<AppInfo> _apps = [];
   /// Stores the apps pinned to the home screen, mapped by their grid index.
   final Map<int, AppInfo> _homeApps = {};
+  
   /// Tracks whether the app data is currently being loaded.
   bool _isLoading = true;
   /// Tracks if the user is currently dragging an icon.
@@ -45,7 +50,20 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _fetchApps();
+    
+    // If the Dart engine is still alive, pull instantly from cache
+    if (_cachedFullApps != null) {
+      _apps = _cachedFullApps!;
+      _isLoading = false;
+      _loadSavedLayout(_apps).then((_) {
+        if (mounted) setState(() {});
+        // Silently check for newly installed/uninstalled apps in the background
+        _checkAppChangesOnResume();
+      });
+    } else {
+      _initApps();
+    }
+    
     _loadSettings();
   }
 
@@ -58,23 +76,22 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _fetchApps();
+      // Instead of doing a heavy fetch, just check if packages changed
+      _checkAppChangesOnResume();
     }
   }
 
-  /// Asynchronously retrieves the list of installed apps and loads the saved layout.
-  Future<void> _fetchApps() async {
+  /// Asynchronously retrieves the list of installed apps on cold start.
+  Future<void> _initApps() async {
     // 1. Fast load (no icons) to show UI immediately on cold start
-    if (_apps.isEmpty) {
-      final fastApps = await InstalledApps.getInstalledApps(excludeSystemApps: false, withIcon: false);
-      fastApps.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
-      await _loadSavedLayout(fastApps);
-      if (mounted) {
-        setState(() {
-          _apps = fastApps;
-          _isLoading = false;
-        });
-      }
+    final fastApps = await InstalledApps.getInstalledApps(excludeSystemApps: false, withIcon: false);
+    fastApps.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    await _loadSavedLayout(fastApps);
+    if (mounted) {
+      setState(() {
+        _apps = fastApps;
+        _isLoading = false;
+      });
     }
 
     // 2. Full load (with icons) to update UI with graphics
@@ -82,11 +99,46 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     fullApps.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     await _loadSavedLayout(fullApps);
 
+    // Cache the heavy data globally for the lifecycle of the process
+    _cachedFullApps = fullApps;
+
     if (mounted) {
       setState(() {
         _apps = fullApps;
-        _isLoading = false;
       });
+    }
+  }
+
+  /// Performs a lightning-fast check on resume to see if the user installed/uninstalled apps.
+  Future<void> _checkAppChangesOnResume() async {
+    if (_cachedFullApps == null) return; // Don't interrupt a cold start load
+
+    try {
+      // Fast check to see what packages are currently installed
+      final currentFastApps = await InstalledApps.getInstalledApps(excludeSystemApps: false, withIcon: false);
+      
+      final currentPackages = currentFastApps.map((e) => e.packageName).toSet();
+      final loadedPackages = _apps.map((e) => e.packageName).toSet();
+
+      // If the packages are exactly the same, do nothing! This keeps the launcher buttery smooth.
+      if (currentPackages.length == loadedPackages.length && currentPackages.containsAll(loadedPackages)) {
+        return;
+      }
+
+      // If there's a difference (app installed or uninstalled), load the full data again silently.
+      final fullApps = await InstalledApps.getInstalledApps(excludeSystemApps: false, withIcon: true);
+      fullApps.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      
+      _cachedFullApps = fullApps;
+      await _loadSavedLayout(fullApps);
+
+      if (mounted) {
+        setState(() {
+          _apps = fullApps;
+        });
+      }
+    } catch (e) {
+      debugPrint("Error checking app changes: $e");
     }
   }
 

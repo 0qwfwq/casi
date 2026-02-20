@@ -307,6 +307,16 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
         duration: const Duration(milliseconds: 350),
         switchInCurve: Curves.easeOutCubic,
         switchOutCurve: Curves.easeInCubic,
+        // Enforce bottom alignment during the layout transition so elements do not jump!
+        layoutBuilder: (Widget? currentChild, List<Widget> previousChildren) {
+          return Stack(
+            alignment: Alignment.bottomCenter,
+            children: <Widget>[
+              ...previousChildren,
+              if (currentChild != null) currentChild,
+            ],
+          );
+        },
         transitionBuilder: (Widget child, Animation<double> animation) {
           return FadeTransition(
             opacity: animation,
@@ -343,97 +353,96 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
             : Container(
                 key: const ValueKey('dock_pill'),
                 child: ClipRRect(
-                borderRadius: BorderRadius.circular(36.0),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 20.0, sigmaY: 20.0),
-                  child: Container(
-                    padding: const EdgeInsets.all(6.0),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(36.0),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                  borderRadius: BorderRadius.circular(36.0),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 20.0, sigmaY: 20.0),
+                    child: Container(
+                      // Matched exactly to the bottom padding of WeatherForecastWidget!
+                      padding: const EdgeInsets.fromLTRB(20.0, 16.0, 20.0, 16.0),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(36.0),
+                      ),
                       child: Row(
-                      children: [
-                        // Weather Pill
-                        Expanded(
-                          child: _GlassPill(
-                            onTap: () {
-                              _fetchWeather();
-                              setState(() {
-                                _showForecast = true;
-                              });
-                            },
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.start,
-                              children: [
-                                SizedBox(
-                                  width: 32,
-                                  height: 32,
-                                  child: Icon(
+                        children: [
+                          // Weather Pill
+                          Expanded(
+                            child: _GlassPill(
+                              onTap: () {
+                                _fetchWeather();
+                                setState(() {
+                                  _showForecast = true;
+                                });
+                              },
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.center, // Lock vertical alignment
+                                children: [
+                                  Icon(
                                     _currentIcon,
                                     color: _currentIconColor,
-                                    size: 28,
+                                    size: 24, // Reduced from 28 to balance exactly with 13pt font
                                   ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Text(
-                                    "$_currentDescription, ${_temperature ?? '--'}°C",
-                                    style: const TextStyle(
-                                      fontSize: 13.0,
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.black87,
-                                      fontFamily: 'Roboto',
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(
+                                        "$_currentDescription, ${_temperature ?? '--'}°C",
+                                        style: const TextStyle(
+                                          fontSize: 13.0,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.black87,
+                                          fontFamily: 'Roboto',
+                                        ),
+                                      ),
                                     ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        // Chrome Pill
-                        Expanded(
-                          child: _GlassPill(
-                            onTap: _launchBrowser,
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.start,
-                              children: [
-                                SizedBox(
-                                  width: 32,
-                                  height: 32,
-                                  child: const Icon(Icons.public,
-                                      color: Colors.blue, size: 28),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Text(
-                                    "Open Web",
-                                    style: const TextStyle(
-                                      fontSize: 13.0,
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.black87,
-                                      fontFamily: 'Roboto',
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
+                          const SizedBox(width: 8),
+                          // Chrome Pill
+                          Expanded(
+                            child: _GlassPill(
+                              onTap: _launchBrowser,
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  const Icon(
+                                    Icons.public,
+                                    color: Colors.blue, 
+                                    size: 24,
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(
+                                        "Open Web",
+                                        style: const TextStyle(
+                                          fontSize: 13.0,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.black87,
+                                          fontFamily: 'Roboto',
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
       ),
     );
   }
