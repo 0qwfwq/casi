@@ -7,14 +7,14 @@ class WeatherForecastWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(32),
+      borderRadius: BorderRadius.circular(36),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
         child: Container(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.fromLTRB(18, 24, 18, 6),
           decoration: BoxDecoration(
             color: Colors.white.withOpacity(0.35), // Light frosty background
-            borderRadius: BorderRadius.circular(32),
+            borderRadius: BorderRadius.circular(36),
             border: Border.all(
               color: Colors.white.withOpacity(0.5),
               width: 1.5,
