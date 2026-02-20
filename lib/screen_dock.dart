@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:casi/weather_forecast_widget.dart';
 
 class ScreenDock extends StatefulWidget {
   const ScreenDock({super.key});
@@ -19,6 +20,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
   int? _temperature;
   int? _weatherCode;
   bool _isLoadingWeather = false;
+  bool _showForecast = false;
 
   @override
   void initState() {
@@ -136,123 +138,111 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24.0, 0, 24.0, 40.0),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(36.0),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20.0, sigmaY: 20.0),
-          child: Container(
-            padding: const EdgeInsets.all(6.0),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(36.0),
-            ),
-            child: Row(
-              children: [
-                // Weather Pill
-                Expanded(
-                  child: _GlassPill(
-                    onTap: _fetchWeather,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.start,
+      padding: const EdgeInsets.fromLTRB(40.0, 0, 40.0, 40.0),
+      child: AnimatedSize(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+        alignment: Alignment.bottomCenter,
+        child: _showForecast
+            ? TapRegion(
+                onTapOutside: (event) {
+                  setState(() {
+                    _showForecast = false;
+                  });
+                },
+                child: const WeatherForecastWidget(),
+              )
+            : ClipRRect(
+                borderRadius: BorderRadius.circular(36.0),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 20.0, sigmaY: 20.0),
+                  child: Container(
+                    padding: const EdgeInsets.all(6.0),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(36.0),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                      child: Row(
                       children: [
-                        SizedBox(
-                          width: 32,
-                          height: 32,
-                          child: Icon(
-                            _getWeatherIcon(_weatherCode),
-                            color: _getWeatherIconColor(_weatherCode),
-                            size: 28,
+                        // Weather Pill
+                        Expanded(
+                          child: _GlassPill(
+                            onTap: () {
+                              _fetchWeather();
+                              setState(() {
+                                _showForecast = true;
+                              });
+                            },
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.start,
+                              children: [
+                                SizedBox(
+                                  width: 32,
+                                  height: 32,
+                                  child: Icon(
+                                    _getWeatherIcon(_weatherCode),
+                                    color: _getWeatherIconColor(_weatherCode),
+                                    size: 28,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    "${_getWeatherDescription(_weatherCode)}, ${_temperature ?? '--'}°C",
+                                    style: const TextStyle(
+                                      fontSize: 13.0,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.black87,
+                                      fontFamily: 'Roboto',
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 8),
+                        // Chrome Pill
                         Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                "${_getWeatherDescription(_weatherCode)}, ${_temperature ?? '--'}°C",
-                                style: TextStyle(
-                                  fontSize: 11.0,
-                                  fontWeight: FontWeight.w500,
-                                  color: Colors.black.withOpacity(0.7),
-                                  fontFamily: 'Roboto',
+                          child: _GlassPill(
+                            onTap: _launchBrowser,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.start,
+                              children: [
+                                SizedBox(
+                                  width: 32,
+                                  height: 32,
+                                  child: const Icon(Icons.public,
+                                      color: Colors.blue, size: 28),
                                 ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              Text(
-                                "Current Forecast",
-                                style: const TextStyle(
-                                  fontSize: 13.0,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.black87,
-                                  fontFamily: 'Roboto',
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    "Open Web",
+                                    style: const TextStyle(
+                                      fontSize: 13.0,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.black87,
+                                      fontFamily: 'Roboto',
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                       ],
                     ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                // Chrome Pill
-                Expanded(
-                  child: _GlassPill(
-                    onTap: _launchBrowser,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.start,
-                      children: [
-                        SizedBox(
-                          width: 32,
-                          height: 32,
-                          child: const Icon(Icons.public,
-                              color: Colors.blue, size: 28),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                "Open Web",
-                                style: TextStyle(
-                                  fontSize: 11.0,
-                                  fontWeight: FontWeight.w500,
-                                  color: Colors.black.withOpacity(0.7),
-                                  fontFamily: 'Roboto',
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              Text(
-                                "Search The Web",
-                                style: const TextStyle(
-                                  fontSize: 13.0,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.black87,
-                                  fontFamily: 'Roboto',
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
                     ),
                   ),
                 ),
-              ],
             ),
-          ),
-        ),
       ),
     );
   }
@@ -269,12 +259,12 @@ class _GlassPill extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        height: 52.0,
+        height: 54.0,
         padding:
             const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
         decoration: BoxDecoration(
           color: Colors.transparent,
-          borderRadius: BorderRadius.circular(30.0),
+          borderRadius: BorderRadius.circular(27.0),
           border: Border.all(
             color: Colors.white.withOpacity(0.5),
             width: 1.2,
