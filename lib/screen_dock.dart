@@ -19,6 +19,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
   // Weather State
   int? _temperature;
   int? _weatherCode;
+  List<DailyForecastData> _forecastData = [];
   bool _isLoadingWeather = false;
   bool _showForecast = false;
 
@@ -73,7 +74,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
           desiredAccuracy: LocationAccuracy.low);
 
       final url = Uri.parse(
-          'https://api.open-meteo.com/v1/forecast?latitude=${position.latitude}&longitude=${position.longitude}&current_weather=true');
+          'https://api.open-meteo.com/v1/forecast?latitude=${position.latitude}&longitude=${position.longitude}&current_weather=true&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=auto');
       final response = await http.get(url);
 
       if (response.statusCode == 200) {
@@ -83,9 +84,34 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
           final temp = (current['temperature'] as num).round();
           final code = (current['weathercode'] as num).toInt();
 
+          List<DailyForecastData> dailyList = [];
+          if (data['daily'] != null) {
+            final daily = data['daily'];
+            final times = daily['time'] as List;
+            final codes = daily['weathercode'] as List;
+            final maxs = daily['temperature_2m_max'] as List;
+            final mins = daily['temperature_2m_min'] as List;
+
+            for (int i = 0; i < times.length && i < 5; i++) {
+              DateTime date = DateTime.parse(times[i]);
+              int dCode = (codes[i] as num).toInt();
+              int dMax = (maxs[i] as num).round();
+              int dMin = (mins[i] as num).round();
+
+              dailyList.add(DailyForecastData(
+                day: _getDayName(date.weekday),
+                icon: _getWeatherIcon(dCode),
+                iconColor: _getWeatherIconColor(dCode),
+                temp: "$dMax°/$dMin°",
+                description: _getWeatherDescription(dCode),
+              ));
+            }
+          }
+
           setState(() {
             _temperature = temp;
             _weatherCode = code;
+            _forecastData = dailyList;
           });
 
           final prefs = await SharedPreferences.getInstance();
@@ -98,6 +124,11 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
     } finally {
       if (mounted) setState(() => _isLoadingWeather = false);
     }
+  }
+
+  String _getDayName(int weekday) {
+    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    return days[weekday - 1];
   }
 
   String _getWeatherDescription(int? code) {
@@ -161,7 +192,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
                     _showForecast = false;
                   });
                 },
-                child: const WeatherForecastWidget(),
+                child: WeatherForecastWidget(forecastData: _forecastData),
               )
             : Container(
                 key: const ValueKey('dock_pill'),

@@ -1,8 +1,26 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 
+class DailyForecastData {
+  final String day;
+  final IconData icon;
+  final Color iconColor;
+  final String temp;
+  final String description;
+
+  const DailyForecastData({
+    required this.day,
+    required this.icon,
+    required this.iconColor,
+    required this.temp,
+    required this.description,
+  });
+}
+
 class WeatherForecastWidget extends StatelessWidget {
-  const WeatherForecastWidget({super.key});
+  final List<DailyForecastData> forecastData;
+
+  const WeatherForecastWidget({super.key, this.forecastData = const []});
 
   @override
   Widget build(BuildContext context) {
@@ -37,15 +55,23 @@ class WeatherForecastWidget extends StatelessWidget {
                 const SizedBox(height: 20),
                 
                 // Forecast Rows
-                _buildForecastRow("Fri", Icons.wb_cloudy, Colors.white, "4°/0°", "Partly Cloudy"),
-                const SizedBox(height: 14),
-                _buildForecastRow("Sat", Icons.ac_unit, Colors.white, "1°/-2°", "Snow Flurries"),
-                const SizedBox(height: 14),
-                _buildForecastRow("Sun", Icons.wb_sunny, Colors.amber, "3°/-1°", "Sunny", hasDividerBelow: true),
-                const SizedBox(height: 14),
-                _buildForecastRow("Mon", Icons.cloud, Colors.white, "5°/1°", "Cloudy", hasDividerBelow: true),
-                const SizedBox(height: 14),
-                _buildForecastRow("Tue", Icons.cloudy_snowing, Colors.white, "2°/-1°", "Rain/Snow"),
+                if (forecastData.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 20),
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else
+                  ...forecastData.asMap().entries.map((entry) {
+                    final index = entry.key;
+                    final data = entry.value;
+                    return Column(
+                      children: [
+                        _buildForecastRow(data.day, data.icon, data.iconColor, data.temp, data.description),
+                        if (index < forecastData.length - 1)
+                          const SizedBox(height: 14),
+                      ],
+                    );
+                  }),
                 
                 const SizedBox(height: 28),
                 
@@ -59,7 +85,7 @@ class WeatherForecastWidget extends StatelessWidget {
     );
   }
 
-  Widget _buildForecastRow(String day, IconData icon, Color iconColor, String temp, String desc, {bool hasDividerBelow = false}) {
+  Widget _buildForecastRow(String day, IconData icon, Color iconColor, String temp, String desc) {
     return Column(
       children: [
         Row(
@@ -107,12 +133,6 @@ class WeatherForecastWidget extends StatelessWidget {
             ),
           ],
         ),
-        
-        // Optional Divider
-        if (hasDividerBelow) ...[
-          const SizedBox(height: 14),
-          const Divider(color: Colors.black12, height: 1, thickness: 1),
-        ],
       ],
     );
   }
