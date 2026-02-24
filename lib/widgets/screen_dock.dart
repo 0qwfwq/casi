@@ -7,7 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:installed_apps/app_info.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:casi/weather_forecast_widget.dart';
+import 'package:casi/widgets/weather_forecast_widget.dart';
 
 class ScreenDock extends StatefulWidget {
   final bool isDragging;
