@@ -338,226 +338,157 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
         mode: LaunchMode.externalApplication);
   }
 
-  Widget _buildNormalRow() {
-    return Row(
-      key: const ValueKey('normal_row'),
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // Weather Action
-        Expanded(
-          child: InkWell(
-            onTap: () {
-              _checkAndFetchWeather();
-              setState(() => _showForecast = true);
-            },
-            borderRadius: const BorderRadius.horizontal(left: Radius.circular(32)),
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(_currentIcon, color: _currentIconColor, size: 20),
-                    const SizedBox(width: 8),
-                    Flexible(
-                      child: Text(
-                        "$_currentDescription, ${_temperature ?? '--'}°C",
-                        style: const TextStyle(
-                          fontSize: 13.0,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                          fontFamily: 'Roboto',
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-        
-        // Crisp frosted divider
-        Center(
-          child: Container(
-            width: 1, 
-            height: 24, 
-            color: Colors.white.withOpacity(0.3)
-          ),
-        ),
-        
-        // Browser Action
-        Expanded(
-          child: InkWell(
-            onTap: _launchBrowser,
-            borderRadius: const BorderRadius.horizontal(right: Radius.circular(32)),
-            child: const Center(
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 8.0),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(CupertinoIcons.globe, color: Colors.white, size: 20),
-                    SizedBox(width: 8),
-                    Flexible(
-                      child: Text(
-                        "Open Web",
-                        style: TextStyle(
-                          fontSize: 13.0,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                          fontFamily: 'Roboto',
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
+  // --- UI Build Helpers ---
+
+  Widget _buildWeatherButton() {
+    return InkWell(
+      onTap: () {
+        _checkAndFetchWeather();
+        setState(() => _showForecast = true);
+      },
+      borderRadius: BorderRadius.circular(30),
+      child: Center(
+        child: Icon(_currentIcon, color: _currentIconColor, size: 24),
+      ),
     );
   }
 
-  Widget _buildDraggingRow() {
-    return Row(
-      key: const ValueKey('dragging_row'),
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // Remove from Home Screen
-        Expanded(
-          child: DragTarget<AppInfo>(
-            onAcceptWithDetails: (details) => widget.onRemove?.call(details.data),
-            builder: (context, candidateData, rejectedData) {
-              final isHovered = candidateData.isNotEmpty;
-              return AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                decoration: BoxDecoration(
-                  color: isHovered ? Colors.red.withOpacity(0.6) : Colors.transparent,
-                  borderRadius: const BorderRadius.horizontal(left: Radius.circular(32.0)),
-                ),
-                child: const Center(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(CupertinoIcons.clear_circled, color: Colors.white, size: 20),
-                      SizedBox(width: 6),
-                      Text(
-                        "Remove",
-                        style: TextStyle(fontSize: 13.0, fontWeight: FontWeight.w600, color: Colors.white),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-        
-        Center(
-          child: Container(
-            width: 1, 
-            height: 24, 
-            color: Colors.white.withOpacity(0.3)
-          ),
-        ),
-        
-        // Uninstall App
-        Expanded(
-          child: DragTarget<AppInfo>(
-            onAcceptWithDetails: (details) => widget.onUninstall?.call(details.data),
-            builder: (context, candidateData, rejectedData) {
-              final isHovered = candidateData.isNotEmpty;
-              return AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                decoration: BoxDecoration(
-                  color: isHovered ? Colors.orange.withOpacity(0.6) : Colors.transparent,
-                  borderRadius: const BorderRadius.horizontal(right: Radius.circular(32.0)),
-                ),
-                child: const Center(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(CupertinoIcons.delete, color: Colors.white, size: 20),
-                      SizedBox(width: 6),
-                      Text(
-                        "Uninstall",
-                        style: TextStyle(fontSize: 13.0, fontWeight: FontWeight.w600, color: Colors.white),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-      ],
+  Widget _buildWebButton() {
+    return InkWell(
+      onTap: _launchBrowser,
+      borderRadius: BorderRadius.circular(30),
+      child: const Center(
+        child: Icon(CupertinoIcons.globe, color: Colors.white, size: 24),
+      ),
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(40.0, 0, 40.0, 40.0),
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(32.0),
-          border: Border.all(
-            color: Colors.white.withOpacity(0.3),
-            width: 1.2,
+  Widget _buildRemoveTarget() {
+    return DragTarget<AppInfo>(
+      onAcceptWithDetails: (details) => widget.onRemove?.call(details.data),
+      builder: (context, candidateData, rejectedData) {
+        final isHovered = candidateData.isNotEmpty;
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          decoration: BoxDecoration(
+            color: isHovered ? Colors.red.withOpacity(0.6) : Colors.transparent,
+            borderRadius: BorderRadius.circular(32),
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            )
-          ],
+          child: const Center(
+            child: Icon(CupertinoIcons.clear_circled, color: Colors.white, size: 24),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildUninstallTarget() {
+    return DragTarget<AppInfo>(
+      onAcceptWithDetails: (details) => widget.onUninstall?.call(details.data),
+      builder: (context, candidateData, rejectedData) {
+        final isHovered = candidateData.isNotEmpty;
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          decoration: BoxDecoration(
+            color: isHovered ? Colors.orange.withOpacity(0.6) : Colors.transparent,
+            borderRadius: BorderRadius.circular(32),
+          ),
+          child: const Center(
+            child: Icon(CupertinoIcons.delete, color: Colors.white, size: 24),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildRightGlassCircle() {
+    return Container(
+      width: 60,
+      height: 60,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(32.0),
+        border: Border.all(color: Colors.white.withOpacity(0.3), width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          )
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(31.0),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 25.0, sigmaY: 25.0),
+          child: Container(
+            color: Colors.white.withOpacity(0.2),
+            child: Material(
+              color: Colors.transparent,
+              child: widget.isDragging ? _buildUninstallTarget() : _buildWebButton(),
+            ),
+          ),
         ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(31.0), 
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 25.0, sigmaY: 25.0),
-            child: AnimatedSize(
-              duration: const Duration(milliseconds: 350),
-              curve: Curves.easeOutCubic,
-              alignment: Alignment.bottomCenter, // Grows upwards smoothly
-              clipBehavior: Clip.none, 
-              child: Container(
-                color: Colors.white.withOpacity(0.2), 
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 300),
-                  transitionBuilder: (Widget child, Animation<double> animation) {
-                    return FadeTransition(opacity: animation, child: child);
-                  },
-                  // Fixes the lag! Prevents old widget from forcing the container to stay open.
-                  layoutBuilder: (Widget? currentChild, List<Widget> previousChildren) {
-                    return Stack(
-                      alignment: Alignment.bottomCenter,
-                      children: <Widget>[
-                        ...previousChildren.map((Widget child) {
-                          return Positioned(
-                            bottom: 0,
-                            left: 0,
-                            right: 0,
-                            child: child,
-                          );
-                        }),
-                        if (currentChild != null) currentChild,
-                      ],
-                    );
-                  },
-                  child: (_showForecast && !widget.isDragging)
-                      ? TapRegion(
-                          key: const ValueKey('forecast'),
-                          onTapOutside: (event) {
-                            setState(() {
-                              _showForecast = false;
-                            });
-                          },
+      ),
+    );
+  }
+
+  Widget _buildLeftGlassArea(BuildContext context, double maxWidth) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(32.0),
+        border: Border.all(
+          color: Colors.white.withOpacity(0.3),
+          width: 1.2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          )
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(31.0),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 25.0, sigmaY: 25.0),
+          child: AnimatedSize(
+            duration: const Duration(milliseconds: 350),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.bottomLeft, // Animates smoothly from the bottom-left icon position!
+            clipBehavior: Clip.none,
+            child: Container(
+              color: Colors.white.withOpacity(0.2),
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                transitionBuilder: (Widget child, Animation<double> animation) {
+                  return FadeTransition(opacity: animation, child: child);
+                },
+                layoutBuilder: (Widget? currentChild, List<Widget> previousChildren) {
+                  return Stack(
+                    alignment: Alignment.bottomLeft,
+                    children: <Widget>[
+                      ...previousChildren.map((Widget child) {
+                        return Positioned(
+                          bottom: 0,
+                          left: 0,
+                          child: child, // Keeps old state anchored to the left corner
+                        );
+                      }),
+                      if (currentChild != null) currentChild,
+                    ],
+                  );
+                },
+                child: (_showForecast && !widget.isDragging)
+                    ? TapRegion(
+                        key: const ValueKey('forecast_widget'),
+                        onTapOutside: (event) {
+                          setState(() {
+                            _showForecast = false;
+                          });
+                        },
+                        child: SizedBox(
+                          width: maxWidth,
                           child: WeatherForecastWidget(
                             forecastData: _forecastData,
                             hourlyData: _hourlyData,
@@ -572,19 +503,54 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
                             uvIndex: _uvIndex,
                             sunrise: _sunrise,
                           ),
-                        )
-                      : SizedBox(
-                          key: const ValueKey('dock_pill'),
-                          height: 60.0, // Sleek, unified bar
-                          child: Material(
-                            color: Colors.transparent, // Required for InkWell ripples
-                            child: widget.isDragging ? _buildDraggingRow() : _buildNormalRow(),
-                          ),
                         ),
-                ),
+                      )
+                    : SizedBox(
+                        key: const ValueKey('left_circle'),
+                        width: 60.0,
+                        height: 60.0,
+                        child: Material(
+                          color: Colors.transparent,
+                          child: widget.isDragging ? _buildRemoveTarget() : _buildWeatherButton(),
+                        ),
+                      ),
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final double screenWidth = MediaQuery.of(context).size.width;
+    final double maxWidth = screenWidth - 80.0; // 40px padding on left and right
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(40.0, 0, 40.0, 40.0),
+      child: SizedBox(
+        width: double.infinity,
+        child: Stack(
+          alignment: Alignment.bottomLeft,
+          clipBehavior: Clip.none,
+          children: [
+            // Right Circle (Web / Uninstall Target)
+            Align(
+              alignment: Alignment.bottomRight,
+              child: AnimatedOpacity(
+                opacity: (_showForecast && !widget.isDragging) ? 0.0 : 1.0,
+                duration: const Duration(milliseconds: 300),
+                child: IgnorePointer(
+                  ignoring: (_showForecast && !widget.isDragging),
+                  child: _buildRightGlassCircle(),
+                ),
+              ),
+            ),
+
+            // Left Area (Weather Circle / Remove Target / Forecast Expanded Widget)
+            _buildLeftGlassArea(context, maxWidth),
+          ],
         ),
       ),
     );
