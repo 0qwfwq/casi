@@ -8,6 +8,7 @@ import 'settings_page.dart';
 import 'glass_header.dart';
 import 'app_drawer.dart';
 import 'screen_dock.dart';
+import 'docks/bar_manager.dart'; // <--- Added import for Bar Manager
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -275,29 +276,37 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                     opacity: 1.0,
                                   ),
                                 ),
+                                // Updated layout below to stack the BarManager and ScreenDock vertically
                                 Positioned(
                                   bottom: 0,
                                   left: 0,
                                   right: 0,
-                                  child: ScreenDock(
-                                    isDragging: _isDragging,
-                                    onRemove: (app) {
-                                      setState(() {
-                                        _homeApps.removeWhere((key, value) => value.packageName == app.packageName);
-                                      });
-                                      _saveLayout();
-                                    },
-                                    onUninstall: (app) {
-                                      setState(() {
-                                        _homeApps.removeWhere((key, value) => value.packageName == app.packageName);
-                                      });
-                                      _saveLayout();
-                                      try {
-                                        InstalledApps.uninstallApp(app.packageName);
-                                      } catch (e) {
-                                        debugPrint("Uninstall error: $e");
-                                      }
-                                    },
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const BarManager(),
+                                      const SizedBox(height: 16),
+                                      ScreenDock(
+                                        isDragging: _isDragging,
+                                        onRemove: (app) {
+                                          setState(() {
+                                            _homeApps.removeWhere((key, value) => value.packageName == app.packageName);
+                                          });
+                                          _saveLayout();
+                                        },
+                                        onUninstall: (app) {
+                                          setState(() {
+                                            _homeApps.removeWhere((key, value) => value.packageName == app.packageName);
+                                          });
+                                          _saveLayout();
+                                          try {
+                                            InstalledApps.uninstallApp(app.packageName);
+                                          } catch (e) {
+                                            debugPrint("Uninstall error: $e");
+                                          }
+                                        },
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ],
@@ -339,7 +348,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   Widget _buildHomeGrid(double topPadding) {
     return GridView.builder(
-      padding: EdgeInsets.fromLTRB(16, topPadding, 16, 130),
+      // Increased bottom padding to 220 to account for the new Now Bar
+      padding: EdgeInsets.fromLTRB(16, topPadding, 16, 220), 
       itemCount: _gridColumns * _gridRows,
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: _gridColumns,
