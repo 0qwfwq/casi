@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 class SongBar extends StatefulWidget {
   const SongBar({super.key});
@@ -8,28 +10,80 @@ class SongBar extends StatefulWidget {
   State<SongBar> createState() => _SongBarState();
 }
 
-class _SongBarState extends State<SongBar> {
-  // Mock State for UI testing
-  bool _isPlaying = false;
-  String _songTitle = "No song playing";
-  String _artist = "Unknown Artist";
+class _SongBarState extends State<SongBar> with WidgetsBindingObserver {
+  // Channel to communicate with Android native code
+  static const platform = MethodChannel('casi.launcher/media');
 
-  void _togglePlayPause() {
+  bool _isPlaying = false;
+  final String _songTitle = "System Media";
+  final String _artist = "Controls active music app";
+  Timer? _syncTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _checkIfPlaying();
+    
+    // Periodically check if music is active to sync the play/pause icon
+    // in case the user paused it from the notification shade or headphones.
+    _syncTimer = Timer.periodic(const Duration(seconds: 2), (_) => _checkIfPlaying());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _syncTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkIfPlaying();
+    }
+  }
+
+  Future<void> _checkIfPlaying() async {
+    try {
+      final bool isPlaying = await platform.invokeMethod('isPlaying');
+      if (mounted && _isPlaying != isPlaying) {
+        setState(() {
+          _isPlaying = isPlaying;
+        });
+      }
+    } on PlatformException catch (_) {
+      // Ignore exceptions on platforms where this isn't hooked up yet
+    }
+  }
+
+  Future<void> _togglePlayPause() async {
+    // Optimistically update the UI for instant feedback
     setState(() {
       _isPlaying = !_isPlaying;
-      if (_isPlaying) {
-        _songTitle = "Frutiger Aero Mix";
-        _artist = "System Audio";
-      }
     });
+    
+    try {
+      await platform.invokeMethod('playPause');
+    } on PlatformException catch (e) {
+      debugPrint("Failed to toggle media: '${e.message}'.");
+    }
   }
 
-  void _skipNext() {
-    // Future skip logic
+  Future<void> _skipNext() async {
+    try {
+      await platform.invokeMethod('next');
+    } on PlatformException catch (e) {
+      debugPrint("Failed to skip next: '${e.message}'.");
+    }
   }
 
-  void _skipPrevious() {
-    // Future previous logic
+  Future<void> _skipPrevious() async {
+    try {
+      await platform.invokeMethod('previous');
+    } on PlatformException catch (e) {
+      debugPrint("Failed to skip previous: '${e.message}'.");
+    }
   }
 
   @override

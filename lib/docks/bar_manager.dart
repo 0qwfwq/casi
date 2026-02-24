@@ -10,22 +10,6 @@ class BarManager extends StatefulWidget {
 }
 
 class _BarManagerState extends State<BarManager> {
-  // Controls the vertical swiping
-  final PageController _pageController = PageController();
-
-  // Add new features/bars to this list as you build them!
-  final List<Widget> _bars = [
-    const SongBar(),
-    // e.g., const CalendarBar(),
-    // e.g., const QuickToolsBar(),
-  ];
-
-  @override
-  void dispose() {
-    _pageController.dispose();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -48,15 +32,7 @@ class _BarManagerState extends State<BarManager> {
           filter: ImageFilter.blur(sigmaX: 25.0, sigmaY: 25.0),
           child: Container(
             color: Colors.white.withOpacity(0.2), // Unified glass overlay
-            child: PageView.builder(
-              controller: _pageController,
-              scrollDirection: Axis.vertical, // Enables the up/down swipe physics
-              physics: const BouncingScrollPhysics(), // Native feeling bounce effect
-              itemCount: _bars.length,
-              itemBuilder: (context, index) {
-                return _bars[index];
-              },
-            ),
+            child: const SongBar(),
           ),
         ),
       ),
