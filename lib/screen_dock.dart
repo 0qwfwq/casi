@@ -452,27 +452,39 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
         borderRadius: BorderRadius.circular(31.0),
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 25.0, sigmaY: 25.0),
-          child: AnimatedSize(
-            duration: const Duration(milliseconds: 350),
-            curve: Curves.easeOutCubic,
-            alignment: Alignment.bottomLeft, // Animates smoothly from the bottom-left icon position!
-            clipBehavior: Clip.none,
-            child: Container(
-              color: Colors.white.withOpacity(0.2),
+          child: Container(
+            color: Colors.white.withOpacity(0.2), // Unified color scheme overlay
+            child: AnimatedSize(
+              // Premium smooth deceleration curve over 450ms
+              duration: const Duration(milliseconds: 450),
+              curve: Curves.easeOutQuart,
+              alignment: Alignment.bottomLeft,
+              clipBehavior: Clip.antiAlias, // Ensures content is beautifully masked while resizing
               child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 300),
+                duration: const Duration(milliseconds: 350),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
                 transitionBuilder: (Widget child, Animation<double> animation) {
-                  return FadeTransition(opacity: animation, child: child);
+                  return FadeTransition(
+                    opacity: animation,
+                    child: ScaleTransition(
+                      // Adds a gentle bloom/scale to match the morphing size
+                      scale: Tween<double>(begin: 0.95, end: 1.0).animate(animation),
+                      alignment: Alignment.bottomLeft,
+                      child: child,
+                    ),
+                  );
                 },
                 layoutBuilder: (Widget? currentChild, List<Widget> previousChildren) {
                   return Stack(
                     alignment: Alignment.bottomLeft,
+                    clipBehavior: Clip.none, // Prevents fading widget from being instantly cropped
                     children: <Widget>[
                       ...previousChildren.map((Widget child) {
                         return Positioned(
                           bottom: 0,
                           left: 0,
-                          child: child, // Keeps old state anchored to the left corner
+                          child: child,
                         );
                       }),
                       if (currentChild != null) currentChild,
@@ -490,6 +502,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
                         child: SizedBox(
                           width: maxWidth,
                           child: WeatherForecastWidget(
+                            initialViewMode: ForecastViewMode.details, // Opens Details by default!
                             forecastData: _forecastData,
                             hourlyData: _hourlyData,
                             currentTemp: "${_temperature ?? '--'}°C",
@@ -539,8 +552,9 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
             Align(
               alignment: Alignment.bottomRight,
               child: AnimatedOpacity(
+                // Matching the fade out perfectly with the new morph duration
                 opacity: (_showForecast && !widget.isDragging) ? 0.0 : 1.0,
-                duration: const Duration(milliseconds: 300),
+                duration: const Duration(milliseconds: 350), 
                 child: IgnorePointer(
                   ignoring: (_showForecast && !widget.isDragging),
                   child: _buildRightGlassCircle(),

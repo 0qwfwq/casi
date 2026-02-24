@@ -52,6 +52,9 @@ class WeatherForecastWidget extends StatefulWidget {
   final String uvIndex;
   final String sunrise;
 
+  // Configuration
+  final ForecastViewMode initialViewMode;
+
   const WeatherForecastWidget({
     super.key, 
     this.forecastData = const [],
@@ -66,6 +69,7 @@ class WeatherForecastWidget extends StatefulWidget {
     this.humidity = "--%",
     this.uvIndex = "--",
     this.sunrise = "--:-- AM",
+    this.initialViewMode = ForecastViewMode.daily, // Defaults to daily, overridden by ScreenDock
   });
 
   @override
@@ -73,12 +77,17 @@ class WeatherForecastWidget extends StatefulWidget {
 }
 
 class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
-  ForecastViewMode _viewMode = ForecastViewMode.daily; 
+  late ForecastViewMode _viewMode; 
+
+  @override
+  void initState() {
+    super.initState();
+    // Set the initial mode based on what the parent passes in
+    _viewMode = widget.initialViewMode;
+  }
 
   @override
   Widget build(BuildContext context) {
-    // We removed the glass and sizing containers from here! 
-    // The ScreenDock now provides a single seamless glass container that wraps this.
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
       child: SingleChildScrollView(
@@ -88,7 +97,7 @@ class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Dynamic Header
-            _viewMode == ForecastViewMode.daily ? _buildDailyHeader() : _buildHourlyHeader(),
+            _viewMode == ForecastViewMode.daily ? _buildDailyHeader() : _buildCurrentWeatherHeader(),
             
             const SizedBox(height: 24),
             
@@ -110,6 +119,7 @@ class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
                   layoutBuilder: (Widget? currentChild, List<Widget> previousChildren) {
                     return Stack(
                       alignment: Alignment.topCenter,
+                      clipBehavior: Clip.none,
                       children: <Widget>[
                         ...previousChildren.map((Widget child) {
                           return Positioned(
@@ -140,17 +150,60 @@ class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
     );
   }
 
-  Widget _buildHourlyHeader() {
+  Widget _buildCurrentWeatherHeader() {
+    final bool isHourly = _viewMode == ForecastViewMode.hourly;
+
     return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Icon(widget.currentIcon, color: widget.currentIconColor, size: 24),
-        const SizedBox(width: 10),
-        Text(
-          "${widget.currentDescription}, ${widget.currentTemp}",
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
+        // Left side: Icon and description
+        Row(
+          children: [
+            Icon(widget.currentIcon, color: widget.currentIconColor, size: 24),
+            const SizedBox(width: 10),
+            Text(
+              "${widget.currentDescription}, ${widget.currentTemp}",
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+            ),
+          ],
+        ),
+        
+        // Right side: Hourly/Details Pill toggle (Across from the temp, above precipitation)
+        GestureDetector(
+          onTap: () => setState(() => _viewMode = isHourly ? ForecastViewMode.details : ForecastViewMode.hourly),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: Colors.white.withOpacity(0.4), 
+                width: 1,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  isHourly ? CupertinoIcons.info_circle_fill : CupertinoIcons.clock_fill, 
+                  size: 12, 
+                  color: Colors.white
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  isHourly ? "Details" : "Hourly",
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ],
@@ -319,144 +372,69 @@ class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
   }
 
   Widget _buildActionButtons() {
-    String leftText;
-    ForecastViewMode leftMode;
-    String rightTitle;
-    String rightSubtitle;
-    ForecastViewMode rightMode;
-
-    if (_viewMode == ForecastViewMode.daily) {
-      leftText = "Show Hourly\nWeather";
-      leftMode = ForecastViewMode.hourly;
-      rightTitle = "More Details";
-      rightSubtitle = "View Full Breakdown";
-      rightMode = ForecastViewMode.details;
-    } else if (_viewMode == ForecastViewMode.hourly) {
-      leftText = "Show Daily\nWeather";
-      leftMode = ForecastViewMode.daily;
-      rightTitle = "More Details";
-      rightSubtitle = "View Full Breakdown";
-      rightMode = ForecastViewMode.details;
-    } else {
-      leftText = "Show Daily\nWeather";
-      leftMode = ForecastViewMode.daily;
-      rightTitle = "View Hourly";
-      rightSubtitle = "";
-      rightMode = ForecastViewMode.hourly;
-    }
+    // Both 'details' and 'hourly' fall under the "Today's Weather" category conceptually
+    final bool isToday = _viewMode == ForecastViewMode.details || _viewMode == ForecastViewMode.hourly;
+    final bool isDaily = _viewMode == ForecastViewMode.daily;
 
     return Row(
       children: [
-        // Primary Button (Left) - Glass filled
+        // Primary Button (Left) - Today's Weather
         Expanded(
           child: GestureDetector(
-            onTap: () => setState(() => _viewMode = leftMode),
+            onTap: () => setState(() => _viewMode = ForecastViewMode.details),
             child: Container(
               height: 50,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2), // Matches glass theme nicely
-                borderRadius: BorderRadius.circular(25),
-              ),
-              alignment: Alignment.center,
-              child: Text(
-                leftText,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                  height: 1.2,
-                ),
-              ),
-            ),
-          ),
-        ),
-        
-        const SizedBox(width: 8),
-        
-        // Secondary Transparent Outline Button (Right)
-        Expanded(
-          child: GestureDetector(
-            onTap: () => setState(() => _viewMode = rightMode),
-            child: Container(
-              height: 50,
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              decoration: BoxDecoration(
-                color: Colors.transparent,
+                color: isToday ? Colors.white.withOpacity(0.2) : Colors.transparent,
                 borderRadius: BorderRadius.circular(25),
                 border: Border.all(
                   color: Colors.white.withOpacity(0.4), 
                   width: 1.2,
                 ),
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  if (rightSubtitle.isNotEmpty) _buildSparkleIcon(),
-                  if (rightSubtitle.isNotEmpty) const SizedBox(width: 8),
-                  
-                  if (rightSubtitle.isNotEmpty)
-                    Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          rightTitle,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
-                          ),
-                        ),
-                        Text(
-                          rightSubtitle,
-                          style: TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.white.withOpacity(0.7),
-                          ),
-                        ),
-                      ],
-                    )
-                  else
-                    Text(
-                      rightTitle,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                    ),
-                  
-                  if (rightSubtitle.isEmpty) const SizedBox(width: 8),
-                  if (rightSubtitle.isEmpty) _buildSparkleIcon(),
-                ],
+              alignment: Alignment.center,
+              child: const Text(
+                "Today's Weather",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+        ),
+        
+        const SizedBox(width: 12),
+        
+        // Secondary Button (Right) - 5-Day Forecast
+        Expanded(
+          child: GestureDetector(
+            onTap: () => setState(() => _viewMode = ForecastViewMode.daily),
+            child: Container(
+              height: 50,
+              decoration: BoxDecoration(
+                color: isDaily ? Colors.white.withOpacity(0.2) : Colors.transparent,
+                borderRadius: BorderRadius.circular(25),
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.4), 
+                  width: 1.2,
+                ),
+              ),
+              alignment: Alignment.center,
+              child: const Text(
+                "5-Day Forecast",
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
               ),
             ),
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildSparkleIcon() {
-    return SizedBox(
-      width: 24,
-      height: 24,
-      child: Stack(
-        children: [
-          Positioned(
-            top: 1,
-            left: 0,
-            child: Icon(CupertinoIcons.sun_max_fill, color: Colors.amber.shade300, size: 16),
-          ),
-          Positioned(
-            bottom: 0,
-            right: 0,
-            child: Icon(CupertinoIcons.moon_stars_fill, color: Colors.indigo.shade200, size: 14),
-          ),
-        ],
-      ),
     );
   }
 }
