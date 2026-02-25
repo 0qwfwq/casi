@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:installed_apps/app_info.dart';
+import 'package:installed_apps/installed_apps.dart';
 
 class AppDrawer extends StatelessWidget {
   final List<AppInfo> apps;
@@ -208,6 +209,40 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                       child: Stack(
                         alignment: Alignment.center,
                         children: [
+                          // NEW: Play Store button on the left
+                          Positioned(
+                            left: 16,
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(30),
+                              child: BackdropFilter(
+                                filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(30),
+                                    border: Border.all(
+                                      color: Colors.white.withValues(alpha: 0.5),
+                                      width: 1.2,
+                                    ),
+                                  ),
+                                  child: Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      borderRadius: BorderRadius.circular(30),
+                                      onTap: () {
+                                        InstalledApps.startApp('com.android.vending');
+                                      },
+                                      child: const Padding(
+                                        padding: EdgeInsets.all(12.0),
+                                        child: Icon(Icons.shop, color: Colors.white70),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          // Existing: Center Search Bar
                           SizedBox(
                             width: screenWidth * 0.6,
                             child: ClipRRect(
@@ -240,6 +275,7 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                               ),
                             ),
                           ),
+                          // MODIFIED: Settings button on the right (added long press)
                           Positioned(
                             right: 16,
                             child: ClipRRect(
@@ -255,9 +291,19 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                                       width: 1.2,
                                     ),
                                   ),
-                                  child: IconButton(
-                                    icon: const Icon(Icons.settings, color: Colors.white70),
-                                    onPressed: widget.onOpenSettings,
+                                  child: Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      borderRadius: BorderRadius.circular(30),
+                                      onTap: widget.onOpenSettings,
+                                      onLongPress: () {
+                                        InstalledApps.startApp('com.android.settings');
+                                      },
+                                      child: const Padding(
+                                        padding: EdgeInsets.all(12.0),
+                                        child: Icon(Icons.settings, color: Colors.white70),
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
