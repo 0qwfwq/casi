@@ -82,6 +82,15 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
     _filteredApps = widget.apps;
   }
 
+  // Ensures the drawer state refreshes automatically when apps are installed/uninstalled or icons finish loading!
+  @override
+  void didUpdateWidget(_AppDrawerSheet oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.apps != oldWidget.apps) {
+      _updateSearch(_searchQuery); // Seamlessly re-applies current search to the brand new list
+    }
+  }
+
   void _updateSearch(String query) {
     setState(() {
       _searchQuery = query;
@@ -147,6 +156,8 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                             delegate: SliverChildBuilderDelegate(
                               (context, index) {
                                 final app = _filteredApps[index];
+                                final hasIcon = app.icon != null && app.icon!.isNotEmpty;
+                                
                                 return InkWell(
                                   onTap: () => widget.onAppTap(app),
                                   onLongPress: () => widget.onAppLongPress(app),
@@ -155,14 +166,16 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                                     children: [
                                       Container(
                                         padding: const EdgeInsets.all(8),
-                                        child: Image.memory(
-                                          app.icon ?? Uint8List(0),
-                                          width: 48,
-                                          height: 48,
-                                          gaplessPlayback: true,
-                                          errorBuilder: (context, error, stackTrace) =>
-                                              const Icon(Icons.android, color: Colors.white, size: 48),
-                                        ),
+                                        child: hasIcon
+                                          ? Image.memory(
+                                              app.icon!,
+                                              width: 48,
+                                              height: 48,
+                                              gaplessPlayback: true,
+                                              errorBuilder: (context, error, stackTrace) =>
+                                                  const Icon(Icons.android, color: Colors.white, size: 48),
+                                            )
+                                          : const Icon(Icons.android, color: Colors.white, size: 48),
                                       ),
                                       const SizedBox(height: 8),
                                       Text(

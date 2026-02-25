@@ -2,12 +2,15 @@ import 'dart:async';
 import 'dart:typed_data'; 
 import 'dart:ui';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart'; // Added for listEquals to prevent unnecessary art refreshes
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:installed_apps/installed_apps.dart'; // Added to open the active music app
+import 'package:installed_apps/installed_apps.dart';
 
 class SongPlayer extends StatefulWidget {
-  const SongPlayer({super.key});
+  final ValueChanged<bool>? onVisibilityChanged;
+
+  const SongPlayer({super.key, this.onVisibilityChanged});
 
   @override
   State<SongPlayer> createState() => _SongPlayerState();
@@ -18,6 +21,7 @@ class _SongPlayerState extends State<SongPlayer> with WidgetsBindingObserver {
   static const platform = MethodChannel('casi.launcher/media');
 
   bool _isPlaying = false;
+  bool _wasVisible = false; // Tracks visibility to prevent spamming the callback
   
   // Variables to hold dynamic media data
   String _songTitle = "System Media";
@@ -69,7 +73,12 @@ class _SongPlayerState extends State<SongPlayer> with WidgetsBindingObserver {
           if (metadata != null) {
             _songTitle = metadata['title'] as String? ?? "Unknown Title";
             _artist = metadata['artist'] as String? ?? "Unknown Artist";
-            _albumArt = metadata['albumArt'] as Uint8List?;
+            
+            // Fix: Check if byte array changed before updating to prevent heavy re-decoding & flickering
+            final Uint8List? newAlbumArt = metadata['albumArt'] as Uint8List?;
+            if (!listEquals(_albumArt, newAlbumArt)) {
+              _albumArt = newAlbumArt;
+            }
             
             // Sync new progress and package data
             _position = metadata['position'] as int? ?? 0;
@@ -82,6 +91,14 @@ class _SongPlayerState extends State<SongPlayer> with WidgetsBindingObserver {
              _position = 0;
              _duration = 0;
              _packageName = null;
+          }
+
+          // Determine if player should be visible (playing OR paused with an active session)
+          bool isVisible = _isPlaying || (_packageName != null && _packageName!.isNotEmpty && _songTitle != "System Media");
+          
+          if (_wasVisible != isVisible) {
+            _wasVisible = isVisible;
+            widget.onVisibilityChanged?.call(isVisible);
           }
         });
       }
@@ -112,7 +129,6 @@ class _SongPlayerState extends State<SongPlayer> with WidgetsBindingObserver {
     } on PlatformException catch (_) {}
   }
 
-  // --- New Functionality: Tap to open the active music app ---
   void _openActiveMusicApp() {
     if (_packageName != null && _packageName!.isNotEmpty) {
       InstalledApps.startApp(_packageName!);
@@ -165,16 +181,18 @@ class _SongPlayerState extends State<SongPlayer> with WidgetsBindingObserver {
                                 color: Colors.white.withOpacity(0.15),
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(color: Colors.white.withOpacity(0.2)),
-                                image: _albumArt != null 
-                                    ? DecorationImage(
-                                        image: MemoryImage(_albumArt!),
-                                        fit: BoxFit.cover,
-                                      )
-                                    : null,
                               ),
                               child: _albumArt == null 
                                   ? const Icon(CupertinoIcons.music_note, color: Colors.white, size: 20)
-                                  : null,
+                                  : ClipRRect(
+                                      borderRadius: BorderRadius.circular(11),
+                                      // Fix: gaplessPlayback prevents the image from flashing when it updates
+                                      child: Image.memory(
+                                        _albumArt!,
+                                        fit: BoxFit.cover,
+                                        gaplessPlayback: true,
+                                      ),
+                                    ),
                             ),
                             const SizedBox(width: 14),
                             
@@ -251,7 +269,7 @@ class _SongPlayerState extends State<SongPlayer> with WidgetsBindingObserver {
                 ),
               ),
               
-              // --- New Functionality: Progress Bar ---
+              // --- Progress Bar ---
               Positioned(
                 bottom: 0,
                 left: 16,

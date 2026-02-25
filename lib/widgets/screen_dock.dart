@@ -1,3 +1,4 @@
+import 'dart:async'; // Added to track top of the hour
 import 'dart:convert';
 import 'dart:ui';
 import 'package:flutter/cupertino.dart';
@@ -5,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:installed_apps/app_info.dart';
+import 'package:installed_apps/installed_apps.dart'; // Added to launch the full assistant app
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:casi/widgets/weather_forecast_widget.dart';
@@ -49,17 +51,22 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
 
   bool _isLoadingWeather = false;
   bool _showForecast = false;
+  
+  // --- New: Timer to ensure updates happen exactly on the hour ---
+  Timer? _hourlySyncTimer;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _initWeather();
+    _scheduleTopOfHourWeatherSync();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _hourlySyncTimer?.cancel();
     super.dispose();
   }
 
@@ -97,14 +104,37 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
     _checkAndFetchWeather();
   }
 
+  void _scheduleTopOfHourWeatherSync() {
+    final now = DateTime.now();
+    
+    // Schedule for the exact top of the next hour (e.g., 2:00:00) 
+    // + 2 seconds to make sure the weather API has fully updated its hour blocks
+    DateTime nextHour = DateTime(now.year, now.month, now.day, now.hour + 1, 0, 2);
+    Duration durationUntilNextHour = nextHour.difference(now);
+    
+    _hourlySyncTimer?.cancel();
+    _hourlySyncTimer = Timer(durationUntilNextHour, () {
+      _fetchWeather();
+      _scheduleTopOfHourWeatherSync(); // Schedule the next hour!
+    });
+  }
+
   Future<void> _checkAndFetchWeather() async {
     final prefs = await SharedPreferences.getInstance();
     final lastFetchMs = prefs.getInt('last_fetch_time_ms') ?? 0;
     final lastFetch = DateTime.fromMillisecondsSinceEpoch(lastFetchMs);
+    final now = DateTime.now();
     
-    if (DateTime.now().difference(lastFetch).inMinutes > 30 || _temperature == null) {
+    // Check if we crossed into a new hour while the app was asleep (e.g., slept at 1:55, woke at 2:05)
+    bool crossedHour = now.hour != lastFetch.hour || now.day != lastFetch.day || now.month != lastFetch.month || now.year != lastFetch.year;
+    
+    // Fetch if it's been 30 mins, or we have no data, OR we hit a new hour!
+    if (now.difference(lastFetch).inMinutes > 30 || _temperature == null || crossedHour) {
       _fetchWeather();
     }
+    
+    // Make sure our timer is still perfectly aligned in case device sleep threw it off
+    _scheduleTopOfHourWeatherSync();
   }
 
   void _parseWeatherData(Map<String, dynamic> data) {
@@ -338,6 +368,29 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
         mode: LaunchMode.externalApplication);
   }
 
+  // --- New: Launch the Full App version of the Assistant ---
+  Future<void> _launchAssistantApp() async {
+    // List of common assistant apps, ordered by priority
+    final List<String> assistantPackages = [
+      'com.google.android.apps.bard', // Gemini Dedicated App
+      'com.google.android.googlequicksearchbox', // Default Google/Assistant App
+      'com.amazon.dee.app', // Amazon Alexa
+      'com.samsung.android.bixby.agent', // Samsung Bixby
+    ];
+
+    try {
+      for (String pkg in assistantPackages) {
+        bool? isInstalled = await InstalledApps.isAppInstalled(pkg);
+        if (isInstalled == true) {
+          InstalledApps.startApp(pkg); // Launches in Full App Mode
+          return;
+        }
+      }
+    } catch (e) {
+      debugPrint("Error launching assistant app: $e");
+    }
+  }
+
   // --- UI Build Helpers ---
 
   Widget _buildWeatherButton() {
@@ -356,6 +409,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
   Widget _buildWebButton() {
     return InkWell(
       onTap: _launchBrowser,
+      onLongPress: _launchAssistantApp, // The new Long Press Action!
       borderRadius: BorderRadius.circular(30),
       child: const Center(
         child: Icon(CupertinoIcons.globe, color: Colors.white, size: 24),

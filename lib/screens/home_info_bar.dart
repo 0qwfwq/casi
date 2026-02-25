@@ -8,7 +8,7 @@ import 'settings_page.dart';
 import '../widgets/glass_header.dart';
 import '../widgets/app_drawer.dart';
 import '../widgets/screen_dock.dart';
-import '../widgets/song_player.dart'; // <--- Brought in the standalone SongPlayer!
+import '../widgets/song_player.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -19,7 +19,6 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// Static cache to survive Flutter Activity recreation when OS memory is low.
-  /// This ensures returning home is instant, like a native launcher.
   static List<AppInfo>? _cachedFullApps;
 
   /// Stores the list of installed applications fetched from the device.
@@ -31,6 +30,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   bool _isLoading = true;
   /// Tracks if the user is currently dragging an icon.
   bool _isDragging = false;
+  /// Tracks if the music player should take up space.
+  bool _isPlayerVisible = false;
 
   // --- Settings ---
   String _bgType = 'color';
@@ -52,13 +53,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     
-    // If the Dart engine is still alive, pull instantly from cache
     if (_cachedFullApps != null) {
       _apps = _cachedFullApps!;
       _isLoading = false;
       _loadSavedLayout(_apps).then((_) {
         if (mounted) setState(() {});
-        // Silently check for newly installed/uninstalled apps in the background
         _checkAppChangesOnResume();
       });
     } else {
@@ -77,14 +76,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      // Instead of doing a heavy fetch, just check if packages changed
       _checkAppChangesOnResume();
     }
   }
 
-  /// Asynchronously retrieves the list of installed apps on cold start.
   Future<void> _initApps() async {
-    // 1. Fast load (no icons) to show UI immediately on cold start
     final fastApps = await InstalledApps.getInstalledApps(excludeSystemApps: false, withIcon: false);
     fastApps.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     await _loadSavedLayout(fastApps);
@@ -95,12 +91,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       });
     }
 
-    // 2. Full load (with icons) to update UI with graphics
     final fullApps = await InstalledApps.getInstalledApps(excludeSystemApps: false, withIcon: true);
     fullApps.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     await _loadSavedLayout(fullApps);
 
-    // Cache the heavy data globally for the lifecycle of the process
     _cachedFullApps = fullApps;
 
     if (mounted) {
@@ -110,23 +104,20 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
-  /// Performs a lightning-fast check on resume to see if the user installed/uninstalled apps.
   Future<void> _checkAppChangesOnResume() async {
-    if (_cachedFullApps == null) return; // Don't interrupt a cold start load
+    // If the app is still loading the initial list, wait for it to finish naturally.
+    if (_isLoading) return; 
 
     try {
-      // Fast check to see what packages are currently installed
       final currentFastApps = await InstalledApps.getInstalledApps(excludeSystemApps: false, withIcon: false);
       
       final currentPackages = currentFastApps.map((e) => e.packageName).toSet();
       final loadedPackages = _apps.map((e) => e.packageName).toSet();
 
-      // If the packages are exactly the same, do nothing! This keeps the launcher buttery smooth.
       if (currentPackages.length == loadedPackages.length && currentPackages.containsAll(loadedPackages)) {
         return;
       }
 
-      // If there's a difference (app installed or uninstalled), load the full data again silently.
       final fullApps = await InstalledApps.getInstalledApps(excludeSystemApps: false, withIcon: true);
       fullApps.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
       
@@ -143,7 +134,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
-  /// Loads the home screen layout from SharedPreferences.
   Future<void> _loadSavedLayout(List<AppInfo> availableApps) async {
     final prefs = await SharedPreferences.getInstance();
     final List<String> savedLayout = prefs.getStringList('home_layout') ?? [];
@@ -160,9 +150,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         try {
           final app = availableApps.firstWhere((a) => a.packageName == packageName);
           tempLayout[index] = app;
-        } catch (_) {
-          // App not found (uninstalled), skip it.
-        }
+        } catch (_) {}
       }
     }
 
@@ -189,13 +177,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     await prefs.setStringList('home_layout', layout);
   }
 
-  /// Adds an app to the first available slot on the home screen.
   void _addToHomeScreen(AppInfo app) {
     if (_homeApps.values.any((element) => element.packageName == app.packageName)) {
       return;
     }
 
-    // Find the first empty slot
     for (int i = 0; i < _gridColumns * _gridRows; i++) {
       if (!_homeApps.containsKey(i)) {
         setState(() {
@@ -220,7 +206,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final double screenHeight = MediaQuery.of(context).size.height;
-    // Calculate header height (28% for clock + ~60px for status row + padding)
     final double headerHeight = (screenHeight * 0.28) + 80;
 
     return PopScope(
@@ -242,7 +227,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             },
             onVerticalDragEnd: (details) {
               final double screenHeight = MediaQuery.of(context).size.height;
-              // Swipe up from bottom to open drawer
               if (_dragStartY < screenHeight - 60 && details.primaryVelocity! < -500) {
                 _drawerController.animateTo(
                   0.9,
@@ -276,7 +260,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                     opacity: 1.0,
                                   ),
                                 ),
-                                // SongPlayer and ScreenDock stacked vertically above the bottom edge
+                                // Bottom Dock & Media Player 
                                 Positioned(
                                   bottom: 0,
                                   left: 0,
@@ -284,8 +268,23 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                   child: Column(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      const SongPlayer(),
-                                      const SizedBox(height: 16),
+                                      // Offstage hides it entirely without destroying the timer checking for music
+                                      Offstage(
+                                        offstage: !_isPlayerVisible,
+                                        child: Padding(
+                                          padding: const EdgeInsets.only(bottom: 16),
+                                          child: SongPlayer(
+                                            onVisibilityChanged: (visible) {
+                                              // Ensure we update state cleanly outside the build phase
+                                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                                if (mounted && _isPlayerVisible != visible) {
+                                                  setState(() => _isPlayerVisible = visible);
+                                                }
+                                              });
+                                            },
+                                          ),
+                                        ),
+                                      ),
                                       ScreenDock(
                                         isDragging: _isDragging,
                                         onRemove: (app) {
@@ -295,10 +294,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                           _saveLayout();
                                         },
                                         onUninstall: (app) {
-                                          setState(() {
-                                            _homeApps.removeWhere((key, value) => value.packageName == app.packageName);
-                                          });
-                                          _saveLayout();
+                                          // Note: We don't manually remove it from the home screen here anymore!
+                                          // That prevents the icon disappearing if the user cancels the OS uninstall prompt.
+                                          // It will be cleanly removed via `_checkAppChangesOnResume` when they return.
                                           try {
                                             InstalledApps.uninstallApp(app.packageName);
                                           } catch (e) {
@@ -347,9 +345,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   Widget _buildHomeGrid(double topPadding) {
+    // Dynamically shrink the safe area bottom padding when player is invisible
+    final double bottomPadding = _isPlayerVisible ? 220.0 : 130.0;
+    
     return GridView.builder(
-      // Padding adjusted to 220 to accommodate the independent SongPlayer + ScreenDock layout
-      padding: EdgeInsets.fromLTRB(16, topPadding, 16, 220), 
+      padding: EdgeInsets.fromLTRB(16, topPadding, 16, bottomPadding), 
       itemCount: _gridColumns * _gridRows,
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: _gridColumns,
@@ -371,7 +371,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   void _onAppDropped(int newIndex, AppInfo data) {
     setState(() {
-      // Remove from old position if it exists
       final int? oldIndex = _homeApps.keys.cast<int?>().firstWhere(
             (k) => _homeApps[k]?.packageName == data.packageName,
             orElse: () => null,
@@ -379,7 +378,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       if (oldIndex != null) {
         _homeApps.remove(oldIndex);
       }
-      // Place in new position
       _homeApps[newIndex] = data;
     });
     _saveLayout();
@@ -416,19 +414,24 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   Widget _buildAppIconVisual(AppInfo app) {
+    final hasIcon = app.icon != null && app.icon!.isNotEmpty;
+    
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
           padding: const EdgeInsets.all(8),
-          child: Image.memory(
-            app.icon ?? Uint8List(0),
-            width: 48,
-            height: 48,
-            gaplessPlayback: true,
-            errorBuilder: (context, error, stackTrace) => 
-              const Icon(Icons.android, color: Colors.white, size: 48),
-          ),
+          child: hasIcon 
+            ? Image.memory(
+                app.icon!,
+                width: 48,
+                height: 48,
+                gaplessPlayback: true,
+                errorBuilder: (context, error, stackTrace) => 
+                  const Icon(Icons.android, color: Colors.white, size: 48),
+              )
+            // Structurally separate widget branch when there are no byte array icons to prevent Image.memory crash loops.
+            : const Icon(Icons.android, color: Colors.white, size: 48),
         ),
         if (_showAppNames) ...[
           const SizedBox(height: 8),
