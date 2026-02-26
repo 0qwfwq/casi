@@ -40,6 +40,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   List<String> _activeAlarms = []; 
   bool _isViewingAlarms = false; 
   bool _isAlarmRinging = false; 
+  int? _selectedAlarmIndex; // --- NEW: Tracks which alarm is selected in the list
   Timer? _alarmTimer;
   String? _lastRungAlarmTime; // Prevents infinite ringing within the same minute
 
@@ -51,6 +52,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   int _scrolledHour = 1; // Default to match the visual wheel state
   int _scrolledMinute = 0;
   String _scrolledAmPm = 'AM';
+  String _scrolledDay = 'Mon'; // --- NEW: Track selected day ---
 
   // --- Settings ---
   String _bgType = 'color';
@@ -84,6 +86,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
     
     _loadSettings();
+
+    // Set the initial default day to today
+    final days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    _scrolledDay = days[DateTime.now().weekday - 1];
 
     // --- NEW: Start background alarm checker ---
     _alarmTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -139,14 +145,18 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (_isAlarmRinging) return; // Don't trigger if already ringing
     
     final now = DateTime.now();
-    // Format current time to match our simple "hh:mm AM" mock format
+    // Format current time to match our new format: "Mon 08:00 AM"
     int hour = now.hour;
     int minute = now.minute;
     String ampm = hour >= 12 ? "PM" : "AM";
     hour = hour % 12;
     if (hour == 0) hour = 12;
     String minuteStr = minute.toString().padLeft(2, '0');
-    String currentTimeStr = "$hour:$minuteStr $ampm";
+    
+    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    String currentDay = days[now.weekday - 1];
+    
+    String currentTimeStr = "$currentDay $hour:$minuteStr $ampm";
 
     // Check if the time matches AND we haven't already rung for this exact minute
     if (_activeAlarms.contains(currentTimeStr) && _lastRungAlarmTime != currentTimeStr) {
@@ -155,6 +165,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         _showPill = true;
         _isAlarmMode = false; // Close creation mode if it was open
         _isViewingAlarms = false;
+        _selectedAlarmIndex = null;
         _lastRungAlarmTime = currentTimeStr; // Mark as rung
       });
       _startAlarmSound(); // Trigger the repeating sound
@@ -172,7 +183,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     hour = hour % 12;
     if (hour == 0) hour = 12;
     String minuteStr = minute.toString().padLeft(2, '0');
-    String snoozeTime = "$hour:$minuteStr $ampm";
+    
+    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    String currentDay = days[now.weekday - 1];
+
+    String snoozeTime = "$currentDay $hour:$minuteStr $ampm";
 
     setState(() {
       _isAlarmRinging = false;
@@ -322,6 +337,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       _showPill = false;
       _isAlarmMode = false;
       _isViewingAlarms = false;
+      _selectedAlarmIndex = null; // Clear selection on dismiss
     });
   }
 
@@ -335,6 +351,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           onTap: () {
             setState(() {
               _isViewingAlarms = !_isViewingAlarms;
+              _selectedAlarmIndex = null; // Clear selection when toggling modes
             });
           },
           child: Container(
@@ -354,42 +371,47 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             ),
           ),
         ),
-        const SizedBox(width: 12),
-        // Confirm/Save Alarm Button
-        GestureDetector(
-          onTap: () {
-            setState(() {
-              // Now dynamically reads the real values from the Hub state!
-              String minStr = _scrolledMinute.toString().padLeft(2, '0');
-              String newAlarm = "$_scrolledHour:$minStr $_scrolledAmPm";
-              
-              if (!_activeAlarms.contains(newAlarm)) {
-                _activeAlarms.add(newAlarm);
-              }
-              _isAlarmMode = false;
-              _isViewingAlarms = false;
-              _showPill = false;
-            });
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Alarm Set!'), 
-                duration: Duration(seconds: 2),
-                behavior: SnackBarBehavior.floating,
+        
+        // --- FIXED: Hide the checkmark entirely when viewing alarms! ---
+        if (!_isViewingAlarms) ...[
+          const SizedBox(width: 12),
+          // Confirm/Save Alarm Button
+          GestureDetector(
+            onTap: () {
+              setState(() {
+                // Now dynamically reads the real values from the Hub state!
+                String minStr = _scrolledMinute.toString().padLeft(2, '0');
+                String newAlarm = "$_scrolledDay $_scrolledHour:$minStr $_scrolledAmPm";
+                
+                if (!_activeAlarms.contains(newAlarm)) {
+                  _activeAlarms.add(newAlarm);
+                }
+                _isAlarmMode = false;
+                _isViewingAlarms = false;
+                _selectedAlarmIndex = null;
+                _showPill = false;
+              });
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Alarm Set!'), 
+                  duration: Duration(seconds: 2),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            },
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.greenAccent.shade400,
+                shape: BoxShape.circle,
+                boxShadow: const [
+                  BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 4))
+                ],
               ),
-            );
-          },
-          child: Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Colors.greenAccent.shade400,
-              shape: BoxShape.circle,
-              boxShadow: const [
-                BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 4))
-              ],
+              child: const Icon(Icons.check, color: Colors.black, size: 24),
             ),
-            child: const Icon(Icons.check, color: Colors.black, size: 24),
           ),
-        ),
+        ],
       ],
     );
   }
@@ -435,10 +457,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     _showPill = true;
                     _isAlarmMode = false; // Fresh start when opening
                     _isViewingAlarms = false;
+                    _selectedAlarmIndex = null;
                     // Reset scroll tracker to match the visual default state of the wheels!
                     _scrolledHour = 1; 
                     _scrolledMinute = 0;
                     _scrolledAmPm = 'AM';
+                    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+                    _scrolledDay = days[DateTime.now().weekday - 1]; // Default to today
                   });
                 }
                 return true; 
@@ -479,6 +504,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                           setState(() {
                                             _isAlarmMode = false;
                                             _isViewingAlarms = false;
+                                            _selectedAlarmIndex = null;
                                             // Don't kill ringing alarm if tapped outside, user must hit cancel/snooze
                                           });
                                         } else if (_showPill) {
@@ -489,7 +515,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
                                           Offstage(
-                                            offstage: !_isPlayerVisible,
+                                            offstage: !_isPlayerVisible || _isAlarmRinging, // Hide player when alarm is ringing
                                             child: Padding(
                                               padding: const EdgeInsets.only(bottom: 16),
                                               child: SongPlayer(
@@ -519,26 +545,84 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                           ScreenDock(
                                             isDragging: _isDragging,
                                             isAlarmMode: _isAlarmMode, 
-                                            isAlarmRinging: _isAlarmRinging, // Passes ringing state
-                                            onSnooze: _snoozeAlarm,          // Pass snooze action
-                                            onCancel: _stopAlarm,            // Pass cancel action
-                                            onAmPmChanged: (val) => _scrolledAmPm = val, // Track Dock Am/Pm
+                                            isAlarmRinging: _isAlarmRinging, 
+                                            isViewingAlarms: _isViewingAlarms, // Passes viewing state
+                                            hasSelectedAlarm: _selectedAlarmIndex != null, // Highlights edit/delete
+                                            initialAmPm: _scrolledAmPm, // Passes initial value for editor
+                                            initialDay: _scrolledDay, // Passes initial value for editor
+                                            onSnooze: _snoozeAlarm,          
+                                            onCancel: _stopAlarm,            
+                                            onEditAlarm: () {
+                                              if (_selectedAlarmIndex != null) {
+                                                final alarm = _activeAlarms[_selectedAlarmIndex!];
+                                                final parts = alarm.split(' ');
+                                                
+                                                setState(() {
+                                                  // Parse backwards compatible strings
+                                                  if (parts.length == 3) {
+                                                    _scrolledDay = parts[0];
+                                                    final timeParts = parts[1].split(':');
+                                                    _scrolledHour = int.parse(timeParts[0]);
+                                                    _scrolledMinute = int.parse(timeParts[1]);
+                                                    _scrolledAmPm = parts[2];
+                                                  } else {
+                                                    // Fallback for older format "08:00 AM"
+                                                    _scrolledDay = 'Mon';
+                                                    final timeParts = parts[0].split(':');
+                                                    _scrolledHour = int.parse(timeParts[0]);
+                                                    _scrolledMinute = int.parse(timeParts[1]);
+                                                    _scrolledAmPm = parts[1];
+                                                  }
+                                                  
+                                                  _activeAlarms.removeAt(_selectedAlarmIndex!);
+                                                  _selectedAlarmIndex = null;
+                                                  _isViewingAlarms = false;
+                                                  _isAlarmMode = true; // Open the scroller editor
+                                                });
+                                              }
+                                            },
+                                            onDeleteAlarm: () {
+                                              if (_selectedAlarmIndex != null) {
+                                                setState(() {
+                                                  _activeAlarms.removeAt(_selectedAlarmIndex!);
+                                                  _selectedAlarmIndex = null;
+                                                });
+                                              }
+                                            },
+                                            onAmPmChanged: (val) => _scrolledAmPm = val, 
+                                            onDayChanged: (val) => _scrolledDay = val,
                                             activePill: _showPill
                                                 ? DynamicPill(
                                                     key: const ValueKey('main_dynamic_pill'),
-                                                    onDismissed: _dismissPill,
-                                                    // Removed topWidget here to prevent the clipping issue!
+                                                    // Removed the swipe-to-dismiss feature entirely!
                                                     child: DClockPill(
                                                       isAlarmMode: _isAlarmMode,
                                                       isViewingAlarms: _isViewingAlarms,
                                                       isAlarmRinging: _isAlarmRinging,
                                                       activeAlarms: _activeAlarms,
+                                                      selectedIndex: _selectedAlarmIndex, // Pass selection state
+                                                      initialHour: _scrolledHour, // For auto-setting Edit mode
+                                                      initialMinute: _scrolledMinute, // For auto-setting Edit mode
+                                                      onSelectAlarm: (index) {
+                                                        setState(() {
+                                                          // Toggle selection on/off
+                                                          if (_selectedAlarmIndex == index) {
+                                                            _selectedAlarmIndex = null;
+                                                          } else {
+                                                            _selectedAlarmIndex = index;
+                                                          }
+                                                        });
+                                                      },
                                                       onAlarmTapped: () => setState(() {
                                                         _isAlarmMode = true;
                                                         _isViewingAlarms = false;
-                                                      }),
-                                                      onDeleteAlarm: (index) => setState(() {
-                                                        _activeAlarms.removeAt(index);
+                                                        _selectedAlarmIndex = null;
+                                                        // Reset defaults for a fresh alarm creation
+                                                        _scrolledHour = 1;
+                                                        _scrolledMinute = 0;
+                                                        _scrolledAmPm = 'AM';
+                                                        const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+                                                        _scrolledDay = days[DateTime.now().weekday - 1];
                                                       }),
                                                       onHourChanged: (val) => _scrolledHour = val,
                                                       onMinuteChanged: (val) => _scrolledMinute = val,

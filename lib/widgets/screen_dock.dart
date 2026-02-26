@@ -1,4 +1,4 @@
-import 'dart:async'; // Added to track top of the hour
+import 'dart:async'; 
 import 'dart:convert';
 import 'dart:ui';
 import 'package:flutter/cupertino.dart';
@@ -6,22 +6,28 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:installed_apps/app_info.dart';
-import 'package:installed_apps/installed_apps.dart'; // Added to launch the full assistant app
+import 'package:installed_apps/installed_apps.dart'; 
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:casi/widgets/weather_forecast_widget.dart';
 
 class ScreenDock extends StatefulWidget {
   final bool isDragging;
-  final bool isAlarmMode; // --- NEW: To trigger the scrollers ---
-  final bool isAlarmRinging; // --- NEW: To trigger snooze/cancel ---
+  final bool isAlarmMode; 
+  final bool isAlarmRinging; 
+  final bool isViewingAlarms; 
+  final bool hasSelectedAlarm; 
+  final String? initialAmPm; // Added to support Edit mode auto-setting
+  final String? initialDay; // Added to support Edit mode auto-setting
   final void Function(AppInfo)? onRemove;
   final void Function(AppInfo)? onUninstall;
   final VoidCallback? onSnooze;
   final VoidCallback? onCancel;
+  final VoidCallback? onEditAlarm;
+  final VoidCallback? onDeleteAlarm;
   final ValueChanged<String>? onAmPmChanged;
+  final ValueChanged<String>? onDayChanged; // Track day changes
   
-  // The widget that gets injected in the center between the buttons
   final Widget? activePill;
 
   const ScreenDock({
@@ -29,11 +35,18 @@ class ScreenDock extends StatefulWidget {
     this.isDragging = false,
     this.isAlarmMode = false,
     this.isAlarmRinging = false,
+    this.isViewingAlarms = false,
+    this.hasSelectedAlarm = false,
+    this.initialAmPm,
+    this.initialDay,
     this.onRemove,
     this.onUninstall,
     this.onSnooze,
     this.onCancel,
+    this.onEditAlarm,
+    this.onDeleteAlarm,
     this.onAmPmChanged,
+    this.onDayChanged,
     this.activePill,
   });
 
@@ -404,8 +417,11 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
   
   Widget _buildAmPmScroller({Key? key}) {
     final ampm = ['AM', 'PM'];
+    final int initialIndex = ampm.indexOf(widget.initialAmPm ?? 'AM');
+    
     return ListWheelScrollView.useDelegate(
       key: key,
+      controller: FixedExtentScrollController(initialItem: initialIndex != -1 ? initialIndex : 0),
       itemExtent: 26,
       physics: const FixedExtentScrollPhysics(),
       overAndUnderCenterOpacity: 0.3,
@@ -420,11 +436,16 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
 
   Widget _buildDayScroller({Key? key}) {
     final days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final int initialIndex = days.indexOf(widget.initialDay ?? 'Mon');
+    
     return ListWheelScrollView.useDelegate(
       key: key,
+      controller: FixedExtentScrollController(initialItem: initialIndex != -1 ? initialIndex : 0),
       itemExtent: 26,
       physics: const FixedExtentScrollPhysics(),
       overAndUnderCenterOpacity: 0.3,
+      // Modulo prevents out-of-bounds error on infinite loop lists
+      onSelectedItemChanged: (index) => widget.onDayChanged?.call(days[index % 7]),
       childDelegate: ListWheelChildLoopingListDelegate(
         children: days.map((e) => Center(
           child: Text(e, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold))
@@ -523,6 +544,28 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
     );
   }
 
+  Widget _buildEditAlarmButton({Key? key}) {
+    return InkWell(
+      key: key,
+      onTap: widget.hasSelectedAlarm ? widget.onEditAlarm : null,
+      borderRadius: BorderRadius.circular(30),
+      child: Center(
+        child: Icon(Icons.edit, color: widget.hasSelectedAlarm ? Colors.blueAccent : Colors.white30, size: 28),
+      ),
+    );
+  }
+
+  Widget _buildDeleteAlarmButton({Key? key}) {
+    return InkWell(
+      key: key,
+      onTap: widget.hasSelectedAlarm ? widget.onDeleteAlarm : null,
+      borderRadius: BorderRadius.circular(30),
+      child: Center(
+        child: Icon(Icons.delete, color: widget.hasSelectedAlarm ? Colors.redAccent : Colors.white30, size: 28),
+      ),
+    );
+  }
+
   Widget _buildRightGlassCircle() {
     return Container(
       width: 60,
@@ -546,14 +589,15 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
             color: Colors.white.withOpacity(0.2),
             child: Material(
               color: Colors.transparent,
-              // --- NEW: Animated Switcher to swap between standard icons and AM/PM scroller ---
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 300),
                 child: widget.isAlarmRinging
                     ? _buildSnoozeButton(key: const ValueKey('snooze'))
-                    : widget.isAlarmMode 
-                        ? _buildAmPmScroller(key: const ValueKey('ampm'))
-                        : (widget.isDragging ? _buildUninstallTarget(key: const ValueKey('uninstall')) : _buildWebButton(key: const ValueKey('web'))),
+                    : widget.isViewingAlarms
+                        ? _buildDeleteAlarmButton(key: const ValueKey('delete_alarm'))
+                        : widget.isAlarmMode 
+                            ? _buildAmPmScroller(key: const ValueKey('ampm'))
+                            : (widget.isDragging ? _buildUninstallTarget(key: const ValueKey('uninstall')) : _buildWebButton(key: const ValueKey('web'))),
               ),
             ),
           ),
@@ -619,8 +663,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
                     ],
                   );
                 },
-                // --- NEW: Override with Day Scroller if Alarm Mode is active ---
-                child: (_showForecast && !widget.isDragging && !widget.isAlarmMode && !widget.isAlarmRinging)
+                child: (_showForecast && !widget.isDragging && !widget.isAlarmMode && !widget.isAlarmRinging && !widget.isViewingAlarms)
                     ? TapRegion(
                         key: const ValueKey('forecast_widget'),
                         onTapOutside: (event) {
@@ -648,16 +691,18 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
                         ),
                       )
                     : SizedBox(
-                        key: ValueKey('left_circle_${widget.isDragging}_${widget.isAlarmMode}_${widget.isAlarmRinging}'),
+                        key: ValueKey('left_circle_${widget.isDragging}_${widget.isAlarmMode}_${widget.isAlarmRinging}_${widget.isViewingAlarms}'),
                         width: 60.0,
                         height: 60.0,
                         child: Material(
                           color: Colors.transparent,
                           child: widget.isAlarmRinging
                               ? _buildCancelButton(key: const ValueKey('cancel'))
-                              : widget.isAlarmMode 
-                                  ? _buildDayScroller(key: const ValueKey('day'))
-                                  : (widget.isDragging ? _buildRemoveTarget(key: const ValueKey('remove')) : _buildWeatherButton(key: const ValueKey('weather'))),
+                              : widget.isViewingAlarms
+                                  ? _buildEditAlarmButton(key: const ValueKey('edit_alarm'))
+                                  : widget.isAlarmMode 
+                                      ? _buildDayScroller(key: const ValueKey('day'))
+                                      : (widget.isDragging ? _buildRemoveTarget(key: const ValueKey('remove')) : _buildWeatherButton(key: const ValueKey('weather'))),
                         ),
                       ),
               ),
@@ -681,25 +726,14 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
           alignment: Alignment.bottomLeft,
           clipBehavior: Clip.none,
           children: [
-            Align(
-              alignment: Alignment.bottomRight,
-              child: AnimatedOpacity(
-                opacity: (_showForecast && !widget.isDragging && !widget.isAlarmMode && !widget.isAlarmRinging) ? 0.0 : 1.0,
-                duration: const Duration(milliseconds: 350), 
-                child: IgnorePointer(
-                  ignoring: (_showForecast && !widget.isDragging && !widget.isAlarmMode && !widget.isAlarmRinging),
-                  child: _buildRightGlassCircle(),
-                ),
-              ),
-            ),
-
+            // Middle Pill - Reordered to render UNDER the side circles during swipe out!
             Align(
               alignment: Alignment.bottomCenter,
               child: AnimatedOpacity(
-                opacity: (_showForecast && !widget.isDragging && !widget.isAlarmMode && !widget.isAlarmRinging) ? 0.0 : 1.0,
+                opacity: (_showForecast && !widget.isDragging && !widget.isAlarmMode && !widget.isAlarmRinging && !widget.isViewingAlarms) ? 0.0 : 1.0,
                 duration: const Duration(milliseconds: 350),
                 child: IgnorePointer(
-                  ignoring: (_showForecast && !widget.isDragging && !widget.isAlarmMode && !widget.isAlarmRinging),
+                  ignoring: (_showForecast && !widget.isDragging && !widget.isAlarmMode && !widget.isAlarmRinging && !widget.isViewingAlarms),
                   child: SizedBox(
                     height: 60,
                     child: Center(
@@ -733,6 +767,20 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
               ),
             ),
 
+            // Right Circle
+            Align(
+              alignment: Alignment.bottomRight,
+              child: AnimatedOpacity(
+                opacity: (_showForecast && !widget.isDragging && !widget.isAlarmMode && !widget.isAlarmRinging && !widget.isViewingAlarms) ? 0.0 : 1.0,
+                duration: const Duration(milliseconds: 350), 
+                child: IgnorePointer(
+                  ignoring: (_showForecast && !widget.isDragging && !widget.isAlarmMode && !widget.isAlarmRinging && !widget.isViewingAlarms),
+                  child: _buildRightGlassCircle(),
+                ),
+              ),
+            ),
+
+            // Left Circle
             _buildLeftGlassArea(context, maxWidth),
           ],
         ),

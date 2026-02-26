@@ -7,8 +7,11 @@ class DClockPill extends StatelessWidget {
   final bool isViewingAlarms;
   final bool isAlarmRinging;
   final List<String> activeAlarms;
+  final int? selectedIndex;
+  final int? initialHour; // Added for Editor
+  final int? initialMinute; // Added for Editor
   final VoidCallback onAlarmTapped;
-  final ValueChanged<int>? onDeleteAlarm;
+  final ValueChanged<int>? onSelectAlarm;
   final ValueChanged<int>? onHourChanged;
   final ValueChanged<int>? onMinuteChanged;
 
@@ -18,8 +21,11 @@ class DClockPill extends StatelessWidget {
     this.isViewingAlarms = false,
     this.isAlarmRinging = false,
     this.activeAlarms = const [],
+    this.selectedIndex,
+    this.initialHour,
+    this.initialMinute,
     required this.onAlarmTapped,
-    this.onDeleteAlarm,
+    this.onSelectAlarm,
     this.onHourChanged,
     this.onMinuteChanged,
   });
@@ -71,39 +77,50 @@ class DClockPill extends StatelessWidget {
     return AnimatedContainer(
       key: key,
       duration: const Duration(milliseconds: 300),
-      width: 200,
+      width: 160, // Fixed width so it clears the side circles
       // Grow pill height based on alarms
-      height: activeAlarms.isEmpty ? 60 : (activeAlarms.length * 50.0).clamp(50.0, 150.0),
+      height: activeAlarms.isEmpty ? 60 : (activeAlarms.length * 56.0).clamp(56.0, 168.0),
       child: activeAlarms.isEmpty
           ? const Center(
               child: Text("No active alarms", style: TextStyle(color: Colors.white70)),
             )
           : ListView.builder(
-              padding: EdgeInsets.zero,
+              padding: const EdgeInsets.symmetric(vertical: 4.0),
               itemCount: activeAlarms.length,
               itemBuilder: (context, index) {
-                return Dismissible(
-                  key: ValueKey(activeAlarms[index] + index.toString()),
-                  direction: DismissDirection.endToStart,
-                  background: Container(
-                    alignment: Alignment.centerRight,
-                    padding: const EdgeInsets.only(right: 16.0),
-                    color: Colors.redAccent.withOpacity(0.8),
-                    child: const Icon(Icons.delete, color: Colors.white),
-                  ),
-                  onDismissed: (_) => onDeleteAlarm?.call(index),
-                  child: Container(
-                    height: 50,
+                final isSelected = selectedIndex == index;
+                return GestureDetector(
+                  onTap: () => onSelectAlarm?.call(index),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    height: 48,
                     alignment: Alignment.centerLeft,
                     padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                    margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2.0),
+                    decoration: BoxDecoration(
+                      color: isSelected ? Colors.white.withOpacity(0.2) : Colors.transparent,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: isSelected ? Colors.white54 : Colors.transparent, 
+                        width: 1
+                      ),
+                    ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
                           activeAlarms[index],
-                          style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600),
+                          style: TextStyle(
+                            color: isSelected ? Colors.greenAccent : Colors.white, 
+                            fontSize: 18, 
+                            fontWeight: FontWeight.w600
+                          ),
                         ),
-                        const Icon(Icons.alarm_on, color: Colors.greenAccent, size: 20),
+                        Icon(
+                          Icons.alarm_on, 
+                          color: isSelected ? Colors.greenAccent : Colors.white70, 
+                          size: 20
+                        ),
                       ],
                     ),
                   ),
@@ -166,15 +183,21 @@ class DClockPill extends StatelessWidget {
   }
 
   Widget _buildNumberScroller(int count, bool isHour) {
+    int initialVal = isHour ? (initialHour ?? 1) : (initialMinute ?? 0);
+    int initialIndex = isHour ? initialVal - 1 : initialVal;
+
     return SizedBox(
       width: 40,
       height: 48,
       child: ListWheelScrollView.useDelegate(
+        controller: FixedExtentScrollController(initialItem: initialIndex),
         itemExtent: 30,
         physics: const FixedExtentScrollPhysics(),
         overAndUnderCenterOpacity: 0.3,
         onSelectedItemChanged: (index) {
-          int val = isHour ? index + 1 : index;
+          // Modulo is critical for infinite scrolling to prevent out of bounds
+          int actualIndex = index % count;
+          int val = isHour ? actualIndex + 1 : actualIndex;
           if (isHour) {
             onHourChanged?.call(val);
           } else {
