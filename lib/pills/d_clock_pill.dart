@@ -57,15 +57,18 @@ class DClockPill extends StatelessWidget {
   Widget _buildRingingState({Key? key}) {
     return Container(
       key: key,
+      width: 160, // Enforce uniform width
+      height: 60, // Enforce uniform base height
+      alignment: Alignment.center,
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
       child: const Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(Icons.notifications_active, color: Colors.white, size: 28),
-          SizedBox(width: 12),
+          SizedBox(width: 8),
           Text(
             "Wake Up!",
-            style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+            style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
           ),
         ],
       ),
@@ -77,9 +80,9 @@ class DClockPill extends StatelessWidget {
     return AnimatedContainer(
       key: key,
       duration: const Duration(milliseconds: 300),
-      width: 160, // Fixed width so it clears the side circles
+      width: 160, // Enforce uniform width
       // Grow pill height based on alarms
-      height: activeAlarms.isEmpty ? 60 : (activeAlarms.length * 56.0).clamp(56.0, 168.0),
+      height: activeAlarms.isEmpty ? 60 : (activeAlarms.length * 56.0).clamp(60.0, 168.0),
       child: activeAlarms.isEmpty
           ? const Center(
               child: Text("No active alarms", style: TextStyle(color: Colors.white70)),
@@ -132,53 +135,63 @@ class DClockPill extends StatelessWidget {
 
   // --- Normal Mode: 3 Buttons ---
   Widget _buildActionButtons({Key? key}) {
-    return Row(
+    return Container(
       key: key,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _buildPillButton(
-          icon: Icons.alarm,
-          label: "Alarm",
-          onTap: onAlarmTapped,
-        ),
-        const SizedBox(width: 8),
-        _buildPillButton(
-          icon: Icons.timer,
-          label: "Stopwatch",
-          onTap: () {
-            debugPrint("Stopwatch mockup tapped!");
-          },
-        ),
-        const SizedBox(width: 8),
-        _buildPillButton(
-          icon: Icons.hourglass_bottom,
-          label: "Timer",
-          onTap: () {
-            debugPrint("Timer mockup tapped!");
-          },
-        ),
-      ],
+      width: 160, // Enforce uniform width
+      height: 60, // Enforce uniform base height
+      alignment: Alignment.center,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildPillButton(
+            icon: Icons.alarm,
+            label: "Alarm",
+            onTap: onAlarmTapped,
+          ),
+          const SizedBox(width: 8),
+          _buildPillButton(
+            icon: Icons.timer,
+            label: "Stopwatch",
+            onTap: () {
+              debugPrint("Stopwatch mockup tapped!");
+            },
+          ),
+          const SizedBox(width: 8),
+          _buildPillButton(
+            icon: Icons.hourglass_bottom,
+            label: "Timer",
+            onTap: () {
+              debugPrint("Timer mockup tapped!");
+            },
+          ),
+        ],
+      ),
     );
   }
 
   // --- Alarm Mode: Time Scrollers ---
   Widget _buildTimeScrollers({Key? key}) {
-    return Row(
+    return Container(
       key: key,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const SizedBox(width: 8),
-        _buildNumberScroller(12, true), // Hours 1-12
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 4.0),
-          child: Text(
-            ":",
-            style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+      width: 160, // Enforce uniform width
+      height: 60, // Enforce uniform base height
+      alignment: Alignment.center,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(width: 8),
+          _buildNumberScroller(12, true), // Hours 1-12
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 4.0),
+            child: Text(
+              ":",
+              style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+            ),
           ),
-        ),
-        _buildNumberScroller(60, false), // Minutes 00-59
-        const SizedBox(width: 8),
-      ],
+          _buildNumberScroller(60, false), // Minutes 00-59
+          const SizedBox(width: 8),
+        ],
+      ),
     );
   }
 

@@ -391,13 +391,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 _selectedAlarmIndex = null;
                 _showPill = false;
               });
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Alarm Set!'), 
-                  duration: Duration(seconds: 2),
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
+              // --- FIXED: Removed the 'Alarm Set!' snackbar entirely as requested ---
             },
             child: Container(
               padding: const EdgeInsets.all(8),
