@@ -9,6 +9,10 @@ import '../widgets/glass_header.dart';
 import '../widgets/app_drawer.dart';
 import '../widgets/screen_dock.dart';
 import '../widgets/song_player.dart';
+import '../widgets/clock_capsule.dart'; 
+// --- UPDATED IMPORTS ---
+import '../pills/dynamic_pill.dart';
+import '../pills/d_clock_pill.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -32,6 +36,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   bool _isDragging = false;
   /// Tracks if the music player should take up space.
   bool _isPlayerVisible = false;
+
+  // --- NEW: Dynamic Pill State ---
+  bool _showPill = false;
+  Widget? _currentPillChild;
 
   // --- Settings ---
   String _bgType = 'color';
@@ -203,6 +211,20 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     );
   }
 
+  // --- NEW: Pill Management Methods ---
+  void _showDynamicPill(Widget child) {
+    setState(() {
+      _showPill = true;
+      _currentPillChild = child;
+    });
+  }
+
+  void _dismissPill() {
+    setState(() {
+      _showPill = false;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final double screenHeight = MediaQuery.of(context).size.height;
@@ -235,95 +257,112 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 );
               }
             },
-            child: SafeArea(
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : Stack(
-                      children: [
-                        ValueListenableBuilder<double>(
-                          valueListenable: _drawerProgress,
-                          builder: (context, progress, child) {
-                            final double opacity = (1.0 - progress).clamp(0.0, 1.0);
-                            return Stack(
-                              children: [
-                                Opacity(
-                                  opacity: opacity,
-                                  child: RepaintBoundary(
-                                    child: _buildHomeGrid(headerHeight),
+            // --- NEW: Listen to notifications bubbling up from the clock! ---
+            child: NotificationListener<ClockTapNotification>(
+              onNotification: (notification) {
+                // If it's already showing, tapping clock toggles it off, otherwise shows it
+                if (_showPill) {
+                  _dismissPill();
+                } else {
+                  _showDynamicPill(const DClockPill());
+                }
+                return true; 
+              },
+              child: SafeArea(
+                child: _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : Stack(
+                        children: [
+                          ValueListenableBuilder<double>(
+                            valueListenable: _drawerProgress,
+                            builder: (context, progress, child) {
+                              final double opacity = (1.0 - progress).clamp(0.0, 1.0);
+                              return Stack(
+                                children: [
+                                  Opacity(
+                                    opacity: opacity,
+                                    child: RepaintBoundary(
+                                      child: _buildHomeGrid(headerHeight),
+                                    ),
                                   ),
-                                ),
-                                Positioned(
-                                  top: 0,
-                                  left: 0,
-                                  right: 0,
-                                  child: GlassStatusBar(
-                                    opacity: 1.0,
+                                  Positioned(
+                                    top: 0,
+                                    left: 0,
+                                    right: 0,
+                                    child: GlassStatusBar(
+                                      opacity: 1.0,
+                                    ),
                                   ),
-                                ),
-                                // Bottom Dock & Media Player 
-                                Positioned(
-                                  bottom: 0,
-                                  left: 0,
-                                  right: 0,
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      // Offstage hides it entirely without destroying the timer checking for music
-                                      Offstage(
-                                        offstage: !_isPlayerVisible,
-                                        child: Padding(
-                                          padding: const EdgeInsets.only(bottom: 16),
-                                          child: SongPlayer(
-                                            onVisibilityChanged: (visible) {
-                                              // Ensure we update state cleanly outside the build phase
-                                              WidgetsBinding.instance.addPostFrameCallback((_) {
-                                                if (mounted && _isPlayerVisible != visible) {
-                                                  setState(() => _isPlayerVisible = visible);
-                                                }
-                                              });
-                                            },
+                                  // Bottom Dock & Media Player 
+                                  Positioned(
+                                    bottom: 0,
+                                    left: 0,
+                                    right: 0,
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        // Offstage hides it entirely without destroying the timer checking for music
+                                        Offstage(
+                                          offstage: !_isPlayerVisible,
+                                          child: Padding(
+                                            padding: const EdgeInsets.only(bottom: 16),
+                                            child: SongPlayer(
+                                              onVisibilityChanged: (visible) {
+                                                // Ensure we update state cleanly outside the build phase
+                                                WidgetsBinding.instance.addPostFrameCallback((_) {
+                                                  if (mounted && _isPlayerVisible != visible) {
+                                                    setState(() => _isPlayerVisible = visible);
+                                                  }
+                                                });
+                                              },
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                      ScreenDock(
-                                        isDragging: _isDragging,
-                                        onRemove: (app) {
-                                          setState(() {
-                                            _homeApps.removeWhere((key, value) => value.packageName == app.packageName);
-                                          });
-                                          _saveLayout();
-                                        },
-                                        onUninstall: (app) {
-                                          // Note: We don't manually remove it from the home screen here anymore!
-                                          // That prevents the icon disappearing if the user cancels the OS uninstall prompt.
-                                          // It will be cleanly removed via `_checkAppChangesOnResume` when they return.
-                                          try {
-                                            InstalledApps.uninstallApp(app.packageName);
-                                          } catch (e) {
-                                            debugPrint("Uninstall error: $e");
-                                          }
-                                        },
-                                      ),
-                                    ],
+                                        ScreenDock(
+                                          isDragging: _isDragging,
+                                          // --- NEW: Injecting the pill state dynamically ---
+                                          activePill: _showPill
+                                              ? DynamicPill(
+                                                  key: const ValueKey('main_dynamic_pill'),
+                                                  onDismissed: _dismissPill,
+                                                  child: _currentPillChild ?? const SizedBox.shrink(),
+                                                )
+                                              : null,
+                                          onRemove: (app) {
+                                            setState(() {
+                                              _homeApps.removeWhere((key, value) => value.packageName == app.packageName);
+                                            });
+                                            _saveLayout();
+                                          },
+                                          onUninstall: (app) {
+                                            try {
+                                              InstalledApps.uninstallApp(app.packageName);
+                                            } catch (e) {
+                                              debugPrint("Uninstall error: $e");
+                                            }
+                                          },
+                                        ),
+                                      ],
+                                    ),
                                   ),
-                                ),
-                              ],
-                            );
-                          },
-                        ),
-                        AppDrawer(
-                          apps: _apps,
-                          progressNotifier: _drawerProgress,
-                          controller: _drawerController,
-                          onAppTap: (app) => InstalledApps.startApp(app.packageName),
-                          onAppLongPress: (app) => _addToHomeScreen(app),
-                          onOpenSettings: () {
-                            Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsPage()))
-                                .then((_) => _loadSettings());
-                          },
-                        ),
-                      ],
-                  ),
+                                ],
+                              );
+                            },
+                          ),
+                          AppDrawer(
+                            apps: _apps,
+                            progressNotifier: _drawerProgress,
+                            controller: _drawerController,
+                            onAppTap: (app) => InstalledApps.startApp(app.packageName),
+                            onAppLongPress: (app) => _addToHomeScreen(app),
+                            onOpenSettings: () {
+                              Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsPage()))
+                                  .then((_) => _loadSettings());
+                            },
+                          ),
+                        ],
+                    ),
+              ),
             ),
           ),
         ],

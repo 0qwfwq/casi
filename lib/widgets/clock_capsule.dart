@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:installed_apps/app_info.dart';
 import 'package:installed_apps/installed_apps.dart';
 
+// --- NEW: A custom notification that bubbles up to the Hub! ---
+class ClockTapNotification extends Notification {}
+
 class ClockCapsule extends StatefulWidget {
   final double opacity;
 
@@ -124,7 +127,10 @@ class _ClockCapsuleState extends State<ClockCapsule> {
           height: screenHeight * 0.17, 
           width: double.infinity,
           child: GestureDetector(
-            onTap: () => _launchApp(_clockPackage),
+            // --- NEW: Normal tap signals the Hub to open the Dynamic Pill! ---
+            onTap: () => ClockTapNotification().dispatch(context),
+            // --- BONUS UX: Long pressing the clock still opens the actual clock app ---
+            onLongPress: () => _launchApp(_clockPackage),
             child: FittedBox(
               fit: BoxFit.contain,
               child: Padding(

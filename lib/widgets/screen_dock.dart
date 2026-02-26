@@ -15,12 +15,16 @@ class ScreenDock extends StatefulWidget {
   final bool isDragging;
   final void Function(AppInfo)? onRemove;
   final void Function(AppInfo)? onUninstall;
+  
+  // --- NEW: The widget that gets injected in the center between the buttons ---
+  final Widget? activePill;
 
   const ScreenDock({
     super.key,
     this.isDragging = false,
     this.onRemove,
     this.onUninstall,
+    this.activePill,
   });
 
   @override
@@ -368,7 +372,6 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
         mode: LaunchMode.externalApplication);
   }
 
-  // --- New: Launch the Full App version of the Assistant ---
   Future<void> _launchAssistantApp() async {
     // List of common assistant apps, ordered by priority
     final List<String> assistantPackages = [
@@ -409,7 +412,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
   Widget _buildWebButton() {
     return InkWell(
       onTap: _launchBrowser,
-      onLongPress: _launchAssistantApp, // The new Long Press Action!
+      onLongPress: _launchAssistantApp, 
       borderRadius: BorderRadius.circular(30),
       child: const Center(
         child: Icon(CupertinoIcons.globe, color: Colors.white, size: 24),
@@ -507,13 +510,12 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 25.0, sigmaY: 25.0),
           child: Container(
-            color: Colors.white.withOpacity(0.2), // Unified color scheme overlay
+            color: Colors.white.withOpacity(0.2), 
             child: AnimatedSize(
-              // Premium smooth deceleration curve over 450ms
               duration: const Duration(milliseconds: 450),
               curve: Curves.easeOutQuart,
               alignment: Alignment.bottomLeft,
-              clipBehavior: Clip.antiAlias, // Ensures content is beautifully masked while resizing
+              clipBehavior: Clip.antiAlias, 
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 350),
                 switchInCurve: Curves.easeOutCubic,
@@ -522,7 +524,6 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
                   return FadeTransition(
                     opacity: animation,
                     child: ScaleTransition(
-                      // Adds a gentle bloom/scale to match the morphing size
                       scale: Tween<double>(begin: 0.95, end: 1.0).animate(animation),
                       alignment: Alignment.bottomLeft,
                       child: child,
@@ -532,7 +533,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
                 layoutBuilder: (Widget? currentChild, List<Widget> previousChildren) {
                   return Stack(
                     alignment: Alignment.bottomLeft,
-                    clipBehavior: Clip.none, // Prevents fading widget from being instantly cropped
+                    clipBehavior: Clip.none, 
                     children: <Widget>[
                       ...previousChildren.map((Widget child) {
                         return Positioned(
@@ -556,7 +557,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
                         child: SizedBox(
                           width: maxWidth,
                           child: WeatherForecastWidget(
-                            initialViewMode: ForecastViewMode.details, // Opens Details by default!
+                            initialViewMode: ForecastViewMode.details, 
                             forecastData: _forecastData,
                             hourlyData: _hourlyData,
                             currentTemp: "${_temperature ?? '--'}°C",
@@ -612,6 +613,48 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
                 child: IgnorePointer(
                   ignoring: (_showForecast && !widget.isDragging),
                   child: _buildRightGlassCircle(),
+                ),
+              ),
+            ),
+
+            // --- NEW: Dynamic Pill injected perfectly in the center! ---
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: AnimatedOpacity(
+                // Fade out the pill if the weather expands over it
+                opacity: (_showForecast && !widget.isDragging) ? 0.0 : 1.0,
+                duration: const Duration(milliseconds: 350),
+                child: IgnorePointer(
+                  ignoring: (_showForecast && !widget.isDragging),
+                  child: SizedBox(
+                    height: 60, // Matches the height of the left/right buttons to perfectly vertical center
+                    child: Center(
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 300),
+                        transitionBuilder: (child, animation) {
+                          return SlideTransition(
+                            position: Tween<Offset>(
+                              begin: const Offset(0, 0.5), // Gently slides up from below
+                              end: Offset.zero,
+                            ).animate(CurvedAnimation(
+                              parent: animation, 
+                              curve: Curves.easeOutQuart
+                            )),
+                            child: FadeTransition(
+                              opacity: animation,
+                              child: child,
+                            ),
+                          );
+                        },
+                        child: widget.activePill != null
+                            ? KeyedSubtree(
+                                key: const ValueKey('active_pill'),
+                                child: widget.activePill!,
+                              )
+                            : const SizedBox.shrink(key: ValueKey('empty_pill')),
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
