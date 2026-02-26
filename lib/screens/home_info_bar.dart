@@ -1,16 +1,17 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:installed_apps/app_info.dart';
 import 'package:installed_apps/installed_apps.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:audioplayers/audioplayers.dart'; // --- NEW: Audio package ---
 import 'settings_page.dart';
 import '../widgets/glass_header.dart';
 import '../widgets/app_drawer.dart';
 import '../widgets/screen_dock.dart';
 import '../widgets/song_player.dart';
 import '../widgets/clock_capsule.dart'; 
-// --- UPDATED IMPORTS ---
 import '../pills/dynamic_pill.dart';
 import '../pills/d_clock_pill.dart';
 
@@ -22,24 +23,34 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
-  /// Static cache to survive Flutter Activity recreation when OS memory is low.
   static List<AppInfo>? _cachedFullApps;
 
-  /// Stores the list of installed applications fetched from the device.
   List<AppInfo> _apps = [];
-  /// Stores the apps pinned to the home screen, mapped by their grid index.
   final Map<int, AppInfo> _homeApps = {};
   
-  /// Tracks whether the app data is currently being loaded.
   bool _isLoading = true;
-  /// Tracks if the user is currently dragging an icon.
   bool _isDragging = false;
-  /// Tracks if the music player should take up space.
   bool _isPlayerVisible = false;
 
-  // --- NEW: Dynamic Pill State ---
+  // --- Pill & Alarm State ---
   bool _showPill = false;
-  Widget? _currentPillChild;
+  bool _isAlarmMode = false;
+
+  // --- NEW: Advanced Alarm States ---
+  List<String> _activeAlarms = []; 
+  bool _isViewingAlarms = false; 
+  bool _isAlarmRinging = false; 
+  Timer? _alarmTimer;
+  String? _lastRungAlarmTime; // Prevents infinite ringing within the same minute
+
+  // --- NEW: Audio States ---
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  Timer? _soundTimer;
+
+  // --- NEW: Time Scroller States ---
+  int _scrolledHour = 1; // Default to match the visual wheel state
+  int _scrolledMinute = 0;
+  String _scrolledAmPm = 'AM';
 
   // --- Settings ---
   String _bgType = 'color';
@@ -73,11 +84,19 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
     
     _loadSettings();
+
+    // --- NEW: Start background alarm checker ---
+    _alarmTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      _checkAlarms();
+    });
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _alarmTimer?.cancel();
+    _stopAlarmSound(); // Ensure sound stops if widget is disposed
+    _audioPlayer.dispose();
     super.dispose();
   }
 
@@ -86,6 +105,94 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       _checkAppChangesOnResume();
     }
+  }
+
+  // --- NEW: Alarm Audio Logic ---
+  Future<void> _playSound() async {
+    try {
+      // audioplayers automatically prefixes with 'assets/', so this maps to 'assets/sounds/alarm_sound.wav'
+      await _audioPlayer.play(AssetSource('sounds/alarm_sound.wav'));
+    } catch (e) {
+      debugPrint("Error playing alarm sound: $e");
+    }
+  }
+
+  void _startAlarmSound() {
+    _playSound(); // Play immediately
+    _soundTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      if (_isAlarmRinging) {
+        _playSound(); // Loop every 5 seconds
+      } else {
+        _stopAlarmSound();
+      }
+    });
+  }
+
+  void _stopAlarmSound() {
+    _soundTimer?.cancel();
+    _soundTimer = null;
+    _audioPlayer.stop();
+  }
+
+  // --- NEW: Alarm Background Logic ---
+  void _checkAlarms() {
+    if (_isAlarmRinging) return; // Don't trigger if already ringing
+    
+    final now = DateTime.now();
+    // Format current time to match our simple "hh:mm AM" mock format
+    int hour = now.hour;
+    int minute = now.minute;
+    String ampm = hour >= 12 ? "PM" : "AM";
+    hour = hour % 12;
+    if (hour == 0) hour = 12;
+    String minuteStr = minute.toString().padLeft(2, '0');
+    String currentTimeStr = "$hour:$minuteStr $ampm";
+
+    // Check if the time matches AND we haven't already rung for this exact minute
+    if (_activeAlarms.contains(currentTimeStr) && _lastRungAlarmTime != currentTimeStr) {
+      setState(() {
+        _isAlarmRinging = true;
+        _showPill = true;
+        _isAlarmMode = false; // Close creation mode if it was open
+        _isViewingAlarms = false;
+        _lastRungAlarmTime = currentTimeStr; // Mark as rung
+      });
+      _startAlarmSound(); // Trigger the repeating sound
+    }
+  }
+
+  void _snoozeAlarm() {
+    _stopAlarmSound(); // Stop the audio immediately
+
+    // Generate a temporary alarm 5 minutes from now!
+    final now = DateTime.now().add(const Duration(minutes: 5));
+    int hour = now.hour;
+    int minute = now.minute;
+    String ampm = hour >= 12 ? "PM" : "AM";
+    hour = hour % 12;
+    if (hour == 0) hour = 12;
+    String minuteStr = minute.toString().padLeft(2, '0');
+    String snoozeTime = "$hour:$minuteStr $ampm";
+
+    setState(() {
+      _isAlarmRinging = false;
+      _showPill = false;
+      if (!_activeAlarms.contains(snoozeTime)) {
+        _activeAlarms.add(snoozeTime);
+      }
+    });
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Snoozed for 5 minutes ($snoozeTime)')),
+    );
+  }
+
+  void _stopAlarm() {
+    _stopAlarmSound(); // Stop the audio immediately
+    setState(() {
+      _isAlarmRinging = false;
+      _showPill = false;
+    });
   }
 
   Future<void> _initApps() async {
@@ -113,7 +220,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   Future<void> _checkAppChangesOnResume() async {
-    // If the app is still loading the initial list, wait for it to finish naturally.
     if (_isLoading) return; 
 
     try {
@@ -211,18 +317,81 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     );
   }
 
-  // --- NEW: Pill Management Methods ---
-  void _showDynamicPill(Widget child) {
-    setState(() {
-      _showPill = true;
-      _currentPillChild = child;
-    });
-  }
-
   void _dismissPill() {
     setState(() {
       _showPill = false;
+      _isAlarmMode = false;
+      _isViewingAlarms = false;
     });
+  }
+
+  // --- NEW: View Alarms & Checkmark Action Row ---
+  Widget _buildAlarmTopActionButtons() {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // View Active Alarms Button
+        GestureDetector(
+          onTap: () {
+            setState(() {
+              _isViewingAlarms = !_isViewingAlarms;
+            });
+          },
+          child: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: _isViewingAlarms ? Colors.white : Colors.white.withOpacity(0.2),
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white.withOpacity(0.3), width: 1),
+              boxShadow: const [
+                BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 4))
+              ],
+            ),
+            child: Icon(
+              Icons.format_list_bulleted, 
+              color: _isViewingAlarms ? Colors.black : Colors.white, 
+              size: 24
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        // Confirm/Save Alarm Button
+        GestureDetector(
+          onTap: () {
+            setState(() {
+              // Now dynamically reads the real values from the Hub state!
+              String minStr = _scrolledMinute.toString().padLeft(2, '0');
+              String newAlarm = "$_scrolledHour:$minStr $_scrolledAmPm";
+              
+              if (!_activeAlarms.contains(newAlarm)) {
+                _activeAlarms.add(newAlarm);
+              }
+              _isAlarmMode = false;
+              _isViewingAlarms = false;
+              _showPill = false;
+            });
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Alarm Set!'), 
+                duration: Duration(seconds: 2),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          },
+          child: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.greenAccent.shade400,
+              shape: BoxShape.circle,
+              boxShadow: const [
+                BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 4))
+              ],
+            ),
+            child: const Icon(Icons.check, color: Colors.black, size: 24),
+          ),
+        ),
+      ],
+    );
   }
 
   @override
@@ -257,14 +426,20 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 );
               }
             },
-            // --- NEW: Listen to notifications bubbling up from the clock! ---
             child: NotificationListener<ClockTapNotification>(
               onNotification: (notification) {
-                // If it's already showing, tapping clock toggles it off, otherwise shows it
                 if (_showPill) {
                   _dismissPill();
                 } else {
-                  _showDynamicPill(const DClockPill());
+                  setState(() {
+                    _showPill = true;
+                    _isAlarmMode = false; // Fresh start when opening
+                    _isViewingAlarms = false;
+                    // Reset scroll tracker to match the visual default state of the wheels!
+                    _scrolledHour = 1; 
+                    _scrolledMinute = 0;
+                    _scrolledAmPm = 'AM';
+                  });
                 }
                 return true; 
               },
@@ -293,56 +468,99 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                       opacity: 1.0,
                                     ),
                                   ),
-                                  // Bottom Dock & Media Player 
                                   Positioned(
                                     bottom: 0,
                                     left: 0,
                                     right: 0,
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        // Offstage hides it entirely without destroying the timer checking for music
-                                        Offstage(
-                                          offstage: !_isPlayerVisible,
-                                          child: Padding(
-                                            padding: const EdgeInsets.only(bottom: 16),
-                                            child: SongPlayer(
-                                              onVisibilityChanged: (visible) {
-                                                // Ensure we update state cleanly outside the build phase
-                                                WidgetsBinding.instance.addPostFrameCallback((_) {
-                                                  if (mounted && _isPlayerVisible != visible) {
-                                                    setState(() => _isPlayerVisible = visible);
-                                                  }
-                                                });
-                                              },
+                                    child: TapRegion(
+                                      groupId: 'dock_region',
+                                      onTapOutside: (event) {
+                                        if (_isAlarmMode || _isViewingAlarms || _isAlarmRinging) {
+                                          setState(() {
+                                            _isAlarmMode = false;
+                                            _isViewingAlarms = false;
+                                            // Don't kill ringing alarm if tapped outside, user must hit cancel/snooze
+                                          });
+                                        } else if (_showPill) {
+                                          _dismissPill();
+                                        }
+                                      },
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Offstage(
+                                            offstage: !_isPlayerVisible,
+                                            child: Padding(
+                                              padding: const EdgeInsets.only(bottom: 16),
+                                              child: SongPlayer(
+                                                onVisibilityChanged: (visible) {
+                                                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                                                    if (mounted && _isPlayerVisible != visible) {
+                                                      setState(() => _isPlayerVisible = visible);
+                                                    }
+                                                  });
+                                                },
+                                              ),
                                             ),
                                           ),
-                                        ),
-                                        ScreenDock(
-                                          isDragging: _isDragging,
-                                          // --- NEW: Injecting the pill state dynamically ---
-                                          activePill: _showPill
-                                              ? DynamicPill(
-                                                  key: const ValueKey('main_dynamic_pill'),
-                                                  onDismissed: _dismissPill,
-                                                  child: _currentPillChild ?? const SizedBox.shrink(),
-                                                )
-                                              : null,
-                                          onRemove: (app) {
-                                            setState(() {
-                                              _homeApps.removeWhere((key, value) => value.packageName == app.packageName);
-                                            });
-                                            _saveLayout();
-                                          },
-                                          onUninstall: (app) {
-                                            try {
-                                              InstalledApps.uninstallApp(app.packageName);
-                                            } catch (e) {
-                                              debugPrint("Uninstall error: $e");
-                                            }
-                                          },
-                                        ),
-                                      ],
+                                          
+                                          // --- INJECTED: Safely positioned above the Dock bounds so it is clickable! ---
+                                          AnimatedSwitcher(
+                                            duration: const Duration(milliseconds: 300),
+                                            child: _isAlarmMode 
+                                                ? Padding(
+                                                    key: const ValueKey('alarm_actions'),
+                                                    padding: const EdgeInsets.only(bottom: 16),
+                                                    child: _buildAlarmTopActionButtons(),
+                                                  )
+                                                : const SizedBox.shrink(key: ValueKey('empty_actions')),
+                                          ),
+
+                                          ScreenDock(
+                                            isDragging: _isDragging,
+                                            isAlarmMode: _isAlarmMode, 
+                                            isAlarmRinging: _isAlarmRinging, // Passes ringing state
+                                            onSnooze: _snoozeAlarm,          // Pass snooze action
+                                            onCancel: _stopAlarm,            // Pass cancel action
+                                            onAmPmChanged: (val) => _scrolledAmPm = val, // Track Dock Am/Pm
+                                            activePill: _showPill
+                                                ? DynamicPill(
+                                                    key: const ValueKey('main_dynamic_pill'),
+                                                    onDismissed: _dismissPill,
+                                                    // Removed topWidget here to prevent the clipping issue!
+                                                    child: DClockPill(
+                                                      isAlarmMode: _isAlarmMode,
+                                                      isViewingAlarms: _isViewingAlarms,
+                                                      isAlarmRinging: _isAlarmRinging,
+                                                      activeAlarms: _activeAlarms,
+                                                      onAlarmTapped: () => setState(() {
+                                                        _isAlarmMode = true;
+                                                        _isViewingAlarms = false;
+                                                      }),
+                                                      onDeleteAlarm: (index) => setState(() {
+                                                        _activeAlarms.removeAt(index);
+                                                      }),
+                                                      onHourChanged: (val) => _scrolledHour = val,
+                                                      onMinuteChanged: (val) => _scrolledMinute = val,
+                                                    ),
+                                                  )
+                                                : null,
+                                            onRemove: (app) {
+                                              setState(() {
+                                                _homeApps.removeWhere((key, value) => value.packageName == app.packageName);
+                                              });
+                                              _saveLayout();
+                                            },
+                                            onUninstall: (app) {
+                                              try {
+                                                InstalledApps.uninstallApp(app.packageName);
+                                              } catch (e) {
+                                                debugPrint("Uninstall error: $e");
+                                              }
+                                            },
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 ],
@@ -384,7 +602,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   Widget _buildHomeGrid(double topPadding) {
-    // Dynamically shrink the safe area bottom padding when player is invisible
     final double bottomPadding = _isPlayerVisible ? 220.0 : 130.0;
     
     return GridView.builder(
@@ -469,7 +686,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 errorBuilder: (context, error, stackTrace) => 
                   const Icon(Icons.android, color: Colors.white, size: 48),
               )
-            // Structurally separate widget branch when there are no byte array icons to prevent Image.memory crash loops.
             : const Icon(Icons.android, color: Colors.white, size: 48),
         ),
         if (_showAppNames) ...[

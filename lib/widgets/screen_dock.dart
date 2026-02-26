@@ -13,17 +13,27 @@ import 'package:casi/widgets/weather_forecast_widget.dart';
 
 class ScreenDock extends StatefulWidget {
   final bool isDragging;
+  final bool isAlarmMode; // --- NEW: To trigger the scrollers ---
+  final bool isAlarmRinging; // --- NEW: To trigger snooze/cancel ---
   final void Function(AppInfo)? onRemove;
   final void Function(AppInfo)? onUninstall;
+  final VoidCallback? onSnooze;
+  final VoidCallback? onCancel;
+  final ValueChanged<String>? onAmPmChanged;
   
-  // --- NEW: The widget that gets injected in the center between the buttons ---
+  // The widget that gets injected in the center between the buttons
   final Widget? activePill;
 
   const ScreenDock({
     super.key,
     this.isDragging = false,
+    this.isAlarmMode = false,
+    this.isAlarmRinging = false,
     this.onRemove,
     this.onUninstall,
+    this.onSnooze,
+    this.onCancel,
+    this.onAmPmChanged,
     this.activePill,
   });
 
@@ -56,7 +66,6 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
   bool _isLoadingWeather = false;
   bool _showForecast = false;
   
-  // --- New: Timer to ensure updates happen exactly on the hour ---
   Timer? _hourlySyncTimer;
 
   @override
@@ -78,6 +87,15 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _checkAndFetchWeather();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant ScreenDock oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Force weather widget to close if alarm mode opens
+    if (widget.isAlarmMode && _showForecast) {
+      setState(() => _showForecast = false);
     }
   }
 
@@ -110,16 +128,13 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
 
   void _scheduleTopOfHourWeatherSync() {
     final now = DateTime.now();
-    
-    // Schedule for the exact top of the next hour (e.g., 2:00:00) 
-    // + 2 seconds to make sure the weather API has fully updated its hour blocks
     DateTime nextHour = DateTime(now.year, now.month, now.day, now.hour + 1, 0, 2);
     Duration durationUntilNextHour = nextHour.difference(now);
     
     _hourlySyncTimer?.cancel();
     _hourlySyncTimer = Timer(durationUntilNextHour, () {
       _fetchWeather();
-      _scheduleTopOfHourWeatherSync(); // Schedule the next hour!
+      _scheduleTopOfHourWeatherSync(); 
     });
   }
 
@@ -129,20 +144,16 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
     final lastFetch = DateTime.fromMillisecondsSinceEpoch(lastFetchMs);
     final now = DateTime.now();
     
-    // Check if we crossed into a new hour while the app was asleep (e.g., slept at 1:55, woke at 2:05)
     bool crossedHour = now.hour != lastFetch.hour || now.day != lastFetch.day || now.month != lastFetch.month || now.year != lastFetch.year;
     
-    // Fetch if it's been 30 mins, or we have no data, OR we hit a new hour!
     if (now.difference(lastFetch).inMinutes > 30 || _temperature == null || crossedHour) {
       _fetchWeather();
     }
     
-    // Make sure our timer is still perfectly aligned in case device sleep threw it off
     _scheduleTopOfHourWeatherSync();
   }
 
   void _parseWeatherData(Map<String, dynamic> data) {
-    // Parse Current Weather
     final current = data['current'];
     final temp = (current['temperature_2m'] as num).round();
     final code = (current['weathercode'] as num).toInt();
@@ -152,7 +163,6 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
     final IconData curIcon = _getWeatherIcon(code, currentIsDay);
     final Color curIconColor = _getWeatherIconColor(code, currentIsDay);
 
-    // Parse Detailed Current Fields
     final feelsLikeNum = (current['apparent_temperature'] as num).round();
     final humidityNum = (current['relative_humidity_2m'] as num).round();
     final windSpeedNum = (current['wind_speed_10m'] as num).round();
@@ -165,7 +175,6 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
     final String sunriseIso = data['daily']['sunrise'][0] as String;
     final String sunriseTime = _formatTime(sunriseIso);
 
-    // Parse Daily Data
     List<DailyForecastData> dailyList = [];
     if (data['daily'] != null) {
       final daily = data['daily'];
@@ -190,7 +199,6 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
       }
     }
 
-    // Parse Hourly Data
     List<HourlyForecastData> hourlyList = [];
     int precipProbNum = 0;
 
@@ -368,24 +376,22 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
   }
 
   void _launchBrowser() {
-    launchUrl(Uri.parse('https://google.com'),
-        mode: LaunchMode.externalApplication);
+    launchUrl(Uri.parse('https://google.com'), mode: LaunchMode.externalApplication);
   }
 
   Future<void> _launchAssistantApp() async {
-    // List of common assistant apps, ordered by priority
     final List<String> assistantPackages = [
-      'com.google.android.apps.bard', // Gemini Dedicated App
-      'com.google.android.googlequicksearchbox', // Default Google/Assistant App
-      'com.amazon.dee.app', // Amazon Alexa
-      'com.samsung.android.bixby.agent', // Samsung Bixby
+      'com.google.android.apps.bard',
+      'com.google.android.googlequicksearchbox',
+      'com.amazon.dee.app',
+      'com.samsung.android.bixby.agent',
     ];
 
     try {
       for (String pkg in assistantPackages) {
         bool? isInstalled = await InstalledApps.isAppInstalled(pkg);
         if (isInstalled == true) {
-          InstalledApps.startApp(pkg); // Launches in Full App Mode
+          InstalledApps.startApp(pkg); 
           return;
         }
       }
@@ -394,10 +400,44 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
     }
   }
 
+  // --- Scroller Widgets for Alarm Mode ---
+  
+  Widget _buildAmPmScroller({Key? key}) {
+    final ampm = ['AM', 'PM'];
+    return ListWheelScrollView.useDelegate(
+      key: key,
+      itemExtent: 26,
+      physics: const FixedExtentScrollPhysics(),
+      overAndUnderCenterOpacity: 0.3,
+      onSelectedItemChanged: (index) => widget.onAmPmChanged?.call(ampm[index]),
+      childDelegate: ListWheelChildListDelegate(
+        children: ampm.map((e) => Center(
+          child: Text(e, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold))
+        )).toList(),
+      ),
+    );
+  }
+
+  Widget _buildDayScroller({Key? key}) {
+    final days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    return ListWheelScrollView.useDelegate(
+      key: key,
+      itemExtent: 26,
+      physics: const FixedExtentScrollPhysics(),
+      overAndUnderCenterOpacity: 0.3,
+      childDelegate: ListWheelChildLoopingListDelegate(
+        children: days.map((e) => Center(
+          child: Text(e, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold))
+        )).toList(),
+      ),
+    );
+  }
+
   // --- UI Build Helpers ---
 
-  Widget _buildWeatherButton() {
+  Widget _buildWeatherButton({Key? key}) {
     return InkWell(
+      key: key,
       onTap: () {
         _checkAndFetchWeather();
         setState(() => _showForecast = true);
@@ -409,8 +449,9 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildWebButton() {
+  Widget _buildWebButton({Key? key}) {
     return InkWell(
+      key: key,
       onTap: _launchBrowser,
       onLongPress: _launchAssistantApp, 
       borderRadius: BorderRadius.circular(30),
@@ -420,8 +461,9 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildRemoveTarget() {
+  Widget _buildRemoveTarget({Key? key}) {
     return DragTarget<AppInfo>(
+      key: key,
       onAcceptWithDetails: (details) => widget.onRemove?.call(details.data),
       builder: (context, candidateData, rejectedData) {
         final isHovered = candidateData.isNotEmpty;
@@ -439,8 +481,9 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildUninstallTarget() {
+  Widget _buildUninstallTarget({Key? key}) {
     return DragTarget<AppInfo>(
+      key: key,
       onAcceptWithDetails: (details) => widget.onUninstall?.call(details.data),
       builder: (context, candidateData, rejectedData) {
         final isHovered = candidateData.isNotEmpty;
@@ -455,6 +498,28 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildSnoozeButton({Key? key}) {
+    return InkWell(
+      key: key,
+      onTap: widget.onSnooze,
+      borderRadius: BorderRadius.circular(30),
+      child: const Center(
+        child: Icon(Icons.snooze, color: Colors.orangeAccent, size: 28),
+      ),
+    );
+  }
+
+  Widget _buildCancelButton({Key? key}) {
+    return InkWell(
+      key: key,
+      onTap: widget.onCancel,
+      borderRadius: BorderRadius.circular(30),
+      child: const Center(
+        child: Icon(Icons.close, color: Colors.redAccent, size: 28),
+      ),
     );
   }
 
@@ -481,7 +546,15 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
             color: Colors.white.withOpacity(0.2),
             child: Material(
               color: Colors.transparent,
-              child: widget.isDragging ? _buildUninstallTarget() : _buildWebButton(),
+              // --- NEW: Animated Switcher to swap between standard icons and AM/PM scroller ---
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                child: widget.isAlarmRinging
+                    ? _buildSnoozeButton(key: const ValueKey('snooze'))
+                    : widget.isAlarmMode 
+                        ? _buildAmPmScroller(key: const ValueKey('ampm'))
+                        : (widget.isDragging ? _buildUninstallTarget(key: const ValueKey('uninstall')) : _buildWebButton(key: const ValueKey('web'))),
+              ),
             ),
           ),
         ),
@@ -546,7 +619,8 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
                     ],
                   );
                 },
-                child: (_showForecast && !widget.isDragging)
+                // --- NEW: Override with Day Scroller if Alarm Mode is active ---
+                child: (_showForecast && !widget.isDragging && !widget.isAlarmMode && !widget.isAlarmRinging)
                     ? TapRegion(
                         key: const ValueKey('forecast_widget'),
                         onTapOutside: (event) {
@@ -574,12 +648,16 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
                         ),
                       )
                     : SizedBox(
-                        key: const ValueKey('left_circle'),
+                        key: ValueKey('left_circle_${widget.isDragging}_${widget.isAlarmMode}_${widget.isAlarmRinging}'),
                         width: 60.0,
                         height: 60.0,
                         child: Material(
                           color: Colors.transparent,
-                          child: widget.isDragging ? _buildRemoveTarget() : _buildWeatherButton(),
+                          child: widget.isAlarmRinging
+                              ? _buildCancelButton(key: const ValueKey('cancel'))
+                              : widget.isAlarmMode 
+                                  ? _buildDayScroller(key: const ValueKey('day'))
+                                  : (widget.isDragging ? _buildRemoveTarget(key: const ValueKey('remove')) : _buildWeatherButton(key: const ValueKey('weather'))),
                         ),
                       ),
               ),
@@ -593,7 +671,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final double screenWidth = MediaQuery.of(context).size.width;
-    final double maxWidth = screenWidth - 80.0; // 40px padding on left and right
+    final double maxWidth = screenWidth - 80.0;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(40.0, 0, 40.0, 40.0),
@@ -603,38 +681,34 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
           alignment: Alignment.bottomLeft,
           clipBehavior: Clip.none,
           children: [
-            // Right Circle (Web / Uninstall Target)
             Align(
               alignment: Alignment.bottomRight,
               child: AnimatedOpacity(
-                // Matching the fade out perfectly with the new morph duration
-                opacity: (_showForecast && !widget.isDragging) ? 0.0 : 1.0,
+                opacity: (_showForecast && !widget.isDragging && !widget.isAlarmMode && !widget.isAlarmRinging) ? 0.0 : 1.0,
                 duration: const Duration(milliseconds: 350), 
                 child: IgnorePointer(
-                  ignoring: (_showForecast && !widget.isDragging),
+                  ignoring: (_showForecast && !widget.isDragging && !widget.isAlarmMode && !widget.isAlarmRinging),
                   child: _buildRightGlassCircle(),
                 ),
               ),
             ),
 
-            // --- NEW: Dynamic Pill injected perfectly in the center! ---
             Align(
               alignment: Alignment.bottomCenter,
               child: AnimatedOpacity(
-                // Fade out the pill if the weather expands over it
-                opacity: (_showForecast && !widget.isDragging) ? 0.0 : 1.0,
+                opacity: (_showForecast && !widget.isDragging && !widget.isAlarmMode && !widget.isAlarmRinging) ? 0.0 : 1.0,
                 duration: const Duration(milliseconds: 350),
                 child: IgnorePointer(
-                  ignoring: (_showForecast && !widget.isDragging),
+                  ignoring: (_showForecast && !widget.isDragging && !widget.isAlarmMode && !widget.isAlarmRinging),
                   child: SizedBox(
-                    height: 60, // Matches the height of the left/right buttons to perfectly vertical center
+                    height: 60,
                     child: Center(
                       child: AnimatedSwitcher(
                         duration: const Duration(milliseconds: 300),
                         transitionBuilder: (child, animation) {
                           return SlideTransition(
                             position: Tween<Offset>(
-                              begin: const Offset(0, 0.5), // Gently slides up from below
+                              begin: const Offset(0, 0.5),
                               end: Offset.zero,
                             ).animate(CurvedAnimation(
                               parent: animation, 
@@ -659,7 +733,6 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
               ),
             ),
 
-            // Left Area (Weather Circle / Remove Target / Forecast Expanded Widget)
             _buildLeftGlassArea(context, maxWidth),
           ],
         ),
