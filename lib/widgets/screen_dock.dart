@@ -21,8 +21,8 @@ class ScreenDock extends StatefulWidget {
   final bool isStopwatchRunning; 
   final bool isTimerMode; 
   final bool isTimerRunning; 
-  final bool isCreatingTimer; // NEW
-  final bool hasSelectedTimer; // NEW
+  final bool isCreatingTimer; 
+  final bool hasSelectedTimer; 
   final String? initialAmPm; 
   final String? initialDay; 
   final void Function(AppInfo)? onRemove;
@@ -612,9 +612,8 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
     );
   }
 
-  // --- NEW: Timer Dock Buttons ---
+  // --- Timer Dock Buttons ---
   Widget _buildTimerPlayPauseButton({Key? key}) {
-    // We only want to let them hit Play if they aren't actively creating a new timer and have one selected
     bool canPlay = !widget.isCreatingTimer && widget.hasSelectedTimer;
     return InkWell(
       key: key,
@@ -631,7 +630,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
   }
 
   Widget _buildTimerStopButton({Key? key}) {
-    bool canStop = !widget.isCreatingTimer && (widget.isTimerRunning || widget.hasSelectedTimer);
+    bool canStop = !widget.isCreatingTimer && widget.hasSelectedTimer;
     return InkWell(
       key: key,
       onTap: canStop ? widget.onTimerStop : null,
@@ -669,7 +668,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
                 duration: const Duration(milliseconds: 300),
                 child: widget.isAlarmRinging
                     ? _buildSnoozeButton(key: const ValueKey('snooze'))
-                    : widget.isTimerMode // Evaluates timer mode & state
+                    : widget.isTimerMode 
                         ? _buildTimerStopButton(key: const ValueKey('timer_stop'))
                         : widget.isStopwatchMode
                             ? _buildLapButton(key: const ValueKey('lap'))
@@ -778,7 +777,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
                           color: Colors.transparent,
                           child: widget.isAlarmRinging
                               ? _buildCancelButton(key: const ValueKey('cancel'))
-                              : widget.isTimerMode // Evaluates timer mode & state
+                              : widget.isTimerMode 
                                   ? _buildTimerPlayPauseButton(key: const ValueKey('timer_play'))
                                   : widget.isStopwatchMode 
                                       ? _buildStopPlayButton(key: const ValueKey('stop_play'))

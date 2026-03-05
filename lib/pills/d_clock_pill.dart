@@ -13,11 +13,12 @@ class DClockPill extends StatelessWidget {
   final List<String> stopwatchLaps; 
   
   final bool isTimerMode; 
-  final bool isTimerRunning;
   final bool isViewingTimers;
   final bool isCreatingTimer;
   final String timerTime;
-  final List<int> savedTimers;
+  
+  final List<String> savedTimersTimes;
+  final List<bool> savedTimersRunning;
   final int? selectedTimerIndex;
   
   final List<String> activeAlarms;
@@ -51,11 +52,11 @@ class DClockPill extends StatelessWidget {
     this.stopwatchTime = "00:00.00",
     this.stopwatchLaps = const [],
     this.isTimerMode = false,
-    this.isTimerRunning = false,
     this.isViewingTimers = false,
     this.isCreatingTimer = false,
     this.timerTime = "00:00",
-    this.savedTimers = const [],
+    this.savedTimersTimes = const [],
+    this.savedTimersRunning = const [],
     this.selectedTimerIndex,
     this.activeAlarms = const [],
     this.selectedIndex,
@@ -76,17 +77,6 @@ class DClockPill extends StatelessWidget {
     this.onTimerSecondChanged,
   });
 
-  String _formatTimerTime(int totalSeconds) {
-    int h = totalSeconds ~/ 3600;
-    int m = (totalSeconds % 3600) ~/ 60;
-    int s = totalSeconds % 60;
-    if (h > 0) {
-      return "${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}";
-    } else {
-      return "${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}";
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return AnimatedSwitcher(
@@ -103,12 +93,12 @@ class DClockPill extends StatelessWidget {
       child: isAlarmRinging 
           ? _buildRingingState(key: const ValueKey('ringing'))
           : isTimerMode
-              ? (isTimerRunning
-                  ? _buildTimerRunningState(key: const ValueKey('timer_running'))
-                  : isCreatingTimer
-                      ? _buildTimerScrollers(key: const ValueKey('timer_scrollers'))
-                      : isViewingTimers
-                          ? _buildTimersList(key: const ValueKey('timers_list'))
+              ? (isCreatingTimer
+                  ? _buildTimerScrollers(key: const ValueKey('timer_scrollers'))
+                  : isViewingTimers
+                      ? _buildTimersList(key: const ValueKey('timers_list'))
+                      : selectedTimerIndex != null
+                          ? _buildTimerRunningState(key: const ValueKey('timer_running'))
                           : _buildActionButtons(key: const ValueKey('buttons')))
               : isStopwatchMode
                   ? _buildStopwatchState(key: const ValueKey('stopwatch'))
@@ -142,7 +132,7 @@ class DClockPill extends StatelessWidget {
     );
   }
 
-  // --- Timer Running View ---
+  // --- Timer Running (and Paused) View ---
   Widget _buildTimerRunningState({Key? key}) {
     return Container(
       key: key,
@@ -168,16 +158,18 @@ class DClockPill extends StatelessWidget {
       key: key,
       duration: const Duration(milliseconds: 300),
       width: 160, 
-      height: savedTimers.isEmpty ? 60 : (savedTimers.length * 56.0).clamp(60.0, 168.0),
-      child: savedTimers.isEmpty
+      height: savedTimersTimes.isEmpty ? 60 : (savedTimersTimes.length * 56.0).clamp(60.0, 168.0),
+      child: savedTimersTimes.isEmpty
           ? const Center(
               child: Text("No saved timers", style: TextStyle(color: Colors.white70)),
             )
           : ListView.builder(
               padding: const EdgeInsets.symmetric(vertical: 4.0),
-              itemCount: savedTimers.length,
+              itemCount: savedTimersTimes.length,
               itemBuilder: (context, index) {
                 final isSelected = selectedTimerIndex == index;
+                final isRunning = savedTimersRunning[index];
+                
                 return GestureDetector(
                   onTap: () => onSelectTimer?.call(index),
                   child: AnimatedContainer(
@@ -198,7 +190,7 @@ class DClockPill extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          _formatTimerTime(savedTimers[index]),
+                          savedTimersTimes[index], // The live ticking value!
                           style: TextStyle(
                             color: isSelected ? Colors.orangeAccent : Colors.white, 
                             fontSize: 18, 
@@ -206,8 +198,9 @@ class DClockPill extends StatelessWidget {
                             fontFeatures: const [FontFeature.tabularFigures()]
                           ),
                         ),
+                        // Shows active play/pause indicators
                         Icon(
-                          Icons.hourglass_bottom, 
+                          isRunning ? Icons.play_circle_fill : Icons.pause_circle_filled, 
                           color: isSelected ? Colors.orangeAccent : Colors.white70, 
                           size: 20
                         ),

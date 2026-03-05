@@ -15,6 +15,18 @@ import '../widgets/clock_capsule.dart';
 import '../pills/dynamic_pill.dart';
 import '../pills/d_clock_pill.dart';
 
+// --- NEW: AppTimer Class for Multi-Timer Support ---
+class AppTimer {
+  int totalSeconds;
+  int remainingSeconds;
+  bool isRunning;
+  DateTime? endTime;
+
+  AppTimer({required this.totalSeconds}) 
+    : remainingSeconds = totalSeconds, 
+      isRunning = false;
+}
+
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
@@ -61,14 +73,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   String _stopwatchTime = "00:00.00";
   List<String> _stopwatchLaps = [];
 
-  // --- NEW: Advanced Timer States ---
+  // --- Advanced Timer States ---
   bool _isTimerMode = false;
-  bool _isTimerRunning = false;
   bool _isViewingTimers = false;
   bool _isCreatingTimer = false;
-  List<int> _savedTimers = [300]; // Stores saved timers in seconds (default 5 min)
+  
+  List<AppTimer> _appTimers = []; 
   int? _selectedTimerIndex;
-  int _currentTimerSeconds = 0; // The actively ticking timer
   Timer? _countdownTimer;
 
   int _scrolledTimerHour = 0;
@@ -131,6 +142,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _checkAppChangesOnResume();
+      _syncTimersOnResume(); // Catches up math for timers ticking in the background
     }
   }
 
@@ -267,7 +279,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
-  // --- NEW: Advanced Timer Logic ---
+  // --- Advanced Background Timer Logic ---
   String _formatTimerTime(int totalSeconds) {
     int h = totalSeconds ~/ 3600;
     int m = (totalSeconds % 3600) ~/ 60;
@@ -279,56 +291,79 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
-  void _startCountdownTimer() {
-    _countdownTimer?.cancel();
-    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (_isTimerRunning && _currentTimerSeconds > 0) {
-        setState(() => _currentTimerSeconds--);
-      } else if (_currentTimerSeconds <= 0) {
-        _stopTimer();
-        // Trigger Ringing State on Finish
-        setState(() {
-          _isAlarmRinging = true;
-          _showPill = true;
-          _isTimerMode = false;
-        });
-        _startAlarmSound();
+  void _tickTimers() {
+    bool anyRunning = false;
+    bool triggerRing = false;
+    final now = DateTime.now();
+    
+    for (var t in _appTimers) {
+      if (t.isRunning && t.endTime != null) {
+        anyRunning = true;
+        t.remainingSeconds = t.endTime!.difference(now).inSeconds;
+        
+        if (t.remainingSeconds <= 0) {
+          t.remainingSeconds = 0;
+          t.isRunning = false;
+          t.endTime = null;
+          triggerRing = true;
+        }
+      }
+    }
+
+    if (triggerRing) {
+      setState(() {
+        _isAlarmRinging = true;
+        _showPill = true;
+        _isTimerMode = false;
+      });
+      _startAlarmSound();
+    }
+
+    if (mounted) setState(() {});
+
+    if (!anyRunning) {
+      _countdownTimer?.cancel();
+      _countdownTimer = null;
+    }
+  }
+
+  void _syncTimersOnResume() {
+    // Fast-forwards the math on all active timers in case the app went to sleep
+    _tickTimers();
+    if (_appTimers.any((t) => t.isRunning) && (_countdownTimer == null || !_countdownTimer!.isActive)) {
+      _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) => _tickTimers());
+    }
+  }
+
+  void _toggleTimer() {
+    if (_selectedTimerIndex == null || _appTimers.isEmpty) return;
+    
+    var t = _appTimers[_selectedTimerIndex!];
+    setState(() {
+      if (t.isRunning) {
+        t.isRunning = false;
+        t.endTime = null; // Pauses
+      } else {
+        if (t.remainingSeconds <= 0) t.remainingSeconds = t.totalSeconds;
+        t.isRunning = true;
+        t.endTime = DateTime.now().add(Duration(seconds: t.remainingSeconds));
+        
+        if (_countdownTimer == null || !_countdownTimer!.isActive) {
+          _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) => _tickTimers());
+        }
       }
     });
   }
 
-  void _toggleTimer() {
-    if (!_isTimerRunning) {
-      if (_selectedTimerIndex != null) {
-        // Starts the selected timer
-        if (_currentTimerSeconds <= 0) {
-           _currentTimerSeconds = _savedTimers[_selectedTimerIndex!];
-        }
-        setState(() {
-          _isTimerRunning = true;
-          _startCountdownTimer();
-        });
-      }
-    } else {
-      // Pause
-      setState(() {
-        _isTimerRunning = false;
-        _countdownTimer?.cancel();
-      });
-    }
-  }
-
   void _stopTimer() {
+    if (_selectedTimerIndex == null || _appTimers.isEmpty) return;
+    
     setState(() {
-      _isTimerRunning = false;
-      _countdownTimer?.cancel();
-      // Resets back to selected timer max length
-      if (_selectedTimerIndex != null) {
-        _currentTimerSeconds = _savedTimers[_selectedTimerIndex!];
-      } else {
-        _currentTimerSeconds = 0;
-      }
-      _isViewingTimers = true; // Flips back to list view naturally
+      var t = _appTimers[_selectedTimerIndex!];
+      t.isRunning = false;
+      t.endTime = null;
+      t.remainingSeconds = t.totalSeconds; // Fully Resets 
+      _isViewingTimers = true; // Naturally falls back to list view
     });
   }
 
@@ -469,13 +504,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       _stopwatchTime = "00:00.00";
       _stopwatchLaps.clear();
 
-      // TIMER CLEANUP
+      // TIMER UI CLEANUP (But keeps running in background!)
       _isTimerMode = false;
-      _isTimerRunning = false;
       _isViewingTimers = false;
       _isCreatingTimer = false;
-      _countdownTimer?.cancel();
-      _currentTimerSeconds = 0;
     });
   }
 
@@ -543,12 +575,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     );
   }
 
-  // --- NEW: View Timer Actions Row ---
+  // --- View Timer Actions Row ---
   Widget _buildTimerTopActionButtons() {
-    if (_isTimerRunning) return const SizedBox.shrink(); // Hide while running
-
     if (_isCreatingTimer) {
-      // Editing Mode - Show List View & Checkmark Save
+      // Editing Mode - Show List View (cancel) & Checkmark (Save)
       return Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -576,12 +606,24 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               setState(() {
                 int totalSecs = _scrolledTimerHour * 3600 + _scrolledTimerMinute * 60 + _scrolledTimerSecond;
                 if (totalSecs > 0) {
-                  _savedTimers.add(totalSecs);
-                  _selectedTimerIndex = _savedTimers.length - 1;
-                  _currentTimerSeconds = totalSecs;
+                  var newT = AppTimer(totalSeconds: totalSecs);
+                  newT.isRunning = true;
+                  newT.endTime = DateTime.now().add(Duration(seconds: totalSecs));
+                  
+                  _appTimers.add(newT);
+                  _selectedTimerIndex = _appTimers.length - 1;
+                  
+                  // Auto-start the new timer!
+                  _isCreatingTimer = false;
+                  _isViewingTimers = false; // Show big running view
+                  
+                  if (_countdownTimer == null || !_countdownTimer!.isActive) {
+                    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) => _tickTimers());
+                  }
+                } else {
+                  _isCreatingTimer = false;
+                  _isViewingTimers = true;
                 }
-                _isCreatingTimer = false;
-                _isViewingTimers = true;
               });
             },
             child: Container(
@@ -596,6 +638,30 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           ),
         ],
       );
+    } else if (!_isViewingTimers && _selectedTimerIndex != null) {
+      // Big Active View - Show List button to safely go back to the multiple timers list
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          GestureDetector(
+            onTap: () {
+              setState(() {
+                _isViewingTimers = true;
+              });
+            },
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white.withOpacity(0.3), width: 1),
+                boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 4))],
+              ),
+              child: const Icon(Icons.format_list_bulleted, color: Colors.white, size: 24),
+            ),
+          ),
+        ],
+      );
     } else {
       // List Mode - Show Delete (-) and Add (+)
       return Row(
@@ -603,13 +669,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         children: [
           GestureDetector(
             onTap: () {
-              if (_selectedTimerIndex != null && _savedTimers.isNotEmpty) {
+              if (_selectedTimerIndex != null && _appTimers.isNotEmpty) {
                 setState(() {
-                  _savedTimers.removeAt(_selectedTimerIndex!);
-                  _selectedTimerIndex = _savedTimers.isNotEmpty ? 0 : null;
-                  if (_selectedTimerIndex != null) {
-                    _currentTimerSeconds = _savedTimers[_selectedTimerIndex!];
-                  }
+                  _appTimers.removeAt(_selectedTimerIndex!);
+                  _selectedTimerIndex = _appTimers.isNotEmpty ? 0 : null;
                 });
               }
             },
@@ -792,7 +855,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                             isStopwatchMode: _isStopwatchMode,
                                             isStopwatchRunning: _stopwatch.isRunning,
                                             isTimerMode: _isTimerMode,
-                                            isTimerRunning: _isTimerRunning,
+                                            // Actively pass the dynamic running state of our selected timer down to the Dock
+                                            isTimerRunning: _selectedTimerIndex != null && _appTimers.isNotEmpty 
+                                                ? _appTimers[_selectedTimerIndex!].isRunning 
+                                                : false,
                                             isCreatingTimer: _isCreatingTimer,
                                             hasSelectedTimer: _selectedTimerIndex != null,
                                             initialAmPm: _scrolledAmPm, 
@@ -853,8 +919,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                                       isCreatingTimer: _isCreatingTimer,
                                                       stopwatchTime: _stopwatchTime,
                                                       stopwatchLaps: _stopwatchLaps,
-                                                      timerTime: _formatTimerTime(_currentTimerSeconds),
-                                                      savedTimers: _savedTimers,
+                                                      timerTime: _selectedTimerIndex != null && _appTimers.isNotEmpty 
+                                                          ? _formatTimerTime(_appTimers[_selectedTimerIndex!].remainingSeconds) 
+                                                          : "00:00",
+                                                      savedTimersTimes: _appTimers.map((t) => _formatTimerTime(t.remainingSeconds)).toList(),
+                                                      savedTimersRunning: _appTimers.map((t) => t.isRunning).toList(),
                                                       selectedTimerIndex: _selectedTimerIndex,
                                                       activeAlarms: _activeAlarms,
                                                       selectedIndex: _selectedAlarmIndex, 
@@ -875,7 +944,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                                       onSelectTimer: (index) {
                                                         setState(() {
                                                           _selectedTimerIndex = index;
-                                                          _currentTimerSeconds = _savedTimers[index];
+                                                          _isViewingTimers = false; // Jump to big view immediately
                                                         });
                                                       },
                                                       onAlarmTapped: () => setState(() {
@@ -902,12 +971,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                                         _isStopwatchMode = false;
                                                         _isAlarmMode = false;
                                                         _isViewingAlarms = false;
-                                                        _isViewingTimers = true; // Flips to List by default
+                                                        _isViewingTimers = true; 
                                                         _isCreatingTimer = false;
                                                         _selectedAlarmIndex = null;
-                                                        if (_savedTimers.isNotEmpty && _selectedTimerIndex == null) {
+                                                        if (_appTimers.isNotEmpty && _selectedTimerIndex == null) {
                                                           _selectedTimerIndex = 0;
-                                                          _currentTimerSeconds = _savedTimers[0];
                                                         }
                                                       }),
                                                       onHourChanged: (val) => _scrolledHour = val,
