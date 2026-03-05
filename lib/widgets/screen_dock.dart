@@ -17,16 +17,26 @@ class ScreenDock extends StatefulWidget {
   final bool isAlarmRinging; 
   final bool isViewingAlarms; 
   final bool hasSelectedAlarm; 
-  final String? initialAmPm; // Added to support Edit mode auto-setting
-  final String? initialDay; // Added to support Edit mode auto-setting
+  final bool isStopwatchMode; 
+  final bool isStopwatchRunning; 
+  final bool isTimerMode; 
+  final bool isTimerRunning; 
+  final bool isCreatingTimer; // NEW
+  final bool hasSelectedTimer; // NEW
+  final String? initialAmPm; 
+  final String? initialDay; 
   final void Function(AppInfo)? onRemove;
   final void Function(AppInfo)? onUninstall;
   final VoidCallback? onSnooze;
   final VoidCallback? onCancel;
   final VoidCallback? onEditAlarm;
   final VoidCallback? onDeleteAlarm;
+  final VoidCallback? onStopwatchToggle; 
+  final VoidCallback? onStopwatchLap; 
+  final VoidCallback? onTimerToggle; 
+  final VoidCallback? onTimerStop; 
   final ValueChanged<String>? onAmPmChanged;
-  final ValueChanged<String>? onDayChanged; // Track day changes
+  final ValueChanged<String>? onDayChanged; 
   
   final Widget? activePill;
 
@@ -37,6 +47,12 @@ class ScreenDock extends StatefulWidget {
     this.isAlarmRinging = false,
     this.isViewingAlarms = false,
     this.hasSelectedAlarm = false,
+    this.isStopwatchMode = false,
+    this.isStopwatchRunning = false,
+    this.isTimerMode = false,
+    this.isTimerRunning = false,
+    this.isCreatingTimer = false,
+    this.hasSelectedTimer = false,
     this.initialAmPm,
     this.initialDay,
     this.onRemove,
@@ -45,6 +61,10 @@ class ScreenDock extends StatefulWidget {
     this.onCancel,
     this.onEditAlarm,
     this.onDeleteAlarm,
+    this.onStopwatchToggle,
+    this.onStopwatchLap,
+    this.onTimerToggle,
+    this.onTimerStop,
     this.onAmPmChanged,
     this.onDayChanged,
     this.activePill,
@@ -59,16 +79,13 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
   int? _temperature;
   int? _weatherCode;
   
-  // Data lists for the widget
   List<DailyForecastData> _forecastData = [];
   List<HourlyForecastData> _hourlyData = [];
   
-  // Current Weather Info passed to Widget
   String _currentDescription = "Unknown";
   IconData _currentIcon = CupertinoIcons.question;
   Color _currentIconColor = Colors.white;
 
-  // Detailed Data passed to Widget
   String _feelsLike = "--°C";
   String _wind = "-- mph";
   String _precipitation = "--%";
@@ -106,8 +123,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
   @override
   void didUpdateWidget(covariant ScreenDock oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Force weather widget to close if alarm mode opens
-    if (widget.isAlarmMode && _showForecast) {
+    if ((widget.isAlarmMode || widget.isStopwatchMode || widget.isTimerMode) && _showForecast) {
       setState(() => _showForecast = false);
     }
   }
@@ -444,7 +460,6 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
       itemExtent: 26,
       physics: const FixedExtentScrollPhysics(),
       overAndUnderCenterOpacity: 0.3,
-      // Modulo prevents out-of-bounds error on infinite loop lists
       onSelectedItemChanged: (index) => widget.onDayChanged?.call(days[index % 7]),
       childDelegate: ListWheelChildLoopingListDelegate(
         children: days.map((e) => Center(
@@ -566,6 +581,67 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
     );
   }
 
+  // --- Stopwatch Buttons ---
+  Widget _buildStopPlayButton({Key? key}) {
+    return InkWell(
+      key: key,
+      onTap: widget.onStopwatchToggle,
+      borderRadius: BorderRadius.circular(30),
+      child: Center(
+        child: Icon(
+          widget.isStopwatchRunning ? Icons.stop : Icons.play_arrow, 
+          color: widget.isStopwatchRunning ? Colors.redAccent : Colors.greenAccent, 
+          size: 28
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLapButton({Key? key}) {
+    return InkWell(
+      key: key,
+      onTap: widget.isStopwatchRunning ? widget.onStopwatchLap : null,
+      borderRadius: BorderRadius.circular(30),
+      child: Center(
+        child: Icon(
+          Icons.flag, 
+          color: widget.isStopwatchRunning ? Colors.white : Colors.white30, 
+          size: 28
+        ),
+      ),
+    );
+  }
+
+  // --- NEW: Timer Dock Buttons ---
+  Widget _buildTimerPlayPauseButton({Key? key}) {
+    // We only want to let them hit Play if they aren't actively creating a new timer and have one selected
+    bool canPlay = !widget.isCreatingTimer && widget.hasSelectedTimer;
+    return InkWell(
+      key: key,
+      onTap: canPlay ? widget.onTimerToggle : null,
+      borderRadius: BorderRadius.circular(30),
+      child: Center(
+        child: Icon(
+          widget.isTimerRunning ? Icons.pause : Icons.play_arrow, 
+          color: widget.isTimerRunning ? Colors.orangeAccent : (canPlay ? Colors.greenAccent : Colors.white30), 
+          size: 28
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTimerStopButton({Key? key}) {
+    bool canStop = !widget.isCreatingTimer && (widget.isTimerRunning || widget.hasSelectedTimer);
+    return InkWell(
+      key: key,
+      onTap: canStop ? widget.onTimerStop : null,
+      borderRadius: BorderRadius.circular(30),
+      child: Center(
+        child: Icon(Icons.stop, color: canStop ? Colors.redAccent : Colors.white30, size: 28),
+      ),
+    );
+  }
+
   Widget _buildRightGlassCircle() {
     return Container(
       width: 60,
@@ -593,11 +669,15 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
                 duration: const Duration(milliseconds: 300),
                 child: widget.isAlarmRinging
                     ? _buildSnoozeButton(key: const ValueKey('snooze'))
-                    : widget.isViewingAlarms
-                        ? _buildDeleteAlarmButton(key: const ValueKey('delete_alarm'))
-                        : widget.isAlarmMode 
-                            ? _buildAmPmScroller(key: const ValueKey('ampm'))
-                            : (widget.isDragging ? _buildUninstallTarget(key: const ValueKey('uninstall')) : _buildWebButton(key: const ValueKey('web'))),
+                    : widget.isTimerMode // Evaluates timer mode & state
+                        ? _buildTimerStopButton(key: const ValueKey('timer_stop'))
+                        : widget.isStopwatchMode
+                            ? _buildLapButton(key: const ValueKey('lap'))
+                            : widget.isViewingAlarms
+                                ? _buildDeleteAlarmButton(key: const ValueKey('delete_alarm'))
+                                : widget.isAlarmMode 
+                                    ? _buildAmPmScroller(key: const ValueKey('ampm'))
+                                    : (widget.isDragging ? _buildUninstallTarget(key: const ValueKey('uninstall')) : _buildWebButton(key: const ValueKey('web'))),
               ),
             ),
           ),
@@ -663,7 +743,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
                     ],
                   );
                 },
-                child: (_showForecast && !widget.isDragging && !widget.isAlarmMode && !widget.isAlarmRinging && !widget.isViewingAlarms)
+                child: (_showForecast && !widget.isDragging && !widget.isAlarmMode && !widget.isStopwatchMode && !widget.isTimerMode && !widget.isAlarmRinging && !widget.isViewingAlarms)
                     ? TapRegion(
                         key: const ValueKey('forecast_widget'),
                         onTapOutside: (event) {
@@ -691,18 +771,22 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
                         ),
                       )
                     : SizedBox(
-                        key: ValueKey('left_circle_${widget.isDragging}_${widget.isAlarmMode}_${widget.isAlarmRinging}_${widget.isViewingAlarms}'),
+                        key: ValueKey('left_circle_${widget.isDragging}_${widget.isAlarmMode}_${widget.isStopwatchMode}_${widget.isTimerMode}_${widget.isCreatingTimer}_${widget.isAlarmRinging}_${widget.isViewingAlarms}'),
                         width: 60.0,
                         height: 60.0,
                         child: Material(
                           color: Colors.transparent,
                           child: widget.isAlarmRinging
                               ? _buildCancelButton(key: const ValueKey('cancel'))
-                              : widget.isViewingAlarms
-                                  ? _buildEditAlarmButton(key: const ValueKey('edit_alarm'))
-                                  : widget.isAlarmMode 
-                                      ? _buildDayScroller(key: const ValueKey('day'))
-                                      : (widget.isDragging ? _buildRemoveTarget(key: const ValueKey('remove')) : _buildWeatherButton(key: const ValueKey('weather'))),
+                              : widget.isTimerMode // Evaluates timer mode & state
+                                  ? _buildTimerPlayPauseButton(key: const ValueKey('timer_play'))
+                                  : widget.isStopwatchMode 
+                                      ? _buildStopPlayButton(key: const ValueKey('stop_play'))
+                                      : widget.isViewingAlarms
+                                          ? _buildEditAlarmButton(key: const ValueKey('edit_alarm'))
+                                          : widget.isAlarmMode 
+                                              ? _buildDayScroller(key: const ValueKey('day'))
+                                              : (widget.isDragging ? _buildRemoveTarget(key: const ValueKey('remove')) : _buildWeatherButton(key: const ValueKey('weather'))),
                         ),
                       ),
               ),
@@ -718,6 +802,8 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
     final double screenWidth = MediaQuery.of(context).size.width;
     final double maxWidth = screenWidth - 80.0;
 
+    final bool hideSideButtons = (_showForecast && !widget.isDragging && !widget.isAlarmMode && !widget.isStopwatchMode && !widget.isTimerMode && !widget.isAlarmRinging && !widget.isViewingAlarms);
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(40.0, 0, 40.0, 40.0),
       child: SizedBox(
@@ -726,41 +812,40 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
           alignment: Alignment.bottomLeft,
           clipBehavior: Clip.none,
           children: [
-            // Middle Pill - Reordered to render UNDER the side circles during swipe out!
             Align(
               alignment: Alignment.bottomCenter,
               child: AnimatedOpacity(
-                opacity: (_showForecast && !widget.isDragging && !widget.isAlarmMode && !widget.isAlarmRinging && !widget.isViewingAlarms) ? 0.0 : 1.0,
+                opacity: hideSideButtons ? 0.0 : 1.0,
                 duration: const Duration(milliseconds: 350),
                 child: IgnorePointer(
-                  ignoring: (_showForecast && !widget.isDragging && !widget.isAlarmMode && !widget.isAlarmRinging && !widget.isViewingAlarms),
-                  child: SizedBox(
-                    height: 60,
-                    child: Center(
-                      child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 300),
-                        transitionBuilder: (child, animation) {
-                          return SlideTransition(
-                            position: Tween<Offset>(
-                              begin: const Offset(0, 0.5),
-                              end: Offset.zero,
-                            ).animate(CurvedAnimation(
-                              parent: animation, 
-                              curve: Curves.easeOutQuart
-                            )),
-                            child: FadeTransition(
-                              opacity: animation,
-                              child: child,
-                            ),
-                          );
-                        },
-                        child: widget.activePill != null
-                            ? KeyedSubtree(
-                                key: const ValueKey('active_pill'),
-                                child: widget.activePill!,
-                              )
-                            : const SizedBox.shrink(key: ValueKey('empty_pill')),
-                      ),
+                  ignoring: hideSideButtons,
+                  child: AnimatedSize(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeOutQuart,
+                    alignment: Alignment.bottomCenter,
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 300),
+                      transitionBuilder: (child, animation) {
+                        return SlideTransition(
+                          position: Tween<Offset>(
+                            begin: const Offset(0, 0.5),
+                            end: Offset.zero,
+                          ).animate(CurvedAnimation(
+                            parent: animation, 
+                            curve: Curves.easeOutQuart
+                          )),
+                          child: FadeTransition(
+                            opacity: animation,
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: widget.activePill != null
+                          ? KeyedSubtree(
+                              key: const ValueKey('active_pill'),
+                              child: widget.activePill!,
+                            )
+                          : const SizedBox.shrink(key: ValueKey('empty_pill')),
                     ),
                   ),
                 ),
@@ -771,10 +856,10 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
             Align(
               alignment: Alignment.bottomRight,
               child: AnimatedOpacity(
-                opacity: (_showForecast && !widget.isDragging && !widget.isAlarmMode && !widget.isAlarmRinging && !widget.isViewingAlarms) ? 0.0 : 1.0,
+                opacity: hideSideButtons ? 0.0 : 1.0,
                 duration: const Duration(milliseconds: 350), 
                 child: IgnorePointer(
-                  ignoring: (_showForecast && !widget.isDragging && !widget.isAlarmMode && !widget.isAlarmRinging && !widget.isViewingAlarms),
+                  ignoring: hideSideButtons,
                   child: _buildRightGlassCircle(),
                 ),
               ),
