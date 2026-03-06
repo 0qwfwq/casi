@@ -138,28 +138,34 @@ class DClockPill extends StatelessWidget {
     );
   }
 
-// --- Ringing State (Urgent Red Glow) ---
-Widget _buildRingingState({Key? key}) {
-  return Container(
-    key: key,
-    width: _fixedPillWidth,
-    height: 60, 
-    alignment: Alignment.center,
-    decoration: BoxDecoration(
-      color: Colors.redAccent.withOpacity(0.2),
-      borderRadius: BorderRadius.circular(30),
-      border: Border.all(color: Colors.redAccent.withOpacity(0.8), width: 1.5),
-      boxShadow: [
-        BoxShadow(color: Colors.redAccent.withOpacity(0.4), blurRadius: 12, spreadRadius: 2)
-      ],
-    ),
-    child: const Icon(
-      Icons.notifications_active, 
-      color: Colors.white, 
-      size: 24,
-    ),
-  );
-}
+  // --- Ringing State (Urgent Red Glow) ---
+  Widget _buildRingingState({Key? key}) {
+    return Container(
+      key: key,
+      width: _fixedPillWidth,
+      height: 60, 
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: Colors.redAccent.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: Colors.redAccent.withOpacity(0.8), width: 1.5),
+        boxShadow: [
+          BoxShadow(color: Colors.redAccent.withOpacity(0.4), blurRadius: 12, spreadRadius: 2)
+        ],
+      ),
+      child: const Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.notifications_active, color: Colors.white, size: 24),
+          SizedBox(width: 8),
+          Text(
+            "Wake Up!",
+            style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+        ],
+      ),
+    );
+  }
 
   // --- Timer Running (and Paused) View ---
   Widget _buildTimerRunningState({Key? key}) {
@@ -207,11 +213,11 @@ Widget _buildRingingState({Key? key}) {
                 tooltip: "View Timers",
               ),
               IconButton(
-                icon: const Icon(Icons.stop_circle, color: Colors.redAccent, size: 26),
+                icon: const Icon(Icons.delete, color: Colors.redAccent, size: 26),
                 onPressed: () {
                   if (selectedTimerIndex != null) onDeleteTimer?.call(selectedTimerIndex!);
                 },
-                tooltip: "Stop Timer",
+                tooltip: "Delete Timer",
               ),
             ],
           ),
