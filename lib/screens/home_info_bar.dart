@@ -511,206 +511,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     });
   }
 
-  // --- View Alarms & Checkmark Action Row ---
-  Widget _buildAlarmTopActionButtons() {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        GestureDetector(
-          onTap: () {
-            setState(() {
-              _isViewingAlarms = !_isViewingAlarms;
-              _selectedAlarmIndex = null; 
-            });
-          },
-          child: Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: _isViewingAlarms ? Colors.white : Colors.white.withOpacity(0.2),
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white.withOpacity(0.3), width: 1),
-              boxShadow: const [
-                BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 4))
-              ],
-            ),
-            child: Icon(
-              Icons.format_list_bulleted, 
-              color: _isViewingAlarms ? Colors.black : Colors.white, 
-              size: 24
-            ),
-          ),
-        ),
-        
-        if (!_isViewingAlarms) ...[
-          const SizedBox(width: 12),
-          GestureDetector(
-            onTap: () {
-              setState(() {
-                String minStr = _scrolledMinute.toString().padLeft(2, '0');
-                String newAlarm = "$_scrolledDay $_scrolledHour:$minStr $_scrolledAmPm";
-                
-                if (!_activeAlarms.contains(newAlarm)) {
-                  _activeAlarms.add(newAlarm);
-                }
-                _isAlarmMode = false;
-                _isViewingAlarms = false;
-                _selectedAlarmIndex = null;
-                _showPill = false;
-              });
-            },
-            child: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.greenAccent.shade400,
-                shape: BoxShape.circle,
-                boxShadow: const [
-                  BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 4))
-                ],
-              ),
-              child: const Icon(Icons.check, color: Colors.black, size: 24),
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-
-  // --- View Timer Actions Row ---
-  Widget _buildTimerTopActionButtons() {
-    if (_isCreatingTimer) {
-      // Editing Mode - Show List View (cancel) & Checkmark (Save)
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          GestureDetector(
-            onTap: () {
-              setState(() {
-                _isCreatingTimer = false;
-                _isViewingTimers = true;
-              });
-            },
-            child: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.white.withOpacity(0.3), width: 1),
-                boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 4))],
-              ),
-              child: const Icon(Icons.format_list_bulleted, color: Colors.white, size: 24),
-            ),
-          ),
-          const SizedBox(width: 12),
-          GestureDetector(
-            onTap: () {
-              setState(() {
-                int totalSecs = _scrolledTimerHour * 3600 + _scrolledTimerMinute * 60 + _scrolledTimerSecond;
-                if (totalSecs > 0) {
-                  var newT = AppTimer(totalSeconds: totalSecs);
-                  newT.isRunning = true;
-                  newT.endTime = DateTime.now().add(Duration(seconds: totalSecs));
-                  
-                  _appTimers.add(newT);
-                  _selectedTimerIndex = _appTimers.length - 1;
-                  
-                  // Auto-start the new timer!
-                  _isCreatingTimer = false;
-                  _isViewingTimers = false; // Show big running view
-                  
-                  if (_countdownTimer == null || !_countdownTimer!.isActive) {
-                    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) => _tickTimers());
-                  }
-                } else {
-                  _isCreatingTimer = false;
-                  _isViewingTimers = true;
-                }
-              });
-            },
-            child: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.greenAccent.shade400,
-                shape: BoxShape.circle,
-                boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 4))],
-              ),
-              child: const Icon(Icons.check, color: Colors.black, size: 24),
-            ),
-          ),
-        ],
-      );
-    } else if (!_isViewingTimers && _selectedTimerIndex != null) {
-      // Big Active View - Show List button to safely go back to the multiple timers list
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          GestureDetector(
-            onTap: () {
-              setState(() {
-                _isViewingTimers = true;
-              });
-            },
-            child: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.white.withOpacity(0.3), width: 1),
-                boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 4))],
-              ),
-              child: const Icon(Icons.format_list_bulleted, color: Colors.white, size: 24),
-            ),
-          ),
-        ],
-      );
-    } else {
-      // List Mode - Show Delete (-) and Add (+)
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          GestureDetector(
-            onTap: () {
-              if (_selectedTimerIndex != null && _appTimers.isNotEmpty) {
-                setState(() {
-                  _appTimers.removeAt(_selectedTimerIndex!);
-                  _selectedTimerIndex = _appTimers.isNotEmpty ? 0 : null;
-                });
-              }
-            },
-            child: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.white.withOpacity(0.3), width: 1),
-                boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 4))],
-              ),
-              child: const Icon(Icons.remove, color: Colors.white, size: 24),
-            ),
-          ),
-          const SizedBox(width: 12),
-          GestureDetector(
-            onTap: () {
-              setState(() {
-                _isCreatingTimer = true;
-                _isViewingTimers = false;
-              });
-            },
-            child: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.white.withOpacity(0.3), width: 1),
-                boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 4))],
-              ),
-              child: const Icon(Icons.add, color: Colors.white, size: 24),
-            ),
-          ),
-        ],
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final double screenHeight = MediaQuery.of(context).size.height;
@@ -829,23 +629,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                             ),
                                           ),
                                           
-                                          AnimatedSwitcher(
-                                            duration: const Duration(milliseconds: 300),
-                                            child: _isAlarmMode 
-                                                ? Padding(
-                                                    key: const ValueKey('alarm_actions'),
-                                                    padding: const EdgeInsets.only(bottom: 16),
-                                                    child: _buildAlarmTopActionButtons(),
-                                                  )
-                                                : _isTimerMode
-                                                    ? Padding(
-                                                        key: const ValueKey('timer_actions'),
-                                                        padding: const EdgeInsets.only(bottom: 16),
-                                                        child: _buildTimerTopActionButtons(),
-                                                      )
-                                                    : const SizedBox.shrink(key: ValueKey('empty_actions')),
-                                          ),
-
                                           ScreenDock(
                                             isDragging: _isDragging,
                                             isAlarmMode: _isAlarmMode, 
@@ -855,7 +638,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                             isStopwatchMode: _isStopwatchMode,
                                             isStopwatchRunning: _stopwatch.isRunning,
                                             isTimerMode: _isTimerMode,
-                                            // Actively pass the dynamic running state of our selected timer down to the Dock
                                             isTimerRunning: _selectedTimerIndex != null && _appTimers.isNotEmpty 
                                                 ? _appTimers[_selectedTimerIndex!].isRunning 
                                                 : false,
@@ -932,6 +714,91 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                                       initialTimerHour: _scrolledTimerHour,
                                                       initialTimerMinute: _scrolledTimerMinute,
                                                       initialTimerSecond: _scrolledTimerSecond,
+                                                      
+                                                      // --- New Integrated Actions ---
+                                                      onViewAlarmsTapped: () => setState(() => _isViewingAlarms = true),
+                                                      onAddNewAlarmTapped: () => setState(() {
+                                                        _isViewingAlarms = false;
+                                                        _selectedAlarmIndex = null;
+                                                      }),
+                                                      onSaveAlarmTapped: () {
+                                                        setState(() {
+                                                          String minStr = _scrolledMinute.toString().padLeft(2, '0');
+                                                          String newAlarm = "$_scrolledDay $_scrolledHour:$minStr $_scrolledAmPm";
+                                                          if (!_activeAlarms.contains(newAlarm)) {
+                                                            _activeAlarms.add(newAlarm);
+                                                          }
+                                                          _isAlarmMode = false;
+                                                          _isViewingAlarms = false;
+                                                          _selectedAlarmIndex = null;
+                                                          _showPill = false;
+                                                        });
+                                                      },
+                                                      onDeleteAlarm: (index) {
+                                                        setState(() {
+                                                          _activeAlarms.removeAt(index);
+                                                          if (_selectedAlarmIndex == index) {
+                                                            _selectedAlarmIndex = null;
+                                                          } else if (_selectedAlarmIndex != null && _selectedAlarmIndex! > index) {
+                                                            _selectedAlarmIndex = _selectedAlarmIndex! - 1;
+                                                          }
+                                                        });
+                                                      },
+                                                      onViewTimersTapped: () => setState(() {
+                                                        _isViewingTimers = true;
+                                                        _isCreatingTimer = false;
+                                                      }),
+                                                      onAddNewTimerTapped: () => setState(() {
+                                                        _isCreatingTimer = true;
+                                                        _isViewingTimers = false;
+                                                      }),
+                                                      onCancelTimerTapped: () => setState(() {
+                                                        if (_appTimers.isEmpty) {
+                                                          _isTimerMode = false;
+                                                          _showPill = false;
+                                                        } else {
+                                                          _isCreatingTimer = false;
+                                                          _isViewingTimers = true;
+                                                        }
+                                                      }),
+                                                      onSaveTimerTapped: () {
+                                                        setState(() {
+                                                          int totalSecs = _scrolledTimerHour * 3600 + _scrolledTimerMinute * 60 + _scrolledTimerSecond;
+                                                          if (totalSecs > 0) {
+                                                            var newT = AppTimer(totalSeconds: totalSecs);
+                                                            newT.isRunning = true;
+                                                            newT.endTime = DateTime.now().add(Duration(seconds: totalSecs));
+                                                            
+                                                            _appTimers.add(newT);
+                                                            _selectedTimerIndex = _appTimers.length - 1;
+                                                            
+                                                            _isCreatingTimer = false;
+                                                            _isViewingTimers = false;
+                                                            
+                                                            if (_countdownTimer == null || !_countdownTimer!.isActive) {
+                                                              _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) => _tickTimers());
+                                                            }
+                                                          } else {
+                                                            _isCreatingTimer = false;
+                                                            _isViewingTimers = true;
+                                                          }
+                                                        });
+                                                      },
+                                                      onDeleteTimer: (index) {
+                                                        setState(() {
+                                                          _appTimers.removeAt(index);
+                                                          if (_selectedTimerIndex == index) {
+                                                            _selectedTimerIndex = _appTimers.isNotEmpty ? 0 : null;
+                                                            if (_appTimers.isEmpty) {
+                                                              _isViewingTimers = true;
+                                                              _isCreatingTimer = false;
+                                                            }
+                                                          } else if (_selectedTimerIndex != null && _selectedTimerIndex! > index) {
+                                                            _selectedTimerIndex = _selectedTimerIndex! - 1;
+                                                          }
+                                                        });
+                                                      },
+
                                                       onSelectAlarm: (index) {
                                                         setState(() {
                                                           if (_selectedAlarmIndex == index) {
