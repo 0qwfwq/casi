@@ -23,6 +23,8 @@ class ScreenDock extends StatefulWidget {
   final bool isTimerRunning; 
   final bool isCreatingTimer; 
   final bool hasSelectedTimer; 
+  final bool isCalendarMode;
+  final bool isViewingEvents;
   final String? initialAmPm; 
   final String? initialDay; 
   final void Function(AppInfo)? onRemove;
@@ -35,6 +37,9 @@ class ScreenDock extends StatefulWidget {
   final VoidCallback? onStopwatchLap; 
   final VoidCallback? onTimerToggle; 
   final VoidCallback? onTimerStop; 
+  final VoidCallback? onViewEvents;
+  final VoidCallback? onAddEvent;
+  final VoidCallback? onDeleteEvent;
   final ValueChanged<String>? onAmPmChanged;
   final ValueChanged<String>? onDayChanged; 
   
@@ -53,6 +58,8 @@ class ScreenDock extends StatefulWidget {
     this.isTimerRunning = false,
     this.isCreatingTimer = false,
     this.hasSelectedTimer = false,
+    this.isCalendarMode = false,
+    this.isViewingEvents = false,
     this.initialAmPm,
     this.initialDay,
     this.onRemove,
@@ -65,6 +72,9 @@ class ScreenDock extends StatefulWidget {
     this.onStopwatchLap,
     this.onTimerToggle,
     this.onTimerStop,
+    this.onViewEvents,
+    this.onAddEvent,
+    this.onDeleteEvent,
     this.onAmPmChanged,
     this.onDayChanged,
     this.activePill,
@@ -123,7 +133,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
   @override
   void didUpdateWidget(covariant ScreenDock oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if ((widget.isAlarmMode || widget.isStopwatchMode || widget.isTimerMode) && _showForecast) {
+    if ((widget.isAlarmMode || widget.isStopwatchMode || widget.isTimerMode || widget.isCalendarMode) && _showForecast) {
       setState(() => _showForecast = false);
     }
   }
@@ -742,7 +752,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
                     ],
                   );
                 },
-                child: (_showForecast && !widget.isDragging && !widget.isAlarmMode && !widget.isStopwatchMode && !widget.isTimerMode && !widget.isAlarmRinging && !widget.isViewingAlarms)
+                child: (_showForecast && !widget.isDragging && !widget.isAlarmMode && !widget.isStopwatchMode && !widget.isTimerMode && !widget.isAlarmRinging && !widget.isViewingAlarms && !widget.isCalendarMode)
                     ? TapRegion(
                         key: const ValueKey('forecast_widget'),
                         onTapOutside: (event) {
@@ -801,7 +811,12 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
     final double screenWidth = MediaQuery.of(context).size.width;
     final double maxWidth = screenWidth - 80.0;
 
-    final bool hideSideButtons = (_showForecast && !widget.isDragging && !widget.isAlarmMode && !widget.isStopwatchMode && !widget.isTimerMode && !widget.isAlarmRinging && !widget.isViewingAlarms);
+    // Explicit logical boundaries to ensure features do not override each other!
+    final bool isForecastMode = _showForecast && !widget.isDragging && !widget.isAlarmMode && !widget.isStopwatchMode && !widget.isTimerMode && !widget.isAlarmRinging && !widget.isViewingAlarms && !widget.isCalendarMode;
+
+    final bool hidePill = isForecastMode;
+    final bool hideRightCircle = isForecastMode || widget.isCalendarMode;
+    final bool hideLeftCircle = widget.isCalendarMode;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(40.0, 0, 40.0, 40.0),
@@ -814,10 +829,10 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
             Align(
               alignment: Alignment.bottomCenter,
               child: AnimatedOpacity(
-                opacity: hideSideButtons ? 0.0 : 1.0,
+                opacity: hidePill ? 0.0 : 1.0,
                 duration: const Duration(milliseconds: 350),
                 child: IgnorePointer(
-                  ignoring: hideSideButtons,
+                  ignoring: hidePill,
                   child: AnimatedSize(
                     duration: const Duration(milliseconds: 300),
                     curve: Curves.easeOutQuart,
@@ -855,17 +870,24 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
             Align(
               alignment: Alignment.bottomRight,
               child: AnimatedOpacity(
-                opacity: hideSideButtons ? 0.0 : 1.0,
+                opacity: hideRightCircle ? 0.0 : 1.0,
                 duration: const Duration(milliseconds: 350), 
                 child: IgnorePointer(
-                  ignoring: hideSideButtons,
+                  ignoring: hideRightCircle,
                   child: _buildRightGlassCircle(),
                 ),
               ),
             ),
 
             // Left Circle
-            _buildLeftGlassArea(context, maxWidth),
+            AnimatedOpacity(
+              opacity: hideLeftCircle ? 0.0 : 1.0,
+              duration: const Duration(milliseconds: 350),
+              child: IgnorePointer(
+                ignoring: hideLeftCircle,
+                child: _buildLeftGlassArea(context, maxWidth),
+              ),
+            ),
           ],
         ),
       ),

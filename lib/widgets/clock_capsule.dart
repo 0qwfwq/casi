@@ -3,8 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:installed_apps/app_info.dart';
 import 'package:installed_apps/installed_apps.dart';
 
-// --- NEW: A custom notification that bubbles up to the Hub! ---
+// --- NEW: Custom notifications that bubble up to the Hub! ---
 class ClockTapNotification extends Notification {}
+class CalendarTapNotification extends Notification {} // <-- NEW: For the Date
 
 class ClockCapsule extends StatefulWidget {
   final double opacity;
@@ -100,23 +101,26 @@ class _ClockCapsuleState extends State<ClockCapsule> {
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         // 1. The Date (Lightened, added soft shadow for depth)
-        Padding(
-          padding: const EdgeInsets.only(bottom: 6.0), 
-          child: Text(
-            _getFormattedDate(),
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.95),
-              fontSize: 20, // Slightly larger to match the new proportions
-              fontWeight: FontWeight.w400, // Regular weight
-              letterSpacing: 0.5,
-              fontFamily: 'Roboto', 
-              shadows: [
-                Shadow(
-                  offset: const Offset(0, 2),
-                  blurRadius: 4.0,
-                  color: Colors.black.withOpacity(0.4),
-                ),
-              ],
+        GestureDetector(
+          onTap: () => CalendarTapNotification().dispatch(context), // <-- NEW: Dispatches Calendar Event
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 6.0), 
+            child: Text(
+              _getFormattedDate(),
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.95),
+                fontSize: 20, // Slightly larger to match the new proportions
+                fontWeight: FontWeight.w400, // Regular weight
+                letterSpacing: 0.5,
+                fontFamily: 'Roboto', 
+                shadows: [
+                  Shadow(
+                    offset: const Offset(0, 2),
+                    blurRadius: 4.0,
+                    color: Colors.black.withOpacity(0.4),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

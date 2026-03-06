@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:installed_apps/app_info.dart';
 import 'package:installed_apps/installed_apps.dart';
@@ -14,6 +15,7 @@ import '../widgets/song_player.dart';
 import '../widgets/clock_capsule.dart'; 
 import '../pills/dynamic_pill.dart';
 import '../pills/d_clock_pill.dart';
+import '../pills/d_calendar_pill.dart'; 
 
 // --- NEW: AppTimer Class for Multi-Timer Support ---
 class AppTimer {
@@ -85,6 +87,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   int _scrolledTimerHour = 0;
   int _scrolledTimerMinute = 5;
   int _scrolledTimerSecond = 0;
+
+  // --- NEW: Calendar States ---
+  bool _isCalendarMode = false;
+  bool _isViewingEvents = false;
+  int? _selectedEventIndex;
+  DateTime _calendarFocusedDay = DateTime.now();
+  Map<DateTime, List<CalendarEvent>> _calendarEvents = {};
 
   // --- Settings ---
   String _bgType = 'color';
@@ -197,7 +206,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         _isViewingAlarms = false;
         _isStopwatchMode = false; 
         _isTimerMode = false;
+        _isCalendarMode = false;
+        _isViewingEvents = false;
         _selectedAlarmIndex = null;
+        _selectedEventIndex = null;
         _lastRungAlarmTime = currentTimeStr; 
       });
       _startAlarmSound(); 
@@ -489,12 +501,31 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     );
   }
 
+  // --- NEW: Toggle Calendar Logic ---
+  void _toggleCalendar() {
+    setState(() {
+      _showPill = true;
+      _isCalendarMode = true;
+      _isViewingEvents = false; 
+      _selectedEventIndex = null;
+      _isAlarmMode = false;
+      _isViewingAlarms = false;
+      _isStopwatchMode = false;
+      _isTimerMode = false;
+    });
+  }
+
   void _dismissPill() {
     setState(() {
       _showPill = false;
       _isAlarmMode = false;
       _isViewingAlarms = false;
       _selectedAlarmIndex = null; 
+
+      // CALENDAR CLEANUP
+      _isCalendarMode = false;
+      _isViewingEvents = false;
+      _selectedEventIndex = null;
 
       // STOPWATCH CLEANUP
       _isStopwatchMode = false;
@@ -509,6 +540,128 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       _isViewingTimers = false;
       _isCreatingTimer = false;
     });
+  }
+
+  // --- NEW: Glassmorphism Dialog to Add Events ---
+  void _showAddEventDialog() {
+    final titleController = TextEditingController();
+    final descController = TextEditingController();
+
+    showDialog(
+      context: context,
+      barrierColor: Colors.black54, // Nice dim backdrop
+      builder: (context) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(32),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+              child: Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(32),
+                  border: Border.all(color: Colors.white.withOpacity(0.2), width: 1.5),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 20, spreadRadius: 5)
+                  ]
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'New Event', 
+                      style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)
+                    ),
+                    const SizedBox(height: 24),
+                    TextField(
+                      controller: titleController,
+                      style: const TextStyle(color: Colors.white, fontSize: 16),
+                      autofocus: true,
+                      textCapitalization: TextCapitalization.sentences,
+                      decoration: InputDecoration(
+                        hintText: 'Event Title',
+                        hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+                        filled: true,
+                        fillColor: Colors.black.withOpacity(0.3),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: descController,
+                      style: const TextStyle(color: Colors.white, fontSize: 16),
+                      maxLines: 3,
+                      textCapitalization: TextCapitalization.sentences,
+                      decoration: InputDecoration(
+                        hintText: 'Description (Optional)',
+                        hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+                        filled: true,
+                        fillColor: Colors.black.withOpacity(0.3),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 28),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextButton(
+                            onPressed: () => Navigator.pop(context),
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                            ),
+                            child: const Text('Cancel', style: TextStyle(color: Colors.white70, fontSize: 16, fontWeight: FontWeight.w600)),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () {
+                              if (titleController.text.trim().isNotEmpty) {
+                                setState(() {
+                                  final date = DateTime(_calendarFocusedDay.year, _calendarFocusedDay.month, _calendarFocusedDay.day);
+                                  final eventsList = _calendarEvents[date] ?? [];
+                                  eventsList.add(CalendarEvent(
+                                    title: titleController.text.trim(),
+                                    description: descController.text.trim(),
+                                  ));
+                                  _calendarEvents[date] = eventsList;
+                                });
+                                Navigator.pop(context);
+                              }
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blueAccent.withOpacity(0.8),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                              elevation: 0,
+                            ),
+                            child: const Text('Save', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                      ],
+                    )
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -526,6 +679,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       },
       child: Scaffold(
       backgroundColor: Colors.black,
+      // SET TO FALSE to prevent pushing the UI and docking upward when keyboard opens
+      resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
           _buildBackground(),
@@ -543,351 +698,408 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 );
               }
             },
-            child: NotificationListener<ClockTapNotification>(
+            child: NotificationListener<CalendarTapNotification>(
               onNotification: (notification) {
-                if (_showPill) {
+                if (_showPill && _isCalendarMode) {
                   _dismissPill();
                 } else {
-                  setState(() {
-                    _showPill = true;
-                    _isAlarmMode = false; 
-                    _isViewingAlarms = false;
-                    _isStopwatchMode = false;
-                    _isTimerMode = false;
-                    _selectedAlarmIndex = null;
-                    _scrolledHour = 1; 
-                    _scrolledMinute = 0;
-                    _scrolledAmPm = 'AM';
-                    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-                    _scrolledDay = days[DateTime.now().weekday - 1]; 
-                  });
+                  _toggleCalendar();
                 }
                 return true; 
               },
-              child: SafeArea(
-                child: _isLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : Stack(
-                        children: [
-                          ValueListenableBuilder<double>(
-                            valueListenable: _drawerProgress,
-                            builder: (context, progress, child) {
-                              final double opacity = (1.0 - progress).clamp(0.0, 1.0);
-                              return Stack(
-                                children: [
-                                  Opacity(
-                                    opacity: opacity,
-                                    child: RepaintBoundary(
-                                      child: _buildHomeGrid(headerHeight),
-                                    ),
-                                  ),
-                                  Positioned(
-                                    top: 0,
-                                    left: 0,
-                                    right: 0,
-                                    child: GlassStatusBar(
-                                      opacity: 1.0,
-                                    ),
-                                  ),
-                                  Positioned(
-                                    bottom: 0,
-                                    left: 0,
-                                    right: 0,
-                                    child: TapRegion(
-                                      groupId: 'dock_region',
-                                      onTapOutside: (event) {
-                                        if (_isAlarmRinging) {
-                                          return; 
-                                        } else if (_isStopwatchMode || _isTimerMode) {
-                                          _dismissPill();
-                                        } else if (_isAlarmMode || _isViewingAlarms) {
-                                          setState(() {
-                                            _isAlarmMode = false;
-                                            _isViewingAlarms = false;
-                                            _selectedAlarmIndex = null;
-                                          });
-                                        } else if (_showPill) {
-                                          _dismissPill();
-                                        }
-                                      },
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Offstage(
-                                            offstage: !_isPlayerVisible || _isAlarmRinging, 
-                                            child: Padding(
-                                              padding: const EdgeInsets.only(bottom: 16),
-                                              child: SongPlayer(
-                                                onVisibilityChanged: (visible) {
-                                                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                                                    if (mounted && _isPlayerVisible != visible) {
-                                                      setState(() => _isPlayerVisible = visible);
-                                                    }
-                                                  });
-                                                },
-                                              ),
-                                            ),
-                                          ),
-                                          
-                                          ScreenDock(
-                                            isDragging: _isDragging,
-                                            isAlarmMode: _isAlarmMode, 
-                                            isAlarmRinging: _isAlarmRinging, 
-                                            isViewingAlarms: _isViewingAlarms, 
-                                            hasSelectedAlarm: _selectedAlarmIndex != null, 
-                                            isStopwatchMode: _isStopwatchMode,
-                                            isStopwatchRunning: _stopwatch.isRunning,
-                                            isTimerMode: _isTimerMode,
-                                            isTimerRunning: _selectedTimerIndex != null && _appTimers.isNotEmpty 
-                                                ? _appTimers[_selectedTimerIndex!].isRunning 
-                                                : false,
-                                            isCreatingTimer: _isCreatingTimer,
-                                            hasSelectedTimer: _selectedTimerIndex != null,
-                                            initialAmPm: _scrolledAmPm, 
-                                            initialDay: _scrolledDay, 
-                                            onSnooze: _snoozeAlarm,          
-                                            onCancel: _stopAlarm,            
-                                            onEditAlarm: () {
-                                              if (_selectedAlarmIndex != null) {
-                                                final alarm = _activeAlarms[_selectedAlarmIndex!];
-                                                final parts = alarm.split(' ');
-                                                
-                                                setState(() {
-                                                  if (parts.length == 3) {
-                                                    _scrolledDay = parts[0];
-                                                    final timeParts = parts[1].split(':');
-                                                    _scrolledHour = int.parse(timeParts[0]);
-                                                    _scrolledMinute = int.parse(timeParts[1]);
-                                                    _scrolledAmPm = parts[2];
-                                                  } else {
-                                                    _scrolledDay = 'Mon';
-                                                    final timeParts = parts[0].split(':');
-                                                    _scrolledHour = int.parse(timeParts[0]);
-                                                    _scrolledMinute = int.parse(timeParts[1]);
-                                                    _scrolledAmPm = parts[1];
-                                                  }
-                                                  
-                                                  _activeAlarms.removeAt(_selectedAlarmIndex!);
-                                                  _selectedAlarmIndex = null;
-                                                  _isViewingAlarms = false;
-                                                  _isAlarmMode = true; 
-                                                });
-                                              }
-                                            },
-                                            onDeleteAlarm: () {
-                                              if (_selectedAlarmIndex != null) {
-                                                setState(() {
-                                                  _activeAlarms.removeAt(_selectedAlarmIndex!);
-                                                  _selectedAlarmIndex = null;
-                                                });
-                                              }
-                                            },
-                                            onAmPmChanged: (val) => _scrolledAmPm = val, 
-                                            onDayChanged: (val) => _scrolledDay = val,
-                                            onStopwatchToggle: _toggleStopwatch,
-                                            onStopwatchLap: _lapStopwatch,
-                                            onTimerToggle: _toggleTimer,
-                                            onTimerStop: _stopTimer,
-                                            activePill: _showPill
-                                                ? DynamicPill(
-                                                    key: const ValueKey('main_dynamic_pill'),
-                                                    child: DClockPill(
-                                                      isAlarmMode: _isAlarmMode,
-                                                      isViewingAlarms: _isViewingAlarms,
-                                                      isAlarmRinging: _isAlarmRinging,
-                                                      isStopwatchMode: _isStopwatchMode,
-                                                      isTimerMode: _isTimerMode,
-                                                      isViewingTimers: _isViewingTimers,
-                                                      isCreatingTimer: _isCreatingTimer,
-                                                      stopwatchTime: _stopwatchTime,
-                                                      stopwatchLaps: _stopwatchLaps,
-                                                      timerTime: _selectedTimerIndex != null && _appTimers.isNotEmpty 
-                                                          ? _formatTimerTime(_appTimers[_selectedTimerIndex!].remainingSeconds) 
-                                                          : "00:00",
-                                                      savedTimersTimes: _appTimers.map((t) => _formatTimerTime(t.remainingSeconds)).toList(),
-                                                      savedTimersRunning: _appTimers.map((t) => t.isRunning).toList(),
-                                                      selectedTimerIndex: _selectedTimerIndex,
-                                                      activeAlarms: _activeAlarms,
-                                                      selectedIndex: _selectedAlarmIndex, 
-                                                      initialHour: _scrolledHour, 
-                                                      initialMinute: _scrolledMinute, 
-                                                      initialTimerHour: _scrolledTimerHour,
-                                                      initialTimerMinute: _scrolledTimerMinute,
-                                                      initialTimerSecond: _scrolledTimerSecond,
-                                                      
-                                                      // --- New Integrated Actions ---
-                                                      onViewAlarmsTapped: () => setState(() => _isViewingAlarms = true),
-                                                      onAddNewAlarmTapped: () => setState(() {
-                                                        _isViewingAlarms = false;
-                                                        _selectedAlarmIndex = null;
-                                                      }),
-                                                      onSaveAlarmTapped: () {
-                                                        setState(() {
-                                                          String minStr = _scrolledMinute.toString().padLeft(2, '0');
-                                                          String newAlarm = "$_scrolledDay $_scrolledHour:$minStr $_scrolledAmPm";
-                                                          if (!_activeAlarms.contains(newAlarm)) {
-                                                            _activeAlarms.add(newAlarm);
-                                                          }
-                                                          _isAlarmMode = false;
-                                                          _isViewingAlarms = false;
-                                                          _selectedAlarmIndex = null;
-                                                          _showPill = false;
-                                                        });
-                                                      },
-                                                      onDeleteAlarm: (index) {
-                                                        setState(() {
-                                                          _activeAlarms.removeAt(index);
-                                                          if (_selectedAlarmIndex == index) {
-                                                            _selectedAlarmIndex = null;
-                                                          } else if (_selectedAlarmIndex != null && _selectedAlarmIndex! > index) {
-                                                            _selectedAlarmIndex = _selectedAlarmIndex! - 1;
-                                                          }
-                                                        });
-                                                      },
-                                                      onViewTimersTapped: () => setState(() {
-                                                        _isViewingTimers = true;
-                                                        _isCreatingTimer = false;
-                                                      }),
-                                                      onAddNewTimerTapped: () => setState(() {
-                                                        _isCreatingTimer = true;
-                                                        _isViewingTimers = false;
-                                                      }),
-                                                      onCancelTimerTapped: () => setState(() {
-                                                        if (_appTimers.isEmpty) {
-                                                          _isTimerMode = false;
-                                                          _showPill = false;
-                                                        } else {
-                                                          _isCreatingTimer = false;
-                                                          _isViewingTimers = true;
-                                                        }
-                                                      }),
-                                                      onSaveTimerTapped: () {
-                                                        setState(() {
-                                                          int totalSecs = _scrolledTimerHour * 3600 + _scrolledTimerMinute * 60 + _scrolledTimerSecond;
-                                                          if (totalSecs > 0) {
-                                                            var newT = AppTimer(totalSeconds: totalSecs);
-                                                            newT.isRunning = true;
-                                                            newT.endTime = DateTime.now().add(Duration(seconds: totalSecs));
-                                                            
-                                                            _appTimers.add(newT);
-                                                            _selectedTimerIndex = _appTimers.length - 1;
-                                                            
-                                                            _isCreatingTimer = false;
-                                                            _isViewingTimers = false;
-                                                            
-                                                            if (_countdownTimer == null || !_countdownTimer!.isActive) {
-                                                              _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) => _tickTimers());
-                                                            }
-                                                          } else {
-                                                            _isCreatingTimer = false;
-                                                            _isViewingTimers = true;
-                                                          }
-                                                        });
-                                                      },
-                                                      onDeleteTimer: (index) {
-                                                        setState(() {
-                                                          _appTimers.removeAt(index);
-                                                          if (_selectedTimerIndex == index) {
-                                                            _selectedTimerIndex = _appTimers.isNotEmpty ? 0 : null;
-                                                            if (_appTimers.isEmpty) {
-                                                              _isViewingTimers = true;
-                                                              _isCreatingTimer = false;
-                                                            }
-                                                          } else if (_selectedTimerIndex != null && _selectedTimerIndex! > index) {
-                                                            _selectedTimerIndex = _selectedTimerIndex! - 1;
-                                                          }
-                                                        });
-                                                      },
-
-                                                      onSelectAlarm: (index) {
-                                                        setState(() {
-                                                          if (_selectedAlarmIndex == index) {
-                                                            _selectedAlarmIndex = null;
-                                                          } else {
-                                                            _selectedAlarmIndex = index;
-                                                          }
-                                                        });
-                                                      },
-                                                      onSelectTimer: (index) {
-                                                        setState(() {
-                                                          _selectedTimerIndex = index;
-                                                          _isViewingTimers = false; // Jump to big view immediately
-                                                        });
-                                                      },
-                                                      onAlarmTapped: () => setState(() {
-                                                        _isAlarmMode = true;
-                                                        _isViewingAlarms = false;
-                                                        _isStopwatchMode = false;
-                                                        _isTimerMode = false;
-                                                        _selectedAlarmIndex = null;
-                                                        _scrolledHour = 1;
-                                                        _scrolledMinute = 0;
-                                                        _scrolledAmPm = 'AM';
-                                                        const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-                                                        _scrolledDay = days[DateTime.now().weekday - 1];
-                                                      }),
-                                                      onStopwatchTapped: () => setState(() {
-                                                        _isStopwatchMode = true;
-                                                        _isAlarmMode = false;
-                                                        _isViewingAlarms = false;
-                                                        _isTimerMode = false;
-                                                        _selectedAlarmIndex = null;
-                                                      }),
-                                                      onTimerTapped: () => setState(() {
-                                                        _isTimerMode = true;
-                                                        _isStopwatchMode = false;
-                                                        _isAlarmMode = false;
-                                                        _isViewingAlarms = false;
-                                                        _isViewingTimers = true; 
-                                                        _isCreatingTimer = false;
-                                                        _selectedAlarmIndex = null;
-                                                        if (_appTimers.isNotEmpty && _selectedTimerIndex == null) {
-                                                          _selectedTimerIndex = 0;
-                                                        }
-                                                      }),
-                                                      onHourChanged: (val) => _scrolledHour = val,
-                                                      onMinuteChanged: (val) => _scrolledMinute = val,
-                                                      onTimerHourChanged: (val) => _scrolledTimerHour = val,
-                                                      onTimerMinuteChanged: (val) => _scrolledTimerMinute = val,
-                                                      onTimerSecondChanged: (val) => _scrolledTimerSecond = val,
-                                                    ),
-                                                  )
-                                                : null,
-                                            onRemove: (app) {
-                                              setState(() {
-                                                _homeApps.removeWhere((key, value) => value.packageName == app.packageName);
-                                              });
-                                              _saveLayout();
-                                            },
-                                            onUninstall: (app) {
-                                              try {
-                                                InstalledApps.uninstallApp(app.packageName);
-                                              } catch (e) {
-                                                debugPrint("Uninstall error: $e");
-                                              }
-                                            },
-                                          ),
-                                        ],
+              child: NotificationListener<ClockTapNotification>(
+                onNotification: (notification) {
+                  if (_showPill && _isAlarmMode) {
+                    _dismissPill();
+                  } else {
+                    setState(() {
+                      _showPill = true;
+                      _isAlarmMode = false; 
+                      _isCalendarMode = false;
+                      _isViewingEvents = false;
+                      _selectedEventIndex = null;
+                      _isViewingAlarms = false;
+                      _isStopwatchMode = false;
+                      _isTimerMode = false;
+                      _selectedAlarmIndex = null;
+                      _scrolledHour = 1; 
+                      _scrolledMinute = 0;
+                      _scrolledAmPm = 'AM';
+                      const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+                      _scrolledDay = days[DateTime.now().weekday - 1]; 
+                    });
+                  }
+                  return true; 
+                },
+                child: SafeArea(
+                  child: _isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : Stack(
+                          children: [
+                            ValueListenableBuilder<double>(
+                              valueListenable: _drawerProgress,
+                              builder: (context, progress, child) {
+                                final double opacity = (1.0 - progress).clamp(0.0, 1.0);
+                                return Stack(
+                                  children: [
+                                    Opacity(
+                                      opacity: opacity,
+                                      child: RepaintBoundary(
+                                        child: _buildHomeGrid(headerHeight),
                                       ),
                                     ),
-                                  ),
-                                ],
-                              );
-                            },
-                          ),
-                          AppDrawer(
-                            apps: _apps,
-                            progressNotifier: _drawerProgress,
-                            controller: _drawerController,
-                            onAppTap: (app) => InstalledApps.startApp(app.packageName),
-                            onAppLongPress: (app) => _addToHomeScreen(app),
-                            onOpenSettings: () {
-                              Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsPage()))
-                                  .then((_) => _loadSettings());
-                            },
-                          ),
-                        ],
-                    ),
+                                    Positioned(
+                                      top: 0,
+                                      left: 0,
+                                      right: 0,
+                                      child: GlassStatusBar(
+                                        opacity: 1.0,
+                                      ),
+                                    ),
+                                    Positioned(
+                                      bottom: 0,
+                                      left: 0,
+                                      right: 0,
+                                      child: TapRegion(
+                                        groupId: 'dock_region',
+                                        onTapOutside: (event) {
+                                          if (_isAlarmRinging) {
+                                            return; 
+                                          } else if (_isViewingEvents) {
+                                            // Exit the events list back to the calendar grid
+                                            setState(() {
+                                              _isViewingEvents = false;
+                                              _selectedEventIndex = null;
+                                            });
+                                          } else if (_isStopwatchMode || _isTimerMode || _isCalendarMode) {
+                                            _dismissPill();
+                                          } else if (_isAlarmMode || _isViewingAlarms) {
+                                            setState(() {
+                                              _isAlarmMode = false;
+                                              _isViewingAlarms = false;
+                                              _selectedAlarmIndex = null;
+                                            });
+                                          } else if (_showPill) {
+                                            _dismissPill();
+                                          }
+                                        },
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Offstage(
+                                              offstage: !_isPlayerVisible || _isAlarmRinging, 
+                                              child: Padding(
+                                                padding: const EdgeInsets.only(bottom: 16),
+                                                child: SongPlayer(
+                                                  onVisibilityChanged: (visible) {
+                                                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                                                      if (mounted && _isPlayerVisible != visible) {
+                                                        setState(() => _isPlayerVisible = visible);
+                                                      }
+                                                    });
+                                                  },
+                                                ),
+                                              ),
+                                            ),
+                                            
+                                            ScreenDock(
+                                              isDragging: _isDragging,
+                                              isAlarmMode: _isAlarmMode, 
+                                              isAlarmRinging: _isAlarmRinging, 
+                                              isViewingAlarms: _isViewingAlarms, 
+                                              hasSelectedAlarm: _selectedAlarmIndex != null, 
+                                              isStopwatchMode: _isStopwatchMode,
+                                              isStopwatchRunning: _stopwatch.isRunning,
+                                              isTimerMode: _isTimerMode,
+                                              isTimerRunning: _selectedTimerIndex != null && _appTimers.isNotEmpty 
+                                                  ? _appTimers[_selectedTimerIndex!].isRunning 
+                                                  : false,
+                                              isCreatingTimer: _isCreatingTimer,
+                                              hasSelectedTimer: _selectedTimerIndex != null,
+                                              isCalendarMode: _isCalendarMode,
+                                              initialAmPm: _scrolledAmPm, 
+                                              initialDay: _scrolledDay, 
+                                              onSnooze: _snoozeAlarm,          
+                                              onCancel: _stopAlarm,            
+                                              onEditAlarm: () {
+                                                if (_selectedAlarmIndex != null) {
+                                                  final alarm = _activeAlarms[_selectedAlarmIndex!];
+                                                  final parts = alarm.split(' ');
+                                                  
+                                                  setState(() {
+                                                    if (parts.length == 3) {
+                                                      _scrolledDay = parts[0];
+                                                      final timeParts = parts[1].split(':');
+                                                      _scrolledHour = int.parse(timeParts[0]);
+                                                      _scrolledMinute = int.parse(timeParts[1]);
+                                                      _scrolledAmPm = parts[2];
+                                                    } else {
+                                                      _scrolledDay = 'Mon';
+                                                      final timeParts = parts[0].split(':');
+                                                      _scrolledHour = int.parse(timeParts[0]);
+                                                      _scrolledMinute = int.parse(timeParts[1]);
+                                                      _scrolledAmPm = parts[1];
+                                                    }
+                                                    
+                                                    _activeAlarms.removeAt(_selectedAlarmIndex!);
+                                                    _selectedAlarmIndex = null;
+                                                    _isViewingAlarms = false;
+                                                    _isAlarmMode = true; 
+                                                  });
+                                                }
+                                              },
+                                              onDeleteAlarm: () {
+                                                if (_selectedAlarmIndex != null) {
+                                                  setState(() {
+                                                    _activeAlarms.removeAt(_selectedAlarmIndex!);
+                                                    _selectedAlarmIndex = null;
+                                                  });
+                                                }
+                                              },
+                                              onAmPmChanged: (val) => _scrolledAmPm = val, 
+                                              onDayChanged: (val) => _scrolledDay = val,
+                                              onStopwatchToggle: _toggleStopwatch,
+                                              onStopwatchLap: _lapStopwatch,
+                                              onTimerToggle: _toggleTimer,
+                                              onTimerStop: _stopTimer,
+                                              activePill: _showPill
+                                                  ? DynamicPill(
+                                                      key: const ValueKey('main_dynamic_pill'),
+                                                      child: _isCalendarMode 
+                                                        ? DCalendarPill(
+                                                            focusedDay: _calendarFocusedDay,
+                                                            isViewingEvents: _isViewingEvents,
+                                                            events: _calendarEvents,
+                                                            selectedEventIndex: _selectedEventIndex,
+                                                            onEventSelected: (index) {
+                                                              setState(() {
+                                                                _selectedEventIndex = (_selectedEventIndex == index) ? null : index;
+                                                              });
+                                                            },
+                                                            onDateSelected: (date) {
+                                                              setState(() {
+                                                                _calendarFocusedDay = date;
+                                                                _selectedEventIndex = null;
+                                                              });
+                                                            },
+                                                            onViewEvents: () => setState(() => _isViewingEvents = true),
+                                                            onAddEvent: _showAddEventDialog,
+                                                            onDeleteEvent: () {
+                                                              if (_selectedEventIndex != null) {
+                                                                setState(() {
+                                                                  final date = DateTime(_calendarFocusedDay.year, _calendarFocusedDay.month, _calendarFocusedDay.day);
+                                                                  if (_calendarEvents[date] != null && _selectedEventIndex! < _calendarEvents[date]!.length) {
+                                                                    _calendarEvents[date]!.removeAt(_selectedEventIndex!);
+                                                                    _selectedEventIndex = null;
+                                                                  }
+                                                                });
+                                                              } else {
+                                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                                  const SnackBar(content: Text('Select an event to delete', style: TextStyle(color: Colors.white))),
+                                                                );
+                                                              }
+                                                            },
+                                                            onCloseEvents: () => setState(() {
+                                                              _isViewingEvents = false;
+                                                              _selectedEventIndex = null;
+                                                            }),
+                                                          )
+                                                        : DClockPill(
+                                                            isAlarmMode: _isAlarmMode,
+                                                            isViewingAlarms: _isViewingAlarms,
+                                                            isAlarmRinging: _isAlarmRinging,
+                                                            isStopwatchMode: _isStopwatchMode,
+                                                            isTimerMode: _isTimerMode,
+                                                            isViewingTimers: _isViewingTimers,
+                                                            isCreatingTimer: _isCreatingTimer,
+                                                            stopwatchTime: _stopwatchTime,
+                                                            stopwatchLaps: _stopwatchLaps,
+                                                            timerTime: _selectedTimerIndex != null && _appTimers.isNotEmpty 
+                                                                ? _formatTimerTime(_appTimers[_selectedTimerIndex!].remainingSeconds) 
+                                                                : "00:00",
+                                                            savedTimersTimes: _appTimers.map((t) => _formatTimerTime(t.remainingSeconds)).toList(),
+                                                            savedTimersRunning: _appTimers.map((t) => t.isRunning).toList(),
+                                                            selectedTimerIndex: _selectedTimerIndex,
+                                                            activeAlarms: _activeAlarms,
+                                                            selectedIndex: _selectedAlarmIndex, 
+                                                            initialHour: _scrolledHour, 
+                                                            initialMinute: _scrolledMinute, 
+                                                            initialTimerHour: _scrolledTimerHour,
+                                                            initialTimerMinute: _scrolledTimerMinute,
+                                                            initialTimerSecond: _scrolledTimerSecond,
+                                                            
+                                                            onViewAlarmsTapped: () => setState(() => _isViewingAlarms = true),
+                                                            onAddNewAlarmTapped: () => setState(() {
+                                                              _isViewingAlarms = false;
+                                                              _selectedAlarmIndex = null;
+                                                            }),
+                                                            onSaveAlarmTapped: () {
+                                                              setState(() {
+                                                                String minStr = _scrolledMinute.toString().padLeft(2, '0');
+                                                                String newAlarm = "$_scrolledDay $_scrolledHour:$minStr $_scrolledAmPm";
+                                                                if (!_activeAlarms.contains(newAlarm)) {
+                                                                  _activeAlarms.add(newAlarm);
+                                                                }
+                                                                _isAlarmMode = false;
+                                                                _isViewingAlarms = false;
+                                                                _selectedAlarmIndex = null;
+                                                                _showPill = false;
+                                                              });
+                                                            },
+                                                            onDeleteAlarm: (index) {
+                                                              setState(() {
+                                                                _activeAlarms.removeAt(index);
+                                                                if (_selectedAlarmIndex == index) {
+                                                                  _selectedAlarmIndex = null;
+                                                                } else if (_selectedAlarmIndex != null && _selectedAlarmIndex! > index) {
+                                                                  _selectedAlarmIndex = _selectedAlarmIndex! - 1;
+                                                                }
+                                                              });
+                                                            },
+                                                            onViewTimersTapped: () => setState(() {
+                                                              _isViewingTimers = true;
+                                                              _isCreatingTimer = false;
+                                                            }),
+                                                            onAddNewTimerTapped: () => setState(() {
+                                                              _isCreatingTimer = true;
+                                                              _isViewingTimers = false;
+                                                            }),
+                                                            onCancelTimerTapped: () => setState(() {
+                                                              if (_appTimers.isEmpty) {
+                                                                _isTimerMode = false;
+                                                                _showPill = false;
+                                                              } else {
+                                                                _isCreatingTimer = false;
+                                                                _isViewingTimers = true;
+                                                              }
+                                                            }),
+                                                            onSaveTimerTapped: () {
+                                                              setState(() {
+                                                                int totalSecs = _scrolledTimerHour * 3600 + _scrolledTimerMinute * 60 + _scrolledTimerSecond;
+                                                                if (totalSecs > 0) {
+                                                                  var newT = AppTimer(totalSeconds: totalSecs);
+                                                                  newT.isRunning = true;
+                                                                  newT.endTime = DateTime.now().add(Duration(seconds: totalSecs));
+                                                                  
+                                                                  _appTimers.add(newT);
+                                                                  _selectedTimerIndex = _appTimers.length - 1;
+                                                                  
+                                                                  _isCreatingTimer = false;
+                                                                  _isViewingTimers = false;
+                                                                  
+                                                                  if (_countdownTimer == null || !_countdownTimer!.isActive) {
+                                                                    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) => _tickTimers());
+                                                                  }
+                                                                } else {
+                                                                  _isCreatingTimer = false;
+                                                                  _isViewingTimers = true;
+                                                                }
+                                                              });
+                                                            },
+                                                            onDeleteTimer: (index) {
+                                                              setState(() {
+                                                                _appTimers.removeAt(index);
+                                                                if (_selectedTimerIndex == index) {
+                                                                  _selectedTimerIndex = _appTimers.isNotEmpty ? 0 : null;
+                                                                  if (_appTimers.isEmpty) {
+                                                                    _isViewingTimers = true;
+                                                                    _isCreatingTimer = false;
+                                                                  }
+                                                                } else if (_selectedTimerIndex != null && _selectedTimerIndex! > index) {
+                                                                  _selectedTimerIndex = _selectedTimerIndex! - 1;
+                                                                }
+                                                              });
+                                                            },
+                                                            onSelectAlarm: (index) {
+                                                              setState(() {
+                                                                if (_selectedAlarmIndex == index) {
+                                                                  _selectedAlarmIndex = null;
+                                                                } else {
+                                                                  _selectedAlarmIndex = index;
+                                                                }
+                                                              });
+                                                            },
+                                                            onSelectTimer: (index) {
+                                                              setState(() {
+                                                                _selectedTimerIndex = index;
+                                                                _isViewingTimers = false; 
+                                                              });
+                                                            },
+                                                            onAlarmTapped: () => setState(() {
+                                                              _isAlarmMode = true;
+                                                              _isViewingAlarms = false;
+                                                              _isStopwatchMode = false;
+                                                              _isTimerMode = false;
+                                                              _selectedAlarmIndex = null;
+                                                              _scrolledHour = 1;
+                                                              _scrolledMinute = 0;
+                                                              _scrolledAmPm = 'AM';
+                                                              const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+                                                              _scrolledDay = days[DateTime.now().weekday - 1];
+                                                            }),
+                                                            onStopwatchTapped: () => setState(() {
+                                                              _isStopwatchMode = true;
+                                                              _isAlarmMode = false;
+                                                              _isViewingAlarms = false;
+                                                              _isTimerMode = false;
+                                                              _selectedAlarmIndex = null;
+                                                            }),
+                                                            onTimerTapped: () => setState(() {
+                                                              _isTimerMode = true;
+                                                              _isStopwatchMode = false;
+                                                              _isAlarmMode = false;
+                                                              _isViewingAlarms = false;
+                                                              _isViewingTimers = true; 
+                                                              _isCreatingTimer = false;
+                                                              _selectedAlarmIndex = null;
+                                                              if (_appTimers.isNotEmpty && _selectedTimerIndex == null) {
+                                                                _selectedTimerIndex = 0;
+                                                              }
+                                                            }),
+                                                            onHourChanged: (val) => _scrolledHour = val,
+                                                            onMinuteChanged: (val) => _scrolledMinute = val,
+                                                            onTimerHourChanged: (val) => _scrolledTimerHour = val,
+                                                            onTimerMinuteChanged: (val) => _scrolledTimerMinute = val,
+                                                            onTimerSecondChanged: (val) => _scrolledTimerSecond = val,
+                                                          ),
+                                                    )
+                                                  : null,
+                                              onRemove: (app) {
+                                                setState(() {
+                                                  _homeApps.removeWhere((key, value) => value.packageName == app.packageName);
+                                                });
+                                                _saveLayout();
+                                              },
+                                              onUninstall: (app) {
+                                                try {
+                                                  InstalledApps.uninstallApp(app.packageName);
+                                                } catch (e) {
+                                                  debugPrint("Uninstall error: $e");
+                                                }
+                                              },
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              },
+                            ),
+                            AppDrawer(
+                              apps: _apps,
+                              progressNotifier: _drawerProgress,
+                              controller: _drawerController,
+                              onAppTap: (app) => InstalledApps.startApp(app.packageName),
+                              onAppLongPress: (app) => _addToHomeScreen(app),
+                              onOpenSettings: () {
+                                Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsPage()))
+                                    .then((_) => _loadSettings());
+                              },
+                            ),
+                          ],
+                      ),
+                ),
               ),
             ),
           ),
