@@ -16,32 +16,14 @@ class ScreenDock extends StatefulWidget {
   final bool isAlarmMode; 
   final bool isAlarmRinging; 
   final bool isViewingAlarms; 
-  final bool hasSelectedAlarm; 
   final bool isStopwatchMode; 
-  final bool isStopwatchRunning; 
   final bool isTimerMode; 
-  final bool isTimerRunning; 
-  final bool isCreatingTimer; 
-  final bool hasSelectedTimer; 
   final bool isCalendarMode;
-  final bool isViewingEvents;
-  final String? initialAmPm; 
-  final String? initialDay; 
+  
   final void Function(AppInfo)? onRemove;
   final void Function(AppInfo)? onUninstall;
   final VoidCallback? onSnooze;
   final VoidCallback? onCancel;
-  final VoidCallback? onEditAlarm;
-  final VoidCallback? onDeleteAlarm;
-  final VoidCallback? onStopwatchToggle; 
-  final VoidCallback? onStopwatchLap; 
-  final VoidCallback? onTimerToggle; 
-  final VoidCallback? onTimerStop; 
-  final VoidCallback? onViewEvents;
-  final VoidCallback? onAddEvent;
-  final VoidCallback? onDeleteEvent;
-  final ValueChanged<String>? onAmPmChanged;
-  final ValueChanged<String>? onDayChanged; 
   
   final Widget? activePill;
 
@@ -51,32 +33,13 @@ class ScreenDock extends StatefulWidget {
     this.isAlarmMode = false,
     this.isAlarmRinging = false,
     this.isViewingAlarms = false,
-    this.hasSelectedAlarm = false,
     this.isStopwatchMode = false,
-    this.isStopwatchRunning = false,
     this.isTimerMode = false,
-    this.isTimerRunning = false,
-    this.isCreatingTimer = false,
-    this.hasSelectedTimer = false,
     this.isCalendarMode = false,
-    this.isViewingEvents = false,
-    this.initialAmPm,
-    this.initialDay,
     this.onRemove,
     this.onUninstall,
     this.onSnooze,
     this.onCancel,
-    this.onEditAlarm,
-    this.onDeleteAlarm,
-    this.onStopwatchToggle,
-    this.onStopwatchLap,
-    this.onTimerToggle,
-    this.onTimerStop,
-    this.onViewEvents,
-    this.onAddEvent,
-    this.onDeleteEvent,
-    this.onAmPmChanged,
-    this.onDayChanged,
     this.activePill,
   });
 
@@ -439,45 +402,6 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
     }
   }
 
-  // --- Scroller Widgets for Alarm Mode ---
-  
-  Widget _buildAmPmScroller({Key? key}) {
-    final ampm = ['AM', 'PM'];
-    final int initialIndex = ampm.indexOf(widget.initialAmPm ?? 'AM');
-    
-    return ListWheelScrollView.useDelegate(
-      key: key,
-      controller: FixedExtentScrollController(initialItem: initialIndex != -1 ? initialIndex : 0),
-      itemExtent: 26,
-      physics: const FixedExtentScrollPhysics(),
-      overAndUnderCenterOpacity: 0.3,
-      onSelectedItemChanged: (index) => widget.onAmPmChanged?.call(ampm[index]),
-      childDelegate: ListWheelChildListDelegate(
-        children: ampm.map((e) => Center(
-          child: Text(e, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold))
-        )).toList(),
-      ),
-    );
-  }
-
-  Widget _buildDayScroller({Key? key}) {
-    final days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    final int initialIndex = days.indexOf(widget.initialDay ?? 'Mon');
-    
-    return ListWheelScrollView.useDelegate(
-      key: key,
-      controller: FixedExtentScrollController(initialItem: initialIndex != -1 ? initialIndex : 0),
-      itemExtent: 26,
-      physics: const FixedExtentScrollPhysics(),
-      overAndUnderCenterOpacity: 0.3,
-      onSelectedItemChanged: (index) => widget.onDayChanged?.call(days[index % 7]),
-      childDelegate: ListWheelChildLoopingListDelegate(
-        children: days.map((e) => Center(
-          child: Text(e, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold))
-        )).toList(),
-      ),
-    );
-  }
 
   // --- UI Build Helpers ---
 
@@ -569,88 +493,6 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildEditAlarmButton({Key? key}) {
-    return InkWell(
-      key: key,
-      onTap: widget.hasSelectedAlarm ? widget.onEditAlarm : null,
-      borderRadius: BorderRadius.circular(30),
-      child: Center(
-        child: Icon(Icons.edit, color: widget.hasSelectedAlarm ? Colors.blueAccent : Colors.white30, size: 28),
-      ),
-    );
-  }
-
-  Widget _buildDeleteAlarmButton({Key? key}) {
-    return InkWell(
-      key: key,
-      onTap: widget.hasSelectedAlarm ? widget.onDeleteAlarm : null,
-      borderRadius: BorderRadius.circular(30),
-      child: Center(
-        child: Icon(Icons.delete, color: widget.hasSelectedAlarm ? Colors.redAccent : Colors.white30, size: 28),
-      ),
-    );
-  }
-
-  // --- Stopwatch Buttons ---
-  Widget _buildStopPlayButton({Key? key}) {
-    return InkWell(
-      key: key,
-      onTap: widget.onStopwatchToggle,
-      borderRadius: BorderRadius.circular(30),
-      child: Center(
-        child: Icon(
-          widget.isStopwatchRunning ? Icons.stop : Icons.play_arrow, 
-          color: widget.isStopwatchRunning ? Colors.redAccent : Colors.greenAccent, 
-          size: 28
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLapButton({Key? key}) {
-    return InkWell(
-      key: key,
-      onTap: widget.isStopwatchRunning ? widget.onStopwatchLap : null,
-      borderRadius: BorderRadius.circular(30),
-      child: Center(
-        child: Icon(
-          Icons.flag, 
-          color: widget.isStopwatchRunning ? Colors.white : Colors.white30, 
-          size: 28
-        ),
-      ),
-    );
-  }
-
-  // --- Timer Dock Buttons ---
-  Widget _buildTimerPlayPauseButton({Key? key}) {
-    bool canPlay = !widget.isCreatingTimer && widget.hasSelectedTimer;
-    return InkWell(
-      key: key,
-      onTap: canPlay ? widget.onTimerToggle : null,
-      borderRadius: BorderRadius.circular(30),
-      child: Center(
-        child: Icon(
-          widget.isTimerRunning ? Icons.pause : Icons.play_arrow, 
-          color: widget.isTimerRunning ? Colors.orangeAccent : (canPlay ? Colors.greenAccent : Colors.white30), 
-          size: 28
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTimerStopButton({Key? key}) {
-    bool canStop = !widget.isCreatingTimer && widget.hasSelectedTimer;
-    return InkWell(
-      key: key,
-      onTap: canStop ? widget.onTimerStop : null,
-      borderRadius: BorderRadius.circular(30),
-      child: Center(
-        child: Icon(Icons.stop, color: canStop ? Colors.redAccent : Colors.white30, size: 28),
-      ),
-    );
-  }
-
   Widget _buildRightGlassCircle() {
     return Container(
       width: 60,
@@ -678,15 +520,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
                 duration: const Duration(milliseconds: 300),
                 child: widget.isAlarmRinging
                     ? _buildSnoozeButton(key: const ValueKey('snooze'))
-                    : widget.isTimerMode 
-                        ? _buildTimerStopButton(key: const ValueKey('timer_stop'))
-                        : widget.isStopwatchMode
-                            ? _buildLapButton(key: const ValueKey('lap'))
-                            : widget.isViewingAlarms
-                                ? _buildDeleteAlarmButton(key: const ValueKey('delete_alarm'))
-                                : widget.isAlarmMode 
-                                    ? _buildAmPmScroller(key: const ValueKey('ampm'))
-                                    : (widget.isDragging ? _buildUninstallTarget(key: const ValueKey('uninstall')) : _buildWebButton(key: const ValueKey('web'))),
+                    : (widget.isDragging ? _buildUninstallTarget(key: const ValueKey('uninstall')) : _buildWebButton(key: const ValueKey('web'))),
               ),
             ),
           ),
@@ -780,22 +614,14 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
                         ),
                       )
                     : SizedBox(
-                        key: ValueKey('left_circle_${widget.isDragging}_${widget.isAlarmMode}_${widget.isStopwatchMode}_${widget.isTimerMode}_${widget.isCreatingTimer}_${widget.isAlarmRinging}_${widget.isViewingAlarms}'),
+                        key: ValueKey('left_circle_${widget.isDragging}_${widget.isAlarmRinging}'),
                         width: 60.0,
                         height: 60.0,
                         child: Material(
                           color: Colors.transparent,
                           child: widget.isAlarmRinging
                               ? _buildCancelButton(key: const ValueKey('cancel'))
-                              : widget.isTimerMode 
-                                  ? _buildTimerPlayPauseButton(key: const ValueKey('timer_play'))
-                                  : widget.isStopwatchMode 
-                                      ? _buildStopPlayButton(key: const ValueKey('stop_play'))
-                                      : widget.isViewingAlarms
-                                          ? _buildEditAlarmButton(key: const ValueKey('edit_alarm'))
-                                          : widget.isAlarmMode 
-                                              ? _buildDayScroller(key: const ValueKey('day'))
-                                              : (widget.isDragging ? _buildRemoveTarget(key: const ValueKey('remove')) : _buildWeatherButton(key: const ValueKey('weather'))),
+                              : (widget.isDragging ? _buildRemoveTarget(key: const ValueKey('remove')) : _buildWeatherButton(key: const ValueKey('weather'))),
                         ),
                       ),
               ),
@@ -815,8 +641,11 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
     final bool isForecastMode = _showForecast && !widget.isDragging && !widget.isAlarmMode && !widget.isStopwatchMode && !widget.isTimerMode && !widget.isAlarmRinging && !widget.isViewingAlarms && !widget.isCalendarMode;
 
     final bool hidePill = isForecastMode;
-    final bool hideRightCircle = isForecastMode || widget.isCalendarMode;
-    final bool hideLeftCircle = widget.isCalendarMode;
+    final bool isClockPillActive = (widget.isAlarmMode || widget.isViewingAlarms || widget.isStopwatchMode || widget.isTimerMode);
+    
+    // Crucial Update: Hide the right and left circles when Clock Pill is active UNLESS the alarm is ringing
+    final bool hideRightCircle = isForecastMode || widget.isCalendarMode || (isClockPillActive && !widget.isAlarmRinging);
+    final bool hideLeftCircle = widget.isCalendarMode || (isClockPillActive && !widget.isAlarmRinging);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(40.0, 0, 40.0, 40.0),

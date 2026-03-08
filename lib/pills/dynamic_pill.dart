@@ -25,7 +25,8 @@ class DynamicPill extends StatelessWidget {
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 300),
               curve: Curves.easeInOut,
-              padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
+              // Reduced horizontal padding to prevent layout collisions
+              padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 6.0),
               decoration: BoxDecoration(
                 color: Colors.white.withOpacity(0.15),
                 borderRadius: BorderRadius.circular(40.0),
