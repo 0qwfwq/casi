@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'screens/home_info_bar.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
     statusBarIconBrightness: Brightness.light,
@@ -10,6 +11,10 @@ void main() {
     systemNavigationBarIconBrightness: Brightness.light,
   ));
   
+  SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+  ]);
+
   runApp(const MyApp());
 }
 
