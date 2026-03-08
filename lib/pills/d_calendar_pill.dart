@@ -47,8 +47,8 @@ class DCalendarPill extends StatefulWidget {
 }
 
 class _DCalendarPillState extends State<DCalendarPill> {
-  // Increased width for a larger, more legible calendar
-  static const double _fixedPillWidth = 264.0;
+  // Increased width to 272.0 to perfectly fit 7 items of 32px + 6 gaps of 4px + 24px padding
+  static const double _fixedPillWidth = 272.0;
   
   late DateTime _displayMonth;
 
@@ -298,7 +298,8 @@ class _DCalendarPillState extends State<DCalendarPill> {
 
           // --- WEEKDAYS HEADER ---
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            // Changed from spaceAround to spaceBetween to align perfectly with the Wrap's internal spacing
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: weekdays.map((day) => SizedBox(
               width: 32,
               child: Text(
