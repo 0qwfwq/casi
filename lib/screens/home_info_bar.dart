@@ -53,6 +53,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   List<String> _activeAlarms = []; 
   bool _isViewingAlarms = false; 
   bool _isAlarmRinging = false; 
+  bool _isEditingAlarm = false; // Prevents deletions when cancelling an edit!
   int? _selectedAlarmIndex; 
   Timer? _alarmTimer;
   String? _lastRungAlarmTime; 
@@ -318,7 +319,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         t.remainingSeconds = t.endTime!.difference(now).inSeconds;
         
         if (t.remainingSeconds <= 0) {
-          t.remainingSeconds = 0;
+          t.remainingSeconds = t.totalSeconds; // Reset to total so it can be restarted easily
           t.isRunning = false;
           t.endTime = null;
           triggerRing = true;
@@ -357,7 +358,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     setState(() {
       if (t.isRunning) {
         t.isRunning = false;
-        t.endTime = null; // Pauses
+        t.endTime = null; 
       } else {
         if (t.remainingSeconds <= 0) t.remainingSeconds = t.totalSeconds;
         t.isRunning = true;
@@ -377,7 +378,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       var t = _appTimers[_selectedTimerIndex!];
       t.isRunning = false;
       t.endTime = null;
-      t.remainingSeconds = t.totalSeconds; // Fully Resets 
+      t.remainingSeconds = t.totalSeconds; 
     });
   }
 
@@ -514,6 +515,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       _isViewingAlarms = false;
       _isStopwatchMode = false;
       _isTimerMode = false;
+      _isEditingAlarm = false;
     });
   }
 
@@ -523,6 +525,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       _isAlarmMode = false;
       _isViewingAlarms = false;
       _selectedAlarmIndex = null; 
+      _isEditingAlarm = false;
 
       // CALENDAR CLEANUP
       _isCalendarMode = false;
@@ -715,14 +718,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   } else {
                     setState(() {
                       _showPill = true;
-                      _isAlarmMode = false; // Show alarm list first
+                      _isAlarmMode = false;
                       _isCalendarMode = false;
                       _isViewingEvents = false;
                       _selectedEventIndex = null;
-                      _isViewingAlarms = true; // Show alarm list first
+                      _isViewingAlarms = true; 
                       _isStopwatchMode = false;
                       _isTimerMode = false;
                       _selectedAlarmIndex = null;
+                      _isEditingAlarm = false;
                       _scrolledHour = 1; 
                       _scrolledMinute = 0;
                       _scrolledAmPm = 'AM';
@@ -763,7 +767,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                       right: 0,
                                       child: TapRegion(
                                         groupId: 'dock_region',
-                                        // FIXED: Disappears beautifully on first tap outside
                                         onTapOutside: (event) {
                                           if (_isAlarmRinging) {
                                             return; 
@@ -795,7 +798,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                               ),
                                             ),
                                             
-                                            // CLEANED UP: ScreenDock no longer has unused parameters!
                                             ScreenDock(
                                               isDragging: _isDragging,
                                               isAlarmMode: _isAlarmMode, 
@@ -804,8 +806,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                               isStopwatchMode: _isStopwatchMode,
                                               isTimerMode: _isTimerMode,
                                               isCalendarMode: _isCalendarMode,
-                                              onSnooze: _snoozeAlarm,          
-                                              onCancel: _stopAlarm,            
                                               onRemove: (app) {
                                                 setState(() {
                                                   _homeApps.removeWhere((key, value) => value.packageName == app.packageName);
@@ -888,7 +888,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                                             initialTimerMinute: _scrolledTimerMinute,
                                                             initialTimerSecond: _scrolledTimerSecond,
                                                             
-                                                            // FIXED: Re-added all missing action callbacks here!
+                                                            // Callbacks
                                                             onAmPmChanged: (val) => _scrolledAmPm = val,
                                                             onDayChanged: (val) => _scrolledDay = val,
                                                             onStopwatchToggle: _toggleStopwatch,
@@ -904,22 +904,44 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                                             },
                                                             onTimerStop: _stopTimer,
                                                             
-                                                            onViewAlarmsTapped: () => setState(() => _isViewingAlarms = true),
+                                                            // Action Links
+                                                            onSnoozeRinging: _snoozeAlarm,
+                                                            onCancelRinging: _stopAlarm,
+                                                            
+                                                            onViewAlarmsTapped: () => setState(() {
+                                                              _isViewingAlarms = true;
+                                                              _isAlarmMode = false;
+                                                              _isEditingAlarm = false;
+                                                            }),
                                                             onAddNewAlarmTapped: () => setState(() {
                                                               _isViewingAlarms = false;
                                                               _selectedAlarmIndex = null;
+                                                              _isEditingAlarm = false; 
                                                               _isAlarmMode = true; 
+                                                            }),
+                                                            onCancelAlarmTapped: () => setState(() {
+                                                              _isAlarmMode = false;
+                                                              _isViewingAlarms = true;
+                                                              _selectedAlarmIndex = null;
+                                                              _isEditingAlarm = false;
                                                             }),
                                                             onSaveAlarmTapped: () {
                                                               setState(() {
                                                                 String minStr = _scrolledMinute.toString().padLeft(2, '0');
                                                                 String newAlarm = "$_scrolledDay $_scrolledHour:$minStr $_scrolledAmPm";
-                                                                if (!_activeAlarms.contains(newAlarm)) {
-                                                                  _activeAlarms.add(newAlarm);
+                                                                
+                                                                if (_isEditingAlarm && _selectedAlarmIndex != null) {
+                                                                  _activeAlarms[_selectedAlarmIndex!] = newAlarm;
+                                                                } else {
+                                                                  if (!_activeAlarms.contains(newAlarm)) {
+                                                                    _activeAlarms.add(newAlarm);
+                                                                  }
                                                                 }
+                                                                
                                                                 _isAlarmMode = false;
                                                                 _isViewingAlarms = true; 
                                                                 _selectedAlarmIndex = null;
+                                                                _isEditingAlarm = false;
                                                               });
                                                             },
                                                             onDeleteAlarm: (index) {
@@ -951,8 +973,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                                                   _scrolledAmPm = parts[1];
                                                                 }
                                                                 
-                                                                _activeAlarms.removeAt(index);
-                                                                _selectedAlarmIndex = null;
+                                                                _isEditingAlarm = true; // DO NOT REMOVE! Just mark as editing
+                                                                _selectedAlarmIndex = index;
                                                                 _isViewingAlarms = false;
                                                                 _isAlarmMode = true; 
                                                               });
@@ -1054,6 +1076,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                                               _isStopwatchMode = false;
                                                               _isTimerMode = false;
                                                               _selectedAlarmIndex = null;
+                                                              _isEditingAlarm = false;
                                                               _scrolledHour = 1;
                                                               _scrolledMinute = 0;
                                                               _scrolledAmPm = 'AM';

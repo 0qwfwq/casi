@@ -49,6 +49,11 @@ class DClockPill extends StatelessWidget {
   final ValueChanged<int>? onToggleTimer; 
   final ValueChanged<int>? onEditTimer;   
   final ValueChanged<int>? onEditAlarmTapped;
+  final VoidCallback? onCancelAlarmTapped; 
+
+  // --- Ringing Actions ---
+  final VoidCallback? onSnoozeRinging;
+  final VoidCallback? onCancelRinging;
 
   // --- Scroller Callbacks ---
   final ValueChanged<int>? onHourChanged;
@@ -78,7 +83,6 @@ class DClockPill extends StatelessWidget {
   static const Color _cAlarm = Color(0xFF00E676); 
   static const Color _cTimer = Color(0xFFFFAB00); 
   static const Color _cStopwatch = Color(0xFF40C4FF); 
-  static const Color _cRing = Color(0xFFFF3D00); 
 
   const DClockPill({
     super.key,
@@ -117,6 +121,9 @@ class DClockPill extends StatelessWidget {
     this.onToggleTimer,
     this.onEditTimer,
     this.onEditAlarmTapped,
+    this.onCancelAlarmTapped,
+    this.onSnoozeRinging,
+    this.onCancelRinging,
     this.onHourChanged,
     this.onMinuteChanged,
     this.onAmPmChanged,
@@ -136,7 +143,7 @@ class DClockPill extends StatelessWidget {
   });
 
   double _getDesiredHeight() {
-    if (isAlarmRinging) return 160.0;
+    if (isAlarmRinging) return 76.0; // Shrinks down perfectly for the swipe slider
     
     double baseHeight = 130.0; 
     double selectionPadding = 0.0; 
@@ -145,22 +152,33 @@ class DClockPill extends StatelessWidget {
       double lapsHeight = stopwatchLaps.isEmpty ? 0 : stopwatchLaps.length * 40.0;
       return (baseHeight + 110.0 + lapsHeight).clamp(260.0, 420.0);
     } else if (isTimerMode) {
-      if (isCreatingTimer) return 320.0; // Fixed: Expanded size so buttons are never cut off
+      if (isCreatingTimer) return 320.0; 
       if (selectedTimerIndex != null) selectionPadding = 50.0; 
       double listHeight = savedTimersTimes.isEmpty ? 60 : savedTimersTimes.length * 62.0;
       return (baseHeight + 40.0 + listHeight + selectionPadding).clamp(220.0, 420.0);
     } else {
       // Alarm Mode
-      if (isAlarmMode) return 320.0; // Fixed: Expanded size so buttons are never cut off
+      if (isAlarmMode) return 320.0; 
       if (selectedIndex != null) selectionPadding = 50.0; 
       double listHeight = activeAlarms.isEmpty ? 60 : activeAlarms.length * 58.0;
       return (baseHeight + 40.0 + listHeight + selectionPadding).clamp(220.0, 420.0);
     }
   }
 
+  double _getDesiredWidth() {
+    return _fixedPillWidth; // Slider needs full pill width
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (isAlarmRinging) return _buildRingingState(key: const ValueKey('ringing'));
+    if (isAlarmRinging) {
+      return _RingingSlider(
+        key: const ValueKey('ringing_slider'),
+        ringColor: Colors.white, // Changed to a clean, simple white glow
+        onSnooze: onSnoozeRinging,
+        onCancel: onCancelRinging,
+      );
+    }
 
     Widget content;
     if (isStopwatchMode) {
@@ -182,7 +200,7 @@ class DClockPill extends StatelessWidget {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeOutQuart,
-      width: _fixedPillWidth,
+      width: _getDesiredWidth(),
       height: _getDesiredHeight(),
       padding: const EdgeInsets.fromLTRB(12.0, 12.0, 12.0, 8.0), 
       child: Column(
@@ -237,11 +255,10 @@ class DClockPill extends StatelessWidget {
   Widget _buildAlarmsList({Key? key}) {
     return SingleChildScrollView(
       key: key,
-      physics: const NeverScrollableScrollPhysics(),
+      physics: const BouncingScrollPhysics(), 
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Header with Add Button
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -273,7 +290,7 @@ class DClockPill extends StatelessWidget {
           else
             ListView.builder(
               shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
+              physics: const NeverScrollableScrollPhysics(), 
               padding: EdgeInsets.zero,
               itemCount: activeAlarms.length,
               itemBuilder: (context, index) {
@@ -313,7 +330,6 @@ class DClockPill extends StatelessWidget {
                         const SizedBox(width: 4),
                         Text(ampm, style: TextStyle(color: isSelected ? _cAlarm.withOpacity(0.8) : Colors.white54, fontSize: 12, fontWeight: FontWeight.bold)),
                         const Spacer(),
-                        // Edit Icon Button
                         GestureDetector(
                           onTap: () => onEditAlarmTapped?.call(index),
                           child: Padding(
@@ -345,7 +361,7 @@ class DClockPill extends StatelessWidget {
   Widget _buildAlarmScrollers({Key? key}) {
     return SingleChildScrollView(
       key: key,
-      physics: const NeverScrollableScrollPhysics(),
+      physics: const NeverScrollableScrollPhysics(), 
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -389,7 +405,7 @@ class DClockPill extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              _buildActionButton("Cancel", Icons.close, Colors.white54, onViewAlarmsTapped),
+              _buildActionButton("Cancel", Icons.close, Colors.white54, onCancelAlarmTapped ?? onViewAlarmsTapped),
               _buildActionButton("Save", Icons.check, _cAlarm, onSaveAlarmTapped),
             ],
           ),
@@ -402,7 +418,7 @@ class DClockPill extends StatelessWidget {
   Widget _buildStopwatchState({Key? key}) {
     return SingleChildScrollView(
       key: key,
-      physics: const NeverScrollableScrollPhysics(),
+      physics: const BouncingScrollPhysics(), 
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -445,7 +461,7 @@ class DClockPill extends StatelessWidget {
             const SizedBox(height: 16),
             ListView.builder(
               shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
+              physics: const NeverScrollableScrollPhysics(), 
               padding: EdgeInsets.zero,
               itemCount: stopwatchLaps.length,
               itemBuilder: (context, index) {
@@ -473,11 +489,10 @@ class DClockPill extends StatelessWidget {
   Widget _buildTimersList({Key? key}) {
     return SingleChildScrollView(
       key: key,
-      physics: const NeverScrollableScrollPhysics(),
+      physics: const BouncingScrollPhysics(), 
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Header with Add Button
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -509,7 +524,7 @@ class DClockPill extends StatelessWidget {
           else
             ListView.builder(
               shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
+              physics: const NeverScrollableScrollPhysics(), 
               padding: EdgeInsets.zero,
               itemCount: savedTimersTimes.length,
               itemBuilder: (context, index) {
@@ -569,7 +584,7 @@ class DClockPill extends StatelessWidget {
   Widget _buildTimerScrollers({Key? key}) {
     return SingleChildScrollView(
       key: key,
-      physics: const NeverScrollableScrollPhysics(),
+      physics: const NeverScrollableScrollPhysics(), 
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -739,25 +754,158 @@ class DClockPill extends StatelessWidget {
       ),
     );
   }
+}
 
-  Widget _buildRingingState({Key? key}) {
-    return TweenAnimationBuilder<double>(
-      key: key,
-      tween: Tween<double>(begin: 0.8, end: 1.2),
+// --- Interactive Ringing Slider ---
+class _RingingSlider extends StatefulWidget {
+  final VoidCallback? onSnooze;
+  final VoidCallback? onCancel;
+  final Color ringColor;
+
+  const _RingingSlider({
+    Key? key,
+    this.onSnooze,
+    this.onCancel,
+    required this.ringColor,
+  }) : super(key: key);
+
+  @override
+  State<_RingingSlider> createState() => _RingingSliderState();
+}
+
+class _RingingSliderState extends State<_RingingSlider> with TickerProviderStateMixin {
+  double _dragOffset = 0.0;
+  late AnimationController _pulseController;
+  late AnimationController _snapController;
+  late Animation<double> _snapAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
       duration: const Duration(milliseconds: 800),
-      curve: Curves.easeInOutSine,
-      builder: (context, value, child) {
+    )..repeat(reverse: true);
+
+    _snapController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+    _snapController.addListener(() {
+      setState(() {
+        _dragOffset = _snapAnimation.value;
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    _snapController.dispose();
+    super.dispose();
+  }
+
+  void _onDragEnd(DragEndDetails details) {
+    final double maxDrag = 90.0;
+    if (_dragOffset > maxDrag * 0.7) {
+      widget.onCancel?.call(); // Stop
+    } else if (_dragOffset < -maxDrag * 0.7) {
+      widget.onSnooze?.call(); // Snooze
+    } else {
+      // Snap back to center
+      _snapAnimation = Tween<double>(begin: _dragOffset, end: 0.0).animate(
+        CurvedAnimation(parent: _snapController, curve: Curves.easeOutBack)
+      );
+      _snapController.forward(from: 0.0);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final double maxDrag = 90.0;
+
+    return AnimatedBuilder(
+      animation: _pulseController,
+      builder: (context, child) {
+        final pulse = _pulseController.value;
         return Container(
-          width: _fixedPillWidth,
-          height: 160.0,
-          alignment: Alignment.center,
+          width: DClockPill._fixedPillWidth, // 272
+          height: 76.0,
           decoration: BoxDecoration(
-            color: _cRing.withOpacity(0.15 * value),
-            borderRadius: BorderRadius.circular(32),
-            border: Border.all(color: _cRing.withOpacity(0.6 * value), width: 1.5),
-            boxShadow: [BoxShadow(color: _cRing.withOpacity(0.3 * value), blurRadius: 16 * value, spreadRadius: 2 * value)],
+            color: widget.ringColor.withOpacity(0.1 + (pulse * 0.05)),
+            borderRadius: BorderRadius.circular(38),
+            border: Border.all(color: widget.ringColor.withOpacity(0.3 + (pulse * 0.2)), width: 1.5),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1 + (pulse * 0.1)),
+                blurRadius: 10 + (pulse * 4),
+                spreadRadius: 1,
+              )
+            ],
           ),
-          child: Icon(Icons.notifications_active_outlined, color: Colors.white, size: 48 + (value * 8)),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              // Left side (Snooze text fades as you swipe)
+              Positioned(
+                left: 20,
+                child: Opacity(
+                  opacity: (_dragOffset < 0) ? 1.0 : 0.4,
+                  child: const Row(
+                    children: [
+                      Icon(Icons.chevron_left, color: Colors.white, size: 24),
+                      SizedBox(width: 4),
+                      Text("Snooze", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                    ],
+                  ),
+                ),
+              ),
+              // Right side (Stop text fades as you swipe)
+              Positioned(
+                right: 20,
+                child: Opacity(
+                  opacity: (_dragOffset > 0) ? 1.0 : 0.4,
+                  child: const Row(
+                    children: [
+                      Text("Stop", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                      SizedBox(width: 4),
+                      Icon(Icons.chevron_right, color: Colors.white, size: 24),
+                    ],
+                  ),
+                ),
+              ),
+              // Draggable Thumb
+              Positioned(
+                left: DClockPill._fixedPillWidth / 2 - 28 + _dragOffset,
+                child: GestureDetector(
+                  onHorizontalDragUpdate: (details) {
+                    if (_snapController.isAnimating) _snapController.stop();
+                    setState(() {
+                      _dragOffset += details.delta.dx;
+                      _dragOffset = _dragOffset.clamp(-maxDrag, maxDrag);
+                    });
+                  },
+                  onHorizontalDragEnd: _onDragEnd,
+                  child: Container(
+                    width: 56,
+                    height: 56,
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black26,
+                          blurRadius: 8,
+                          offset: Offset(0, 4),
+                        )
+                      ],
+                    ),
+                    child: const Icon(Icons.notifications_active_rounded, color: Colors.black87, size: 28),
+                  ),
+                ),
+              ),
+            ],
+          ),
         );
       },
     );

@@ -22,8 +22,6 @@ class ScreenDock extends StatefulWidget {
   
   final void Function(AppInfo)? onRemove;
   final void Function(AppInfo)? onUninstall;
-  final VoidCallback? onSnooze;
-  final VoidCallback? onCancel;
   
   final Widget? activePill;
 
@@ -38,8 +36,6 @@ class ScreenDock extends StatefulWidget {
     this.isCalendarMode = false,
     this.onRemove,
     this.onUninstall,
-    this.onSnooze,
-    this.onCancel,
     this.activePill,
   });
 
@@ -471,28 +467,6 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildSnoozeButton({Key? key}) {
-    return InkWell(
-      key: key,
-      onTap: widget.onSnooze,
-      borderRadius: BorderRadius.circular(30),
-      child: const Center(
-        child: Icon(Icons.snooze, color: Colors.orangeAccent, size: 28),
-      ),
-    );
-  }
-
-  Widget _buildCancelButton({Key? key}) {
-    return InkWell(
-      key: key,
-      onTap: widget.onCancel,
-      borderRadius: BorderRadius.circular(30),
-      child: const Center(
-        child: Icon(Icons.close, color: Colors.redAccent, size: 28),
-      ),
-    );
-  }
-
   Widget _buildRightGlassCircle() {
     return Container(
       width: 60,
@@ -518,9 +492,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
               color: Colors.transparent,
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 300),
-                child: widget.isAlarmRinging
-                    ? _buildSnoozeButton(key: const ValueKey('snooze'))
-                    : (widget.isDragging ? _buildUninstallTarget(key: const ValueKey('uninstall')) : _buildWebButton(key: const ValueKey('web'))),
+                child: widget.isDragging ? _buildUninstallTarget(key: const ValueKey('uninstall')) : _buildWebButton(key: const ValueKey('web')),
               ),
             ),
           ),
@@ -619,9 +591,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
                         height: 60.0,
                         child: Material(
                           color: Colors.transparent,
-                          child: widget.isAlarmRinging
-                              ? _buildCancelButton(key: const ValueKey('cancel'))
-                              : (widget.isDragging ? _buildRemoveTarget(key: const ValueKey('remove')) : _buildWeatherButton(key: const ValueKey('weather'))),
+                          child: widget.isDragging ? _buildRemoveTarget(key: const ValueKey('remove')) : _buildWeatherButton(key: const ValueKey('weather')),
                         ),
                       ),
               ),
@@ -643,9 +613,9 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
     final bool hidePill = isForecastMode;
     final bool isClockPillActive = (widget.isAlarmMode || widget.isViewingAlarms || widget.isStopwatchMode || widget.isTimerMode);
     
-    // Crucial Update: Hide the right and left circles when Clock Pill is active UNLESS the alarm is ringing
-    final bool hideRightCircle = isForecastMode || widget.isCalendarMode || (isClockPillActive && !widget.isAlarmRinging);
-    final bool hideLeftCircle = widget.isCalendarMode || (isClockPillActive && !widget.isAlarmRinging);
+    // HIDDEN when Clock Pill is active OR when the alarm is actively ringing!
+    final bool hideRightCircle = isForecastMode || widget.isCalendarMode || isClockPillActive || widget.isAlarmRinging;
+    final bool hideLeftCircle = widget.isCalendarMode || isClockPillActive || widget.isAlarmRinging;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(40.0, 0, 40.0, 40.0),
