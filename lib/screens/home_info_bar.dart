@@ -152,6 +152,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       _checkAppChangesOnResume();
       _syncTimersOnResume(); 
+      // Instantly close the drawer when returning to the launcher
+      if (_drawerController.isAttached && _drawerController.size > 0.0) {
+        _drawerController.jumpTo(0.0);
+      }
+    } else if (state == AppLifecycleState.paused) {
+      // Instantly close the drawer when leaving the launcher (e.g. opening an app)
+      if (_drawerController.isAttached && _drawerController.size > 0.0) {
+        _drawerController.jumpTo(0.0);
+      }
     }
   }
 

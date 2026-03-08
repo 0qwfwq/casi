@@ -81,6 +81,20 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
   void initState() {
     super.initState();
     _filteredApps = widget.apps;
+    // Add listener to clear search when drawer closes
+    widget.progressNotifier.addListener(_onDrawerProgressChanged);
+  }
+
+  void _onDrawerProgressChanged() {
+    // If the drawer is fully closed (or nearly closed)...
+    if (widget.progressNotifier.value <= 0.01) {
+      if (_searchController.text.isNotEmpty) {
+        _searchController.clear();
+        _updateSearch(''); // Reset the filtered list to show all apps
+      }
+      // Drop the keyboard if it was still open
+      FocusManager.instance.primaryFocus?.unfocus();
+    }
   }
 
   // Ensures the drawer state refreshes automatically when apps are installed/uninstalled or icons finish loading!
@@ -107,6 +121,7 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
 
   @override
   void dispose() {
+    widget.progressNotifier.removeListener(_onDrawerProgressChanged);
     _searchController.dispose();
     super.dispose();
   }
@@ -209,7 +224,7 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                       child: Stack(
                         alignment: Alignment.center,
                         children: [
-                          // NEW: Play Store button on the left
+                          // Play Store button on the left
                           Positioned(
                             left: 16,
                             child: ClipRRect(
@@ -242,7 +257,7 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                               ),
                             ),
                           ),
-                          // Existing: Center Search Bar
+                          // Center Search Bar
                           SizedBox(
                             width: screenWidth * 0.6,
                             child: ClipRRect(
@@ -275,7 +290,7 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                               ),
                             ),
                           ),
-                          // MODIFIED: Settings button on the right (added long press)
+                          // Settings button on the right
                           Positioned(
                             right: 16,
                             child: ClipRRect(
