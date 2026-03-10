@@ -221,110 +221,68 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                     bottom: MediaQuery.of(context).viewInsets.bottom + 16,
                     child: Opacity(
                       opacity: contentOpacity,
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          // Play Store button on the left
-                          Positioned(
-                            left: 16,
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(30),
-                              child: BackdropFilter(
-                                filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withValues(alpha: 0.15),
-                                    borderRadius: BorderRadius.circular(30),
-                                    border: Border.all(
-                                      color: Colors.white.withValues(alpha: 0.5),
-                                      width: 1.2,
-                                    ),
+                      child: Center(
+                        child: SizedBox(
+                          width: screenWidth * 0.6,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(30),
+                            child: BackdropFilter(
+                              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(30),
+                                  border: Border.all(
+                                    color: Colors.white.withValues(alpha: 0.5),
+                                    width: 1.2,
                                   ),
-                                  child: Material(
-                                    color: Colors.transparent,
-                                    child: InkWell(
-                                      borderRadius: BorderRadius.circular(30),
-                                      onTap: () {
-                                        InstalledApps.startApp('com.android.vending');
-                                      },
-                                      child: const Padding(
-                                        padding: EdgeInsets.all(12.0),
-                                        child: Icon(Icons.shop, color: Colors.white70),
+                                ),
+                                child: TextField(
+                                  controller: _searchController,
+                                  onChanged: _updateSearch,
+                                  style: const TextStyle(color: Colors.white),
+                                  decoration: InputDecoration(
+                                    hintText: 'Search apps',
+                                    hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
+                                    suffixIcon: Padding(
+                                      padding: const EdgeInsets.only(right: 14.0),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Material(
+                                            color: Colors.transparent,
+                                            child: InkWell(
+                                              borderRadius: BorderRadius.circular(30),
+                                              onTap: () {
+                                                InstalledApps.startApp('com.google.ar.lens');
+                                              },
+                                              child: const Icon(Icons.center_focus_strong, color: Colors.white70),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Material(
+                                            color: Colors.transparent,
+                                            child: InkWell(
+                                              borderRadius: BorderRadius.circular(30),
+                                              onTap: widget.onOpenSettings,
+                                              onLongPress: () {
+                                                InstalledApps.startApp('com.android.settings');
+                                              },
+                                              child: const Icon(Icons.settings, color: Colors.white70),
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ),
+                                    filled: false,
+                                    border: InputBorder.none,
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                                   ),
                                 ),
                               ),
                             ),
                           ),
-                          // Center Search Bar
-                          SizedBox(
-                            width: screenWidth * 0.6,
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(30),
-                              child: BackdropFilter(
-                                filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withValues(alpha: 0.15),
-                                    borderRadius: BorderRadius.circular(30),
-                                    border: Border.all(
-                                      color: Colors.white.withValues(alpha: 0.5),
-                                      width: 1.2,
-                                    ),
-                                  ),
-                                  child: TextField(
-                                    controller: _searchController,
-                                    onChanged: _updateSearch,
-                                    style: const TextStyle(color: Colors.white),
-                                    decoration: InputDecoration(
-                                      hintText: 'Search apps',
-                                      hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
-                                      prefixIcon: const Icon(Icons.search, color: Colors.white),
-                                      filled: false,
-                                      border: InputBorder.none,
-                                      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          // Settings button on the right
-                          Positioned(
-                            right: 16,
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(30),
-                              child: BackdropFilter(
-                                filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withValues(alpha: 0.15),
-                                    borderRadius: BorderRadius.circular(30),
-                                    border: Border.all(
-                                      color: Colors.white.withValues(alpha: 0.5),
-                                      width: 1.2,
-                                    ),
-                                  ),
-                                  child: Material(
-                                    color: Colors.transparent,
-                                    child: InkWell(
-                                      borderRadius: BorderRadius.circular(30),
-                                      onTap: widget.onOpenSettings,
-                                      onLongPress: () {
-                                        InstalledApps.startApp('com.android.settings');
-                                      },
-                                      child: const Padding(
-                                        padding: EdgeInsets.all(12.0),
-                                        child: Icon(Icons.settings, color: Colors.white70),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
                     ),
                   ),
