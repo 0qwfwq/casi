@@ -9,6 +9,16 @@ class CalendarEvent {
     required this.title,
     this.description = '',
   });
+
+  Map<String, dynamic> toJson() => {
+    'title': title,
+    'description': description,
+  };
+
+  factory CalendarEvent.fromJson(Map<String, dynamic> json) => CalendarEvent(
+    title: json['title'] as String,
+    description: json['description'] as String? ?? '',
+  );
 }
 
 /// The specific content for the Calendar version of the dynamic pill.

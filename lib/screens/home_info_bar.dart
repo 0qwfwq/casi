@@ -1,6 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:installed_apps/app_info.dart';
@@ -102,8 +102,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   bool _showAppNames = true;
 
   // --- Layout Constants ---
-  final int _gridColumns = 4;
-  final int _gridRows = 6;
+  static const int _maxHomeApps = 4;
 
   // --- Drawer Control ---
   final ValueNotifier<double> _drawerProgress = ValueNotifier(0.0);
@@ -127,6 +126,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
     
     _loadSettings();
+    _loadCalendarEvents();
 
     final days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     _scrolledDay = days[DateTime.now().weekday - 1];
@@ -456,7 +456,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       final int index = int.tryParse(parts[0]) ?? -1;
       final String packageName = parts[1];
 
-      if (index >= 0 && index < _gridColumns * _gridRows) {
+      if (index >= 0 && index < _maxHomeApps) {
         try {
           final app = availableApps.firstWhere((a) => a.packageName == packageName);
           tempLayout[index] = app;
@@ -487,12 +487,44 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     await prefs.setStringList('home_layout', layout);
   }
 
+  Future<void> _saveCalendarEvents() async {
+    final prefs = await SharedPreferences.getInstance();
+    final Map<String, dynamic> serialized = {};
+    _calendarEvents.forEach((date, events) {
+      serialized[date.toIso8601String()] = events.map((e) => e.toJson()).toList();
+    });
+    await prefs.setString('calendar_events', jsonEncode(serialized));
+  }
+
+  Future<void> _loadCalendarEvents() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? jsonStr = prefs.getString('calendar_events');
+    if (jsonStr == null) return;
+    try {
+      final Map<String, dynamic> decoded = jsonDecode(jsonStr);
+      final Map<DateTime, List<CalendarEvent>> loaded = {};
+      decoded.forEach((key, value) {
+        final date = DateTime.parse(key);
+        final normalized = DateTime(date.year, date.month, date.day);
+        final events = (value as List)
+            .map((e) => CalendarEvent.fromJson(e as Map<String, dynamic>))
+            .toList();
+        loaded[normalized] = events;
+      });
+      setState(() {
+        _calendarEvents = loaded;
+      });
+    } catch (e) {
+      debugPrint("Error loading calendar events: $e");
+    }
+  }
+
   void _addToHomeScreen(AppInfo app) {
     if (_homeApps.values.any((element) => element.packageName == app.packageName)) {
       return;
     }
 
-    for (int i = 0; i < _gridColumns * _gridRows; i++) {
+    for (int i = 0; i < _maxHomeApps; i++) {
       if (!_homeApps.containsKey(i)) {
         setState(() {
           _homeApps[i] = app;
@@ -653,6 +685,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                   ));
                                   _calendarEvents[date] = eventsList;
                                 });
+                                _saveCalendarEvents();
                                 Navigator.pop(context);
                               }
                             },
@@ -680,9 +713,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    final double screenHeight = MediaQuery.of(context).size.height;
-    final double headerHeight = (screenHeight * 0.28) + 80;
-
     return PopScope(
       canPop: false,
       onPopInvoked: (didPop) {
@@ -698,6 +728,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         children: [
           _buildBackground(),
           GestureDetector(
+            behavior: HitTestBehavior.translucent,
             onVerticalDragStart: (details) {
               _dragStartY = details.globalPosition.dy;
             },
@@ -753,15 +784,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                             ValueListenableBuilder<double>(
                               valueListenable: _drawerProgress,
                               builder: (context, progress, child) {
-                                final double opacity = (1.0 - progress).clamp(0.0, 1.0);
                                 return Stack(
                                   children: [
-                                    Opacity(
-                                      opacity: opacity,
-                                      child: RepaintBoundary(
-                                        child: _buildHomeGrid(headerHeight),
-                                      ),
-                                    ),
+                                    const SizedBox.expand(),
                                     Positioned(
                                       top: 0,
                                       left: 0,
@@ -828,6 +853,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                                   debugPrint("Uninstall error: $e");
                                                 }
                                               },
+                                              homeApps: _homeApps,
+                                              maxHomeApps: _maxHomeApps,
+                                              showAppNames: _showAppNames,
+                                              onAppDropped: (index, app) => _onAppDropped(index, app),
+                                              onAppTap: (app) => InstalledApps.startApp(app.packageName),
+                                              onDragStarted: () => setState(() => _isDragging = true),
+                                              onDragEnded: () => setState(() => _isDragging = false),
                                               activePill: _showPill
                                                   ? DynamicPill(
                                                       key: const ValueKey('main_dynamic_pill'),
@@ -859,6 +891,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                                                     _selectedEventIndex = null;
                                                                   }
                                                                 });
+                                                                _saveCalendarEvents();
                                                               } else {
                                                                 ScaffoldMessenger.of(context).showSnackBar(
                                                                   const SnackBar(content: Text('Select an event to delete', style: TextStyle(color: Colors.white))),
@@ -1163,30 +1196,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildHomeGrid(double topPadding) {
-    final double bottomPadding = _isPlayerVisible ? 220.0 : 130.0;
-    
-    return GridView.builder(
-      padding: EdgeInsets.fromLTRB(16, topPadding, 16, bottomPadding), 
-      itemCount: _gridColumns * _gridRows,
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: _gridColumns,
-        crossAxisSpacing: 16,
-        mainAxisSpacing: 24,
-        childAspectRatio: 0.8,
-      ),
-      physics: const NeverScrollableScrollPhysics(),
-      itemBuilder: (context, index) {
-        return DragTarget<AppInfo>(
-          onAcceptWithDetails: (details) => _onAppDropped(index, details.data),
-          builder: (context, candidateData, rejectedData) {
-            return _buildGridItem(index, candidateData.isNotEmpty);
-          },
-        );
-      },
-    );
-  }
-
   void _onAppDropped(int newIndex, AppInfo data) {
     setState(() {
       final int? oldIndex = _homeApps.keys.cast<int?>().firstWhere(
@@ -1201,69 +1210,4 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _saveLayout();
   }
 
-  Widget _buildGridItem(int index, bool isCandidate) {
-    final app = _homeApps[index];
-    if (app == null) {
-      return Container(
-        decoration: BoxDecoration(
-          border: isCandidate ? Border.all(color: Colors.white24) : null,
-          borderRadius: BorderRadius.circular(12),
-        ),
-      );
-    }
-    return LongPressDraggable<AppInfo>(
-      data: app,
-      onDragStarted: () => setState(() => _isDragging = true),
-      onDragEnd: (_) => setState(() => _isDragging = false),
-      feedback: Material(
-        color: Colors.transparent,
-        child: SizedBox(
-          width: 60,
-          child: _buildAppIconVisual(app),
-        ),
-      ),
-      childWhenDragging: Container(color: Colors.transparent),
-      child: InkWell(
-        onTap: () => InstalledApps.startApp(app.packageName),
-        borderRadius: BorderRadius.circular(12),
-        child: _buildAppIconVisual(app),
-      ),
-    );
-  }
-
-  Widget _buildAppIconVisual(AppInfo app) {
-    final hasIcon = app.icon != null && app.icon!.isNotEmpty;
-    
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          padding: const EdgeInsets.all(8),
-          child: hasIcon 
-            ? Image.memory(
-                app.icon!,
-                width: 48,
-                height: 48,
-                gaplessPlayback: true,
-                errorBuilder: (context, error, stackTrace) => 
-                  const Icon(Icons.android, color: Colors.white, size: 48),
-              )
-            : const Icon(Icons.android, color: Colors.white, size: 48),
-        ),
-        if (_showAppNames) ...[
-          const SizedBox(height: 8),
-          Text(
-            app.name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 12,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ],
-    );
-  }
 }

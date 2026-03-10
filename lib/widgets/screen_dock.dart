@@ -13,17 +13,25 @@ import 'package:casi/widgets/weather_forecast_widget.dart';
 
 class ScreenDock extends StatefulWidget {
   final bool isDragging;
-  final bool isAlarmMode; 
-  final bool isAlarmRinging; 
-  final bool isViewingAlarms; 
-  final bool isStopwatchMode; 
-  final bool isTimerMode; 
+  final bool isAlarmMode;
+  final bool isAlarmRinging;
+  final bool isViewingAlarms;
+  final bool isStopwatchMode;
+  final bool isTimerMode;
   final bool isCalendarMode;
-  
+
   final void Function(AppInfo)? onRemove;
   final void Function(AppInfo)? onUninstall;
-  
+
   final Widget? activePill;
+
+  final Map<int, AppInfo> homeApps;
+  final int maxHomeApps;
+  final bool showAppNames;
+  final void Function(int index, AppInfo app)? onAppDropped;
+  final void Function(AppInfo app)? onAppTap;
+  final VoidCallback? onDragStarted;
+  final VoidCallback? onDragEnded;
 
   const ScreenDock({
     super.key,
@@ -37,6 +45,13 @@ class ScreenDock extends StatefulWidget {
     this.onRemove,
     this.onUninstall,
     this.activePill,
+    this.homeApps = const {},
+    this.maxHomeApps = 4,
+    this.showAppNames = true,
+    this.onAppDropped,
+    this.onAppTap,
+    this.onDragStarted,
+    this.onDragEnded,
   });
 
   @override
@@ -467,6 +482,92 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
     );
   }
 
+  Widget _buildAppIcon(AppInfo app, double iconSize, bool showName) {
+    final hasIcon = app.icon != null && app.icon!.isNotEmpty;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        hasIcon
+            ? Image.memory(
+                app.icon!,
+                width: iconSize,
+                height: iconSize,
+                gaplessPlayback: true,
+                errorBuilder: (context, error, stackTrace) =>
+                    Icon(Icons.android, color: Colors.white, size: iconSize),
+              )
+            : Icon(Icons.android, color: Colors.white, size: iconSize),
+        if (showName) ...[
+          const SizedBox(height: 4),
+          SizedBox(
+            width: iconSize + 12,
+            child: Text(
+              app.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: Colors.white, fontSize: 10),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildHomeAppRow() {
+    final appCount = widget.homeApps.length;
+    if (appCount == 0) return const SizedBox.shrink();
+
+    // Dynamic icon sizing: larger when fewer apps, smaller when more
+    double iconSize;
+    if (appCount <= 2) {
+      iconSize = 44.0;
+    } else if (appCount == 3) {
+      iconSize = 40.0;
+    } else if (appCount == 4) {
+      iconSize = 36.0;
+    } else {
+      iconSize = 32.0;
+    }
+
+    // Build only occupied slots in order
+    final sortedEntries = widget.homeApps.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: sortedEntries.map((entry) {
+        final app = entry.value;
+        final index = entry.key;
+        return DragTarget<AppInfo>(
+          onAcceptWithDetails: (details) =>
+              widget.onAppDropped?.call(index, details.data),
+          builder: (context, candidateData, rejectedData) {
+            return LongPressDraggable<AppInfo>(
+              data: app,
+              onDragStarted: () => widget.onDragStarted?.call(),
+              onDragEnd: (_) => widget.onDragEnded?.call(),
+              feedback: Material(
+                color: Colors.transparent,
+                child: _buildAppIcon(app, iconSize, false),
+              ),
+              childWhenDragging: SizedBox(width: iconSize + 12, height: iconSize),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6.0),
+                child: InkWell(
+                  onTap: () => widget.onAppTap?.call(app),
+                  borderRadius: BorderRadius.circular(12),
+                  child: _buildAppIcon(app, iconSize, widget.showAppNames),
+                ),
+              ),
+            );
+          },
+        );
+      }).toList(),
+    );
+  }
+
   Widget _buildRightGlassCircle() {
     return Container(
       width: 60,
@@ -665,12 +766,28 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
               ),
             ),
 
+            // Home App Row (between circles)
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 68.0, right: 68.0, bottom: 10.0),
+                child: AnimatedOpacity(
+                  opacity: (hideLeftCircle || hideRightCircle || isForecastMode) ? 0.0 : 1.0,
+                  duration: const Duration(milliseconds: 350),
+                  child: IgnorePointer(
+                    ignoring: hideLeftCircle || hideRightCircle || isForecastMode,
+                    child: _buildHomeAppRow(),
+                  ),
+                ),
+              ),
+            ),
+
             // Right Circle
             Align(
               alignment: Alignment.bottomRight,
               child: AnimatedOpacity(
                 opacity: hideRightCircle ? 0.0 : 1.0,
-                duration: const Duration(milliseconds: 350), 
+                duration: const Duration(milliseconds: 350),
                 child: IgnorePointer(
                   ignoring: hideRightCircle,
                   child: _buildRightGlassCircle(),
