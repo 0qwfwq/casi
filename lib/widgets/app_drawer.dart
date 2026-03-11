@@ -2,7 +2,7 @@ import 'dart:ui';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:installed_apps/app_info.dart';
-import 'package:installed_apps/installed_apps.dart';
+import 'package:casi/utils/app_launcher.dart';
 
 class AppDrawer extends StatelessWidget {
   final List<AppInfo> apps;
@@ -254,7 +254,7 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                                             child: InkWell(
                                               borderRadius: BorderRadius.circular(30),
                                               onTap: () {
-                                                InstalledApps.startApp('com.google.ar.lens');
+                                                AppLauncher.launchApp('com.google.ar.lens');
                                               },
                                               child: const Icon(Icons.center_focus_strong, color: Colors.white70),
                                             ),
@@ -266,7 +266,7 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                                               borderRadius: BorderRadius.circular(30),
                                               onTap: widget.onOpenSettings,
                                               onLongPress: () {
-                                                InstalledApps.startApp('com.android.settings');
+                                                AppLauncher.launchApp('com.android.settings');
                                               },
                                               child: const Icon(Icons.settings, color: Colors.white70),
                                             ),

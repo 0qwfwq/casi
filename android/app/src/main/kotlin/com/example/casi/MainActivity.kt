@@ -1,5 +1,6 @@
 package com.example.casi
 
+import android.app.ActivityOptions
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -18,9 +19,35 @@ import java.io.ByteArrayOutputStream
 
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "casi.launcher/media"
+    private val APP_CHANNEL = "casi.launcher/apps"
 
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, APP_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "launchApp" -> {
+                    val packageName = call.argument<String>("packageName")
+                    if (packageName != null) {
+                        val intent = packageManager.getLaunchIntentForPackage(packageName)
+                        if (intent != null) {
+                            val options = ActivityOptions.makeCustomAnimation(
+                                this,
+                                R.anim.slide_in_bottom,
+                                R.anim.no_animation
+                            )
+                            startActivity(intent, options.toBundle())
+                            result.success(true)
+                        } else {
+                            result.success(false)
+                        }
+                    } else {
+                        result.error("INVALID_ARGUMENT", "packageName is required", null)
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager

@@ -1,4 +1,4 @@
-import 'dart:async'; 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:ui';
 import 'package:flutter/cupertino.dart';
@@ -6,10 +6,11 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:installed_apps/app_info.dart';
-import 'package:installed_apps/installed_apps.dart'; 
+import 'package:installed_apps/installed_apps.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:casi/widgets/weather_forecast_widget.dart';
+import 'package:casi/utils/app_launcher.dart';
 
 class ScreenDock extends StatefulWidget {
   final bool isDragging;
@@ -33,6 +34,9 @@ class ScreenDock extends StatefulWidget {
   final VoidCallback? onDragStarted;
   final VoidCallback? onDragEnded;
 
+  final String webLongPressAction;
+  final String? webLongPressCustomApp;
+
   const ScreenDock({
     super.key,
     this.isDragging = false,
@@ -52,6 +56,8 @@ class ScreenDock extends StatefulWidget {
     this.onAppTap,
     this.onDragStarted,
     this.onDragEnded,
+    this.webLongPressAction = 'assistant',
+    this.webLongPressCustomApp,
   });
 
   @override
@@ -404,7 +410,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
       for (String pkg in assistantPackages) {
         bool? isInstalled = await InstalledApps.isAppInstalled(pkg);
         if (isInstalled == true) {
-          InstalledApps.startApp(pkg); 
+          AppLauncher.launchApp(pkg);
           return;
         }
       }
@@ -413,6 +419,21 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
     }
   }
 
+  void _handleWebLongPress() {
+    switch (widget.webLongPressAction) {
+      case 'assistant':
+        _launchAssistantApp();
+        break;
+      case 'custom':
+        if (widget.webLongPressCustomApp != null) {
+          AppLauncher.launchApp(widget.webLongPressCustomApp!);
+        }
+        break;
+      case 'none':
+      default:
+        break;
+    }
+  }
 
   // --- UI Build Helpers ---
 
@@ -434,7 +455,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
     return InkWell(
       key: key,
       onTap: _launchBrowser,
-      onLongPress: _launchAssistantApp, 
+      onLongPress: _handleWebLongPress,
       borderRadius: BorderRadius.circular(30),
       child: const Center(
         child: Icon(CupertinoIcons.globe, color: Colors.white, size: 24),

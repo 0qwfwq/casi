@@ -3,19 +3,21 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:installed_apps/app_info.dart';
 import 'package:installed_apps/installed_apps.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:audioplayers/audioplayers.dart'; 
+import 'package:audioplayers/audioplayers.dart';
 import 'settings_page.dart';
 import '../widgets/glass_header.dart';
 import '../widgets/app_drawer.dart';
 import '../widgets/screen_dock.dart';
 import '../widgets/song_player.dart';
-import '../widgets/clock_capsule.dart'; 
+import '../widgets/clock_capsule.dart';
 import '../pills/dynamic_pill.dart';
 import '../pills/d_clock_pill.dart';
-import '../pills/d_calendar_pill.dart'; 
+import '../pills/d_calendar_pill.dart';
+import '../utils/app_launcher.dart';
 
 class AppTimer {
   int totalSeconds;
@@ -100,6 +102,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   Color _bgColor = Colors.black;
   String? _bgImagePath;
   bool _showAppNames = true;
+  bool _immersiveMode = false;
+  String _webLongPressAction = 'assistant';
+  String? _webLongPressCustomApp;
 
   // --- Layout Constants ---
   static const int _maxHomeApps = 4;
@@ -150,8 +155,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      _applyImmersiveMode();
       _checkAppChangesOnResume();
-      _syncTimersOnResume(); 
+      _syncTimersOnResume();
       // Instantly close the drawer when returning to the launcher
       if (_drawerController.isAttached && _drawerController.size > 0.0) {
         _drawerController.jumpTo(0.0);
@@ -476,7 +482,19 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       _bgColor = Color(colorValue);
       _bgImagePath = prefs.getString('bg_image_path');
       _showAppNames = prefs.getBool('show_app_names') ?? true;
+      _immersiveMode = prefs.getBool('immersive_mode') ?? false;
+      _webLongPressAction = prefs.getString('web_long_press_action') ?? 'assistant';
+      _webLongPressCustomApp = prefs.getString('web_long_press_custom_app');
     });
+    _applyImmersiveMode();
+  }
+
+  void _applyImmersiveMode() {
+    if (_immersiveMode) {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    } else {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    }
   }
 
   Future<void> _saveLayout() async {
@@ -542,6 +560,66 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Home Screen is full!')),
+    );
+  }
+
+  void _showAppLongPressDialog(AppInfo app) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (context) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(32),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+              child: Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(32),
+                  border: Border.all(color: Colors.white.withOpacity(0.2), width: 1.5),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 20, spreadRadius: 5)
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      app.name,
+                      style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 20),
+                    ListTile(
+                      leading: const Icon(Icons.add_to_home_screen, color: Colors.white),
+                      title: const Text('Add to Home Screen', style: TextStyle(color: Colors.white)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      onTap: () {
+                        Navigator.pop(context);
+                        _addToHomeScreen(app);
+                      },
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                      title: const Text('Uninstall', style: TextStyle(color: Colors.redAccent)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      onTap: () {
+                        Navigator.pop(context);
+                        InstalledApps.uninstallApp(app.packageName);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -834,12 +912,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                             
                                             ScreenDock(
                                               isDragging: _isDragging,
-                                              isAlarmMode: _isAlarmMode, 
-                                              isAlarmRinging: _isAlarmRinging, 
-                                              isViewingAlarms: _isViewingAlarms, 
+                                              isAlarmMode: _isAlarmMode,
+                                              isAlarmRinging: _isAlarmRinging,
+                                              isViewingAlarms: _isViewingAlarms,
                                               isStopwatchMode: _isStopwatchMode,
                                               isTimerMode: _isTimerMode,
                                               isCalendarMode: _isCalendarMode,
+                                              webLongPressAction: _webLongPressAction,
+                                              webLongPressCustomApp: _webLongPressCustomApp,
                                               onRemove: (app) {
                                                 setState(() {
                                                   _homeApps.removeWhere((key, value) => value.packageName == app.packageName);
@@ -857,7 +937,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                               maxHomeApps: _maxHomeApps,
                                               showAppNames: _showAppNames,
                                               onAppDropped: (index, app) => _onAppDropped(index, app),
-                                              onAppTap: (app) => InstalledApps.startApp(app.packageName),
+                                              onAppTap: (app) => AppLauncher.launchApp(app.packageName),
                                               onDragStarted: () => setState(() => _isDragging = true),
                                               onDragEnded: () => setState(() => _isDragging = false),
                                               activePill: _showPill
@@ -1165,8 +1245,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                               apps: _apps,
                               progressNotifier: _drawerProgress,
                               controller: _drawerController,
-                              onAppTap: (app) => InstalledApps.startApp(app.packageName),
-                              onAppLongPress: (app) => _addToHomeScreen(app),
+                              onAppTap: (app) => AppLauncher.launchApp(app.packageName),
+                              onAppLongPress: (app) => _showAppLongPressDialog(app),
                               onOpenSettings: () {
                                 Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsPage()))
                                     .then((_) => _loadSettings());
@@ -1202,8 +1282,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             (k) => _homeApps[k]?.packageName == data.packageName,
             orElse: () => null,
           );
+
+      // Swap: move the app at the target position to the old position
+      final AppInfo? existingApp = _homeApps[newIndex];
+
       if (oldIndex != null) {
-        _homeApps.remove(oldIndex);
+        if (existingApp != null) {
+          _homeApps[oldIndex] = existingApp;
+        } else {
+          _homeApps.remove(oldIndex);
+        }
       }
       _homeApps[newIndex] = data;
     });
