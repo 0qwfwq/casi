@@ -563,64 +563,49 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     );
   }
 
-  void _showAppLongPressDialog(AppInfo app) {
-    showDialog(
+  void _showAppLongPressDialog(AppInfo app, Offset position) {
+    final RenderBox overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    showMenu<String>(
       context: context,
-      barrierColor: Colors.black54,
-      builder: (context) {
-        return Dialog(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 24),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(32),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
-              child: Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(32),
-                  border: Border.all(color: Colors.white.withOpacity(0.2), width: 1.5),
-                  boxShadow: [
-                    BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 20, spreadRadius: 5)
-                  ],
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      app.name,
-                      style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 20),
-                    ListTile(
-                      leading: const Icon(Icons.add_to_home_screen, color: Colors.white),
-                      title: const Text('Add to Home Screen', style: TextStyle(color: Colors.white)),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      onTap: () {
-                        Navigator.pop(context);
-                        _addToHomeScreen(app);
-                      },
-                    ),
-                    ListTile(
-                      leading: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                      title: const Text('Uninstall', style: TextStyle(color: Colors.redAccent)),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      onTap: () {
-                        Navigator.pop(context);
-                        InstalledApps.uninstallApp(app.packageName);
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            ),
+      position: RelativeRect.fromLTRB(
+        position.dx - 80,
+        position.dy - 110,
+        overlay.size.width - position.dx + 80,
+        overlay.size.height - position.dy + 110,
+      ),
+      color: Colors.grey[850],
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      items: [
+        PopupMenuItem<String>(
+          value: 'add',
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: const [
+              Icon(Icons.add_to_home_screen, color: Colors.white, size: 20),
+              SizedBox(width: 10),
+              Text('Add to Home', style: TextStyle(color: Colors.white)),
+            ],
           ),
-        );
-      },
-    );
+        ),
+        PopupMenuItem<String>(
+          value: 'uninstall',
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: const [
+              Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
+              SizedBox(width: 10),
+              Text('Uninstall', style: TextStyle(color: Colors.redAccent)),
+            ],
+          ),
+        ),
+      ],
+    ).then((value) {
+      if (value == 'add') {
+        _addToHomeScreen(app);
+      } else if (value == 'uninstall') {
+        InstalledApps.uninstallApp(app.packageName);
+      }
+    });
   }
 
   // --- Calendar Logic ---
@@ -1246,7 +1231,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                               progressNotifier: _drawerProgress,
                               controller: _drawerController,
                               onAppTap: (app) => AppLauncher.launchApp(app.packageName),
-                              onAppLongPress: (app) => _showAppLongPressDialog(app),
+                              onAppLongPress: (app, position) => _showAppLongPressDialog(app, position),
                               onOpenSettings: () {
                                 Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsPage()))
                                     .then((_) => _loadSettings());

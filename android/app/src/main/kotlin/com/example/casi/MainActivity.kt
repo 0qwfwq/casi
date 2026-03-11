@@ -1,6 +1,5 @@
 package com.example.casi
 
-import android.app.ActivityOptions
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -31,12 +30,9 @@ class MainActivity: FlutterActivity() {
                     if (packageName != null) {
                         val intent = packageManager.getLaunchIntentForPackage(packageName)
                         if (intent != null) {
-                            val options = ActivityOptions.makeCustomAnimation(
-                                this,
-                                R.anim.slide_in_bottom,
-                                R.anim.no_animation
-                            )
-                            startActivity(intent, options.toBundle())
+                            startActivity(intent)
+                            @Suppress("DEPRECATION")
+                            overridePendingTransition(R.anim.slide_in_bottom, R.anim.no_animation)
                             result.success(true)
                         } else {
                             result.success(false)

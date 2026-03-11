@@ -8,7 +8,7 @@ class AppDrawer extends StatelessWidget {
   final List<AppInfo> apps;
   final ValueNotifier<double> progressNotifier;
   final Function(AppInfo) onAppTap;
-  final Function(AppInfo) onAppLongPress;
+  final Function(AppInfo, Offset) onAppLongPress;
   final VoidCallback onOpenSettings;
   final DraggableScrollableController? controller;
 
@@ -55,7 +55,7 @@ class _AppDrawerSheet extends StatefulWidget {
   final List<AppInfo> apps;
   final ScrollController scrollController;
   final Function(AppInfo) onAppTap;
-  final Function(AppInfo) onAppLongPress;
+  final Function(AppInfo, Offset) onAppLongPress;
   final VoidCallback onOpenSettings;
   final ValueNotifier<double> progressNotifier;
 
@@ -174,9 +174,9 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                                 final app = _filteredApps[index];
                                 final hasIcon = app.icon != null && app.icon!.isNotEmpty;
                                 
-                                return InkWell(
+                                return GestureDetector(
                                   onTap: () => widget.onAppTap(app),
-                                  onLongPress: () => widget.onAppLongPress(app),
+                                  onLongPressStart: (details) => widget.onAppLongPress(app, details.globalPosition),
                                   child: Column(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
