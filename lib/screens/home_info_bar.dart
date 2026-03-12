@@ -8,6 +8,7 @@ import 'package:installed_apps/app_info.dart';
 import 'package:installed_apps/installed_apps.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:volume_controller/volume_controller.dart';
 import 'settings_page.dart';
 import '../widgets/glass_header.dart';
 import '../widgets/app_drawer.dart';
@@ -64,6 +65,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   // --- Audio States ---
   final AudioPlayer _audioPlayer = AudioPlayer();
   Timer? _soundTimer;
+  Timer? _vibrationTimer;
+  double? _previousVolume;
 
   // --- Time Scroller States ---
   int _scrolledHour = 1; 
@@ -97,6 +100,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   int? _selectedEventIndex;
   DateTime _calendarFocusedDay = DateTime.now();
   Map<DateTime, List<CalendarEvent>> _calendarEvents = {};
+  bool _eventPillDismissed = false; // Reset daily or when events change
 
   // --- Settings ---
   String _bgType = 'color';
@@ -105,6 +109,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   bool _immersiveMode = false;
   String _webLongPressAction = 'assistant';
   String? _webLongPressCustomApp;
+
+  int _lastCheckedDay = DateTime.now().day;
 
   // --- Layout Constants ---
   static const int _maxHomeApps = 4;
@@ -180,26 +186,71 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   void _startAlarmSound() {
-    _playSound(); 
+    // Save current volume and set to 70%
+    VolumeController().getVolume().then((vol) {
+      _previousVolume = vol;
+      VolumeController().setVolume(0.7, showSystemUI: false);
+    });
+
+    _playSound();
     _soundTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
       if (_isAlarmRinging) {
-        _playSound(); 
+        _playSound();
       } else {
         _stopAlarmSound();
       }
+    });
+
+    // Calming vibration pattern: gentle pulses with pauses
+    _startCalmVibration();
+  }
+
+  void _startCalmVibration() {
+    _vibrationTimer?.cancel();
+    // Gentle repeating pattern: light buzz, pause, light buzz, longer pause
+    int tick = 0;
+    _vibrationTimer = Timer.periodic(const Duration(milliseconds: 800), (_) {
+      if (!_isAlarmRinging) {
+        _vibrationTimer?.cancel();
+        _vibrationTimer = null;
+        return;
+      }
+      // Alternate between light impact and soft vibration
+      if (tick % 3 == 0) {
+        HapticFeedback.lightImpact();
+      } else if (tick % 3 == 1) {
+        HapticFeedback.mediumImpact();
+      }
+      // tick % 3 == 2 → silence (the pause in the pattern)
+      tick++;
     });
   }
 
   void _stopAlarmSound() {
     _soundTimer?.cancel();
     _soundTimer = null;
+    _vibrationTimer?.cancel();
+    _vibrationTimer = null;
     _audioPlayer.stop();
+
+    // Restore previous volume
+    if (_previousVolume != null) {
+      VolumeController().setVolume(_previousVolume!, showSystemUI: false);
+      _previousVolume = null;
+    }
   }
 
   // --- Alarm Background Logic ---
   void _checkAlarms() {
-    if (_isAlarmRinging) return; 
-    
+    // Reset event pill dismiss when the day changes
+    final today = DateTime.now().day;
+    if (today != _lastCheckedDay) {
+      _lastCheckedDay = today;
+      _eventPillDismissed = false;
+    }
+
+    if (_isAlarmRinging) return;
+
     final now = DateTime.now();
     int hour = now.hour;
     int minute = now.minute;
@@ -1273,104 +1324,151 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     return bestIdx;
   }
 
+  // --- Today's calendar events for status pill ---
+  List<CalendarEvent> _todayEvents() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    return _calendarEvents[today] ?? [];
+  }
+
+  Widget _buildStatusPill({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    VoidCallback? onLongPress,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      onLongPress: onLongPress,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, color: Colors.white, size: 14),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    label,
+                    style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildStatusPills() {
     final nearestAlarm = _nearestAlarmLabel();
     final nearestTimer = _nearestTimerIndex();
+    final todayEvts = _todayEvents();
     final bool hasAlarm = nearestAlarm != null;
     final bool hasTimer = nearestTimer != null;
+    final bool hasEvents = todayEvts.isNotEmpty && !_eventPillDismissed;
 
-    if (!hasAlarm && !hasTimer) return const SizedBox.shrink();
+    if (!hasAlarm && !hasTimer && !hasEvents) return const SizedBox.shrink();
+
+    final String eventLabel;
+    if (todayEvts.length == 1) {
+      eventLabel = todayEvts.first.title;
+    } else if (todayEvts.length > 1) {
+      eventLabel = '+${todayEvts.length} events';
+    } else {
+      eventLabel = '';
+    }
+
+    final pills = <Widget>[];
+
+    if (hasAlarm) {
+      pills.add(_buildStatusPill(
+        icon: Icons.alarm,
+        label: nearestAlarm,
+        onTap: () {
+          setState(() {
+            _showPill = true;
+            _isAlarmMode = false;
+            _isViewingAlarms = true;
+            _isStopwatchMode = false;
+            _isTimerMode = false;
+            _isCalendarMode = false;
+            _isViewingEvents = false;
+            _selectedAlarmIndex = null;
+            _isEditingAlarm = false;
+          });
+        },
+      ));
+    }
+
+    if (hasEvents) {
+      if (pills.isNotEmpty) pills.add(const SizedBox(width: 8));
+      pills.add(Flexible(
+        child: _buildStatusPill(
+          icon: Icons.event,
+          label: eventLabel,
+          onTap: () {
+            setState(() {
+              _showPill = true;
+              _isCalendarMode = true;
+              _isViewingEvents = true;
+              _isAlarmMode = false;
+              _isViewingAlarms = false;
+              _isStopwatchMode = false;
+              _isTimerMode = false;
+              _selectedEventIndex = null;
+              _isEditingAlarm = false;
+              _calendarFocusedDay = DateTime.now();
+            });
+          },
+          onLongPress: () {
+            setState(() => _eventPillDismissed = true);
+            NotifyPill.show(context, 'Events dismissed for today', icon: Icons.visibility_off);
+          },
+        ),
+      ));
+    }
+
+    if (hasTimer) {
+      if (pills.isNotEmpty) pills.add(const SizedBox(width: 8));
+      pills.add(_buildStatusPill(
+        icon: Icons.timer,
+        label: _formatTimerTime(_appTimers[nearestTimer].remainingSeconds),
+        onTap: () {
+          setState(() {
+            _showPill = true;
+            _isTimerMode = true;
+            _isStopwatchMode = false;
+            _isAlarmMode = false;
+            _isViewingAlarms = false;
+            _isCalendarMode = false;
+            _isViewingEvents = false;
+            _isCreatingTimer = false;
+            _isEditingTimer = false;
+            _selectedTimerIndex = nearestTimer;
+          });
+        },
+      ));
+    }
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12, left: 40, right: 40),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          if (hasAlarm)
-            GestureDetector(
-              onTap: () {
-                setState(() {
-                  _showPill = true;
-                  _isAlarmMode = false;
-                  _isViewingAlarms = true;
-                  _isStopwatchMode = false;
-                  _isTimerMode = false;
-                  _isCalendarMode = false;
-                  _isViewingEvents = false;
-                  _selectedAlarmIndex = null;
-                  _isEditingAlarm = false;
-                });
-              },
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(20),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.alarm, color: Colors.white, size: 14),
-                        const SizedBox(width: 6),
-                        Text(
-                          nearestAlarm,
-                          style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          if (hasAlarm && hasTimer) const SizedBox(width: 8),
-          if (hasTimer)
-            GestureDetector(
-              onTap: () {
-                setState(() {
-                  _showPill = true;
-                  _isTimerMode = true;
-                  _isStopwatchMode = false;
-                  _isAlarmMode = false;
-                  _isViewingAlarms = false;
-                  _isCalendarMode = false;
-                  _isViewingEvents = false;
-                  _isCreatingTimer = false;
-                  _isEditingTimer = false;
-                  _selectedTimerIndex = nearestTimer;
-                });
-              },
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(20),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.timer, color: Colors.white, size: 14),
-                        const SizedBox(width: 6),
-                        Text(
-                          _formatTimerTime(_appTimers[nearestTimer].remainingSeconds),
-                          style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-        ],
+        mainAxisSize: MainAxisSize.min,
+        children: pills,
       ),
     );
   }

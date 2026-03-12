@@ -43,6 +43,7 @@ dependencies:
   geolocator: ^13.0.2
   http: ^1.2.2
   audioplayers: ^6.5.1
+  volume_controller: ^2.0.7
   photo_manager: ^3.6.3
 
 dev_dependencies:
