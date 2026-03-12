@@ -297,9 +297,9 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                 // Alphabet sidebar - positioned on right edge
                 // Always in tree (Offstage) so search bar TextField keeps its index & focus
                 Positioned(
-                  right: 10,
+                  right: 20,
                   top: 0,
-                  bottom: 80,
+                  bottom: 10,
                   child: Offstage(
                     offstage: _searchQuery.isNotEmpty,
                     child: Opacity(
