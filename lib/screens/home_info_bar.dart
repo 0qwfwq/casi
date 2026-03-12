@@ -564,48 +564,95 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   void _showAppLongPressDialog(AppInfo app, Offset position) {
-    final RenderBox overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
-    showMenu<String>(
+    final screenSize = MediaQuery.of(context).size;
+    // Position the popup near the long-press point, clamped to screen
+    double left = (position.dx - 100).clamp(16.0, screenSize.width - 216.0);
+    double top = (position.dy - 120).clamp(16.0, screenSize.height - 160.0);
+
+    showDialog(
       context: context,
-      position: RelativeRect.fromLTRB(
-        position.dx - 80,
-        position.dy - 110,
-        overlay.size.width - position.dx + 80,
-        overlay.size.height - position.dy + 110,
-      ),
-      color: Colors.grey[850],
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      items: [
-        PopupMenuItem<String>(
-          value: 'add',
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: const [
-              Icon(Icons.add_to_home_screen, color: Colors.white, size: 20),
-              SizedBox(width: 10),
-              Text('Add to Home', style: TextStyle(color: Colors.white)),
-            ],
-          ),
-        ),
-        PopupMenuItem<String>(
-          value: 'uninstall',
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: const [
-              Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
-              SizedBox(width: 10),
-              Text('Uninstall', style: TextStyle(color: Colors.redAccent)),
-            ],
-          ),
-        ),
-      ],
-    ).then((value) {
-      if (value == 'add') {
-        _addToHomeScreen(app);
-      } else if (value == 'uninstall') {
-        InstalledApps.uninstallApp(app.packageName);
-      }
-    });
+      barrierColor: Colors.transparent,
+      builder: (context) {
+        return Stack(
+          children: [
+            // Dismiss on tap outside
+            Positioned.fill(
+              child: GestureDetector(
+                onTap: () => Navigator.of(context).pop(),
+                child: Container(color: Colors.transparent),
+              ),
+            ),
+            Positioned(
+              left: left,
+              top: top,
+              child: Material(
+                color: Colors.transparent,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+                    child: Container(
+                      width: 200,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.3),
+                          width: 1.2,
+                        ),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          InkWell(
+                            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                            onTap: () {
+                              Navigator.of(context).pop();
+                              _addToHomeScreen(app);
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                              child: Row(
+                                children: const [
+                                  Icon(Icons.add_to_home_screen, color: Colors.white, size: 20),
+                                  SizedBox(width: 12),
+                                  Text('Add to Home', style: TextStyle(color: Colors.white, fontSize: 14)),
+                                ],
+                              ),
+                            ),
+                          ),
+                          Container(
+                            height: 0.5,
+                            color: Colors.white.withValues(alpha: 0.2),
+                          ),
+                          InkWell(
+                            borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
+                            onTap: () {
+                              Navigator.of(context).pop();
+                              InstalledApps.uninstallApp(app.packageName);
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                              child: Row(
+                                children: const [
+                                  Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
+                                  SizedBox(width: 12),
+                                  Text('Uninstall', style: TextStyle(color: Colors.redAccent, fontSize: 14)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   // --- Calendar Logic ---
@@ -799,7 +846,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               final double screenHeight = MediaQuery.of(context).size.height;
               if (_dragStartY < screenHeight - 60 && details.primaryVelocity! < -500) {
                 _drawerController.animateTo(
-                  0.9,
+                  1.0,
                   duration: const Duration(milliseconds: 300),
                   curve: Curves.easeOut,
                 );
