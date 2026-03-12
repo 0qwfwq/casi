@@ -102,7 +102,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   String _bgType = 'color';
   Color _bgColor = Colors.black;
   String? _bgImagePath;
-  bool _showAppNames = true;
   bool _immersiveMode = false;
   String _webLongPressAction = 'assistant';
   String? _webLongPressCustomApp;
@@ -480,7 +479,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       final int colorValue = prefs.getInt('bg_color') ?? Colors.black.value;
       _bgColor = Color(colorValue);
       _bgImagePath = prefs.getString('bg_image_path');
-      _showAppNames = prefs.getBool('show_app_names') ?? true;
       _immersiveMode = prefs.getBool('immersive_mode') ?? false;
       _webLongPressAction = prefs.getString('web_long_press_action') ?? 'assistant';
       _webLongPressCustomApp = prefs.getString('web_long_press_custom_app');
@@ -826,8 +824,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                         child: Column(
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
+                                            // Active alarm/timer status pills
+                                            if (!_showPill && !_isAlarmRinging)
+                                              _buildStatusPills(),
                                             Offstage(
-                                              offstage: !_isPlayerVisible || _isAlarmRinging, 
+                                              offstage: !_isPlayerVisible || _isAlarmRinging,
                                               child: Padding(
                                                 padding: const EdgeInsets.only(bottom: 16),
                                                 child: SongPlayer(
@@ -867,7 +868,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                               },
                                               homeApps: _homeApps,
                                               maxHomeApps: _maxHomeApps,
-                                              showAppNames: _showAppNames,
                                               onAppDropped: (index, app) => _onAppDropped(index, app),
                                               onAppTap: (app) => AppLauncher.launchApp(app.packageName),
                                               onDragStarted: () => setState(() => _isDragging = true),
@@ -1197,6 +1197,180 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           ),
         ],
       ),
+      ),
+    );
+  }
+
+  // --- Nearest active alarm (returns time string like "Mon 8:30 AM", or null) ---
+  String? _nearestAlarmLabel() {
+    if (_activeAlarms.isEmpty) return null;
+    final now = DateTime.now();
+    const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+    Duration? bestDiff;
+    String? bestLabel;
+
+    for (final alarm in _activeAlarms) {
+      final parts = alarm.split(' ');
+      String dayPart;
+      String timePart;
+      String amPmPart;
+      if (parts.length == 3) {
+        dayPart = parts[0];
+        timePart = parts[1];
+        amPmPart = parts[2];
+      } else if (parts.length == 2) {
+        dayPart = 'Daily';
+        timePart = parts[0];
+        amPmPart = parts[1];
+      } else {
+        continue;
+      }
+
+      final tp = timePart.split(':');
+      int hour = int.tryParse(tp[0]) ?? 0;
+      int minute = int.tryParse(tp[1]) ?? 0;
+      if (amPmPart == 'PM' && hour != 12) hour += 12;
+      if (amPmPart == 'AM' && hour == 12) hour = 0;
+
+      int targetWeekday;
+      if (dayPart == 'Daily') {
+        targetWeekday = now.weekday;
+      } else {
+        targetWeekday = dayNames.indexOf(dayPart) + 1;
+        if (targetWeekday <= 0) continue;
+      }
+
+      var target = DateTime(now.year, now.month, now.day, hour, minute);
+      int dayDiff = targetWeekday - now.weekday;
+      if (dayDiff < 0) dayDiff += 7;
+      if (dayDiff == 0 && target.isBefore(now)) {
+        dayDiff = dayPart == 'Daily' ? 1 : 7;
+      }
+      target = target.add(Duration(days: dayDiff));
+
+      final diff = target.difference(now);
+      if (bestDiff == null || diff < bestDiff) {
+        bestDiff = diff;
+        bestLabel = alarm;
+      }
+    }
+    return bestLabel;
+  }
+
+  // --- Nearest active timer (returns index, or null) ---
+  int? _nearestTimerIndex() {
+    if (_appTimers.isEmpty) return null;
+    int? bestIdx;
+    int bestRemaining = 999999999;
+    for (int i = 0; i < _appTimers.length; i++) {
+      final t = _appTimers[i];
+      if (t.isRunning && t.remainingSeconds < bestRemaining) {
+        bestRemaining = t.remainingSeconds;
+        bestIdx = i;
+      }
+    }
+    return bestIdx;
+  }
+
+  Widget _buildStatusPills() {
+    final nearestAlarm = _nearestAlarmLabel();
+    final nearestTimer = _nearestTimerIndex();
+    final bool hasAlarm = nearestAlarm != null;
+    final bool hasTimer = nearestTimer != null;
+
+    if (!hasAlarm && !hasTimer) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12, left: 40, right: 40),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          if (hasAlarm)
+            GestureDetector(
+              onTap: () {
+                setState(() {
+                  _showPill = true;
+                  _isAlarmMode = false;
+                  _isViewingAlarms = true;
+                  _isStopwatchMode = false;
+                  _isTimerMode = false;
+                  _isCalendarMode = false;
+                  _isViewingEvents = false;
+                  _selectedAlarmIndex = null;
+                  _isEditingAlarm = false;
+                });
+              },
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.alarm, color: Colors.white, size: 14),
+                        const SizedBox(width: 6),
+                        Text(
+                          nearestAlarm,
+                          style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          if (hasAlarm && hasTimer) const SizedBox(width: 8),
+          if (hasTimer)
+            GestureDetector(
+              onTap: () {
+                setState(() {
+                  _showPill = true;
+                  _isTimerMode = true;
+                  _isStopwatchMode = false;
+                  _isAlarmMode = false;
+                  _isViewingAlarms = false;
+                  _isCalendarMode = false;
+                  _isViewingEvents = false;
+                  _isCreatingTimer = false;
+                  _isEditingTimer = false;
+                  _selectedTimerIndex = nearestTimer;
+                });
+              },
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.timer, color: Colors.white, size: 14),
+                        const SizedBox(width: 6),
+                        Text(
+                          _formatTimerTime(_appTimers[nearestTimer].remainingSeconds),
+                          style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

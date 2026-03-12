@@ -28,7 +28,6 @@ class ScreenDock extends StatefulWidget {
 
   final Map<int, AppInfo> homeApps;
   final int maxHomeApps;
-  final bool showAppNames;
   final void Function(int index, AppInfo app)? onAppDropped;
   final void Function(AppInfo app)? onAppTap;
   final VoidCallback? onDragStarted;
@@ -51,7 +50,6 @@ class ScreenDock extends StatefulWidget {
     this.activePill,
     this.homeApps = const {},
     this.maxHomeApps = 4,
-    this.showAppNames = true,
     this.onAppDropped,
     this.onAppTap,
     this.onDragStarted,
@@ -579,7 +577,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
                 child: InkWell(
                   onTap: () => widget.onAppTap?.call(app),
                   borderRadius: BorderRadius.circular(12),
-                  child: _buildAppIcon(app, iconSize, widget.showAppNames),
+                  child: _buildAppIcon(app, iconSize, false),
                 ),
               ),
             );

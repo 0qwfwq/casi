@@ -179,6 +179,7 @@ class _NotifyPillOverlayState extends State<_NotifyPillOverlay>
                           fontSize: 13.5,
                           fontWeight: FontWeight.w500,
                           height: 1.3,
+                          decoration: TextDecoration.none,
                         ),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,

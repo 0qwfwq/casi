@@ -14,7 +14,6 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  bool _showAppNames = true;
   bool _immersiveMode = false;
 
   @override
@@ -26,17 +25,8 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-      _showAppNames = prefs.getBool('show_app_names') ?? true;
       _immersiveMode = prefs.getBool('immersive_mode') ?? false;
     });
-  }
-
-  Future<void> _toggleAppNames(bool value) async {
-    setState(() {
-      _showAppNames = value;
-    });
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('show_app_names', value);
   }
 
   Future<void> _toggleImmersiveMode(bool value) async {
@@ -71,13 +61,6 @@ class _SettingsPageState extends State<SettingsPage> {
             onTap: () {
               Navigator.push(context, MaterialPageRoute(builder: (context) => const BackgroundSettingsPage()));
             },
-          ),
-          SwitchListTile(
-            title: const Text("Show App Names", style: TextStyle(color: Colors.white)),
-            secondary: const Icon(Icons.text_fields, color: Colors.white),
-            value: _showAppNames,
-            onChanged: _toggleAppNames,
-            activeThumbColor: Colors.blue,
           ),
           SwitchListTile(
             title: const Text("Immersive Mode", style: TextStyle(color: Colors.white)),
