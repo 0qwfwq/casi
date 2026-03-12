@@ -1,194 +1,10 @@
 import 'dart:math';
 import 'dart:ui';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:installed_apps/app_info.dart';
-import 'package:photo_manager/photo_manager.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:casi/utils/app_launcher.dart';
-
-// ─── App Category Definitions ───────────────────────────────────────────────
-
-class AppCategory {
-  final String label;
-  final IconData icon;
-  final List<String> keywords;
-
-  const AppCategory({required this.label, required this.icon, required this.keywords});
-}
-
-const List<AppCategory> _categoryDefinitions = [
-  AppCategory(
-    label: 'Social & Comms',
-    icon: Icons.chat_bubble_outline,
-    keywords: [
-      'whatsapp', 'messenger', 'telegram', 'signal', 'discord', 'slack',
-      'instagram', 'facebook', 'twitter', 'snapchat', 'tiktok', 'reddit',
-      'linkedin', 'wechat', 'viber', 'line', 'skype', 'zoom', 'teams',
-      'duo', 'meet', 'hangouts', 'kik', 'tumblr', 'pinterest', 'threads',
-      'mastodon', 'bluesky', 'social', 'chat', 'message', 'sms', 'mms',
-      'dialer', 'phone', 'contacts', 'call', 'mail', 'email', 'gmail',
-      'outlook', 'yahoo', 'proton',
-    ],
-  ),
-  AppCategory(
-    label: 'Work & Study',
-    icon: Icons.work_outline,
-    keywords: [
-      'docs', 'sheets', 'slides', 'drive', 'office', 'word', 'excel',
-      'powerpoint', 'onenote', 'notion', 'evernote', 'todoist', 'trello',
-      'asana', 'jira', 'confluence', 'classroom', 'canvas', 'blackboard',
-      'duolingo', 'coursera', 'udemy', 'khan', 'quizlet', 'anki',
-      'calculator', 'wolfram', 'desmos', 'translate', 'dictionary',
-      'pdf', 'scanner', 'camscanner', 'adobe', 'reader', 'editor',
-      'calendar', 'schedule', 'planner', 'reminder',
-    ],
-  ),
-  AppCategory(
-    label: 'Creative & Photos',
-    icon: Icons.palette_outlined,
-    keywords: [
-      'camera', 'photo', 'gallery', 'snapseed', 'lightroom', 'vsco',
-      'canva', 'figma', 'sketch', 'procreate', 'ibispaint', 'medibang',
-      'krita', 'pixlr', 'picsart', 'inshot', 'capcut', 'kinemaster',
-      'davinci', 'premiere', 'imovie', 'filmorago', 'video editor',
-      'recorder', 'bandlab', 'garageband', 'fl studio', 'soundcloud',
-      'draw', 'paint', 'art', 'design', 'creative',
-    ],
-  ),
-  AppCategory(
-    label: 'Media & Fun',
-    icon: Icons.play_circle_outline,
-    keywords: [
-      'youtube', 'netflix', 'hulu', 'disney', 'hbo', 'prime video',
-      'spotify', 'apple music', 'deezer', 'tidal', 'pandora',
-      'twitch', 'crunchyroll', 'funimation', 'plex', 'vlc', 'podcast',
-      'audible', 'kindle', 'books', 'play books', 'comics', 'manga',
-      'webtoon', 'music', 'player', 'radio', 'tv', 'stream', 'video',
-      'movie', 'game', 'games', 'play games', 'steam', 'roblox',
-      'minecraft', 'fortnite', 'pubg', 'among us', 'candy',
-    ],
-  ),
-  AppCategory(
-    label: 'Shopping',
-    icon: Icons.shopping_bag_outlined,
-    keywords: [
-      'amazon', 'ebay', 'walmart', 'target', 'aliexpress', 'wish',
-      'etsy', 'shopify', 'mercari', 'poshmark', 'depop', 'grailed',
-      'instacart', 'doordash', 'uber eats', 'grubhub', 'postmates',
-      'seamless', 'caviar', 'gopuff', 'shop', 'store', 'market',
-      'deal', 'coupon', 'price', 'buy', 'order', 'delivery', 'food',
-      'grocery', 'costco', 'ikea', 'nike', 'adidas', 'shein', 'temu',
-    ],
-  ),
-  AppCategory(
-    label: 'Health & Fitness',
-    icon: Icons.favorite_outline,
-    keywords: [
-      'health', 'fitness', 'workout', 'exercise', 'gym', 'run',
-      'strava', 'fitbit', 'myfitnesspal', 'nike run', 'peloton',
-      'calm', 'headspace', 'meditation', 'sleep', 'flo', 'period',
-      'step', 'pedometer', 'weight', 'diet', 'nutrition', 'water',
-      'mental', 'therapy', 'betterhelp', 'doctor', 'medical',
-    ],
-  ),
-  AppCategory(
-    label: 'Travel & Maps',
-    icon: Icons.explore_outlined,
-    keywords: [
-      'maps', 'waze', 'uber', 'lyft', 'bolt', 'grab', 'transit',
-      'citymapper', 'moovit', 'google earth', 'booking', 'airbnb',
-      'expedia', 'kayak', 'skyscanner', 'tripadvisor', 'yelp',
-      'compass', 'gps', 'navigation', 'travel', 'flight', 'hotel',
-      'airline', 'train', 'bus', 'metro',
-    ],
-  ),
-  AppCategory(
-    label: 'Finance',
-    icon: Icons.account_balance_outlined,
-    keywords: [
-      'bank', 'pay', 'wallet', 'venmo', 'cashapp', 'zelle', 'paypal',
-      'chase', 'wells fargo', 'citi', 'capital one', 'amex',
-      'robinhood', 'coinbase', 'crypto', 'stock', 'invest', 'trading',
-      'mint', 'ynab', 'budget', 'expense', 'finance', 'money',
-      'insurance', 'tax', 'credit',
-    ],
-  ),
-  AppCategory(
-    label: 'Tools',
-    icon: Icons.build_outlined,
-    keywords: [
-      'settings', 'files', 'file manager', 'clock', 'alarm', 'timer',
-      'flashlight', 'torch', 'compass', 'measure', 'level', 'qr',
-      'barcode', 'vpn', 'proxy', 'cleaner', 'booster', 'battery',
-      'wifi', 'bluetooth', 'nfc', 'launcher', 'keyboard', 'gboard',
-      'swiftkey', 'clipboard', 'manager', 'monitor', 'system',
-      'update', 'backup', 'restore', 'security', 'antivirus',
-      'authenticator', 'password', 'bitwarden', 'lastpass',
-      'weather', 'news', 'browser', 'chrome', 'firefox', 'edge',
-      'opera', 'brave', 'samsung', 'google', 'android', 'pixel',
-    ],
-  ),
-];
-
-// ─── Categorize apps ────────────────────────────────────────────────────────
-
-class _CategorizedApps {
-  final String label;
-  final IconData icon;
-  final List<AppInfo> apps;
-
-  _CategorizedApps({required this.label, required this.icon, required this.apps});
-}
-
-List<_CategorizedApps> _categorizeApps(List<AppInfo> apps) {
-  final Map<int, List<AppInfo>> buckets = {};
-  final Set<String> assigned = {};
-
-  for (int i = 0; i < _categoryDefinitions.length; i++) {
-    buckets[i] = [];
-  }
-
-  for (final app in apps) {
-    final nameLower = app.name.toLowerCase();
-    final pkgLower = app.packageName.toLowerCase();
-    bool found = false;
-
-    for (int i = 0; i < _categoryDefinitions.length; i++) {
-      for (final kw in _categoryDefinitions[i].keywords) {
-        if (nameLower.contains(kw) || pkgLower.contains(kw)) {
-          buckets[i]!.add(app);
-          assigned.add(app.packageName);
-          found = true;
-          break;
-        }
-      }
-      if (found) break;
-    }
-  }
-
-  // Unassigned apps go to "Other"
-  final unassigned = apps.where((a) => !assigned.contains(a.packageName)).toList();
-
-  final result = <_CategorizedApps>[];
-  for (int i = 0; i < _categoryDefinitions.length; i++) {
-    if (buckets[i]!.isNotEmpty) {
-      result.add(_CategorizedApps(
-        label: _categoryDefinitions[i].label,
-        icon: _categoryDefinitions[i].icon,
-        apps: buckets[i]!,
-      ));
-    }
-  }
-  if (unassigned.isNotEmpty) {
-    result.add(_CategorizedApps(
-      label: 'Other',
-      icon: Icons.apps,
-      apps: unassigned,
-    ));
-  }
-
-  return result;
-}
 
 // ─── Main AppDrawer Widget ──────────────────────────────────────────────────
 
@@ -196,7 +12,8 @@ class AppDrawer extends StatelessWidget {
   final List<AppInfo> apps;
   final ValueNotifier<double> progressNotifier;
   final Function(AppInfo) onAppTap;
-  final Function(AppInfo, Offset) onAppLongPress;
+  final Function(AppInfo) onAddToHome;
+  final Function(AppInfo) onUninstall;
   final VoidCallback onOpenSettings;
   final DraggableScrollableController? controller;
 
@@ -205,7 +22,8 @@ class AppDrawer extends StatelessWidget {
     required this.apps,
     required this.progressNotifier,
     required this.onAppTap,
-    required this.onAppLongPress,
+    required this.onAddToHome,
+    required this.onUninstall,
     required this.onOpenSettings,
     this.controller,
   });
@@ -224,12 +42,15 @@ class AppDrawer extends StatelessWidget {
         minChildSize: 0.0,
         maxChildSize: 1.0,
         snap: true,
+        snapSizes: const [0.0, 1.0],
+        snapAnimationDuration: const Duration(milliseconds: 200),
         builder: (context, scrollController) {
           return _AppDrawerSheet(
             apps: apps,
             scrollController: scrollController,
             onAppTap: onAppTap,
-            onAppLongPress: onAppLongPress,
+            onAddToHome: onAddToHome,
+            onUninstall: onUninstall,
             onOpenSettings: onOpenSettings,
             progressNotifier: progressNotifier,
           );
@@ -245,7 +66,8 @@ class _AppDrawerSheet extends StatefulWidget {
   final List<AppInfo> apps;
   final ScrollController scrollController;
   final Function(AppInfo) onAppTap;
-  final Function(AppInfo, Offset) onAppLongPress;
+  final Function(AppInfo) onAddToHome;
+  final Function(AppInfo) onUninstall;
   final VoidCallback onOpenSettings;
   final ValueNotifier<double> progressNotifier;
 
@@ -253,7 +75,8 @@ class _AppDrawerSheet extends StatefulWidget {
     required this.apps,
     required this.scrollController,
     required this.onAppTap,
-    required this.onAppLongPress,
+    required this.onAddToHome,
+    required this.onUninstall,
     required this.onOpenSettings,
     required this.progressNotifier,
   });
@@ -266,18 +89,22 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
 
-  // Folder expansion state: index of expanded folder, or -1 for none
-  int _expandedFolder = -1;
+  // Pinned favorites
+  Set<String> _pinnedPackages = {};
 
-  // Gallery thumbnails
-  List<Uint8List> _galleryThumbs = [];
-  bool _galleryPermissionDenied = false;
+  // Alphabet index state
+  String? _activeLetter;
+  bool _isAlphabetDragging = false;
+  double _alphabetDragLocalY = 0.0; // Track finger position for morph effect
+
+  // Section keys for scroll jumping
+  final Map<String, GlobalKey> _sectionKeys = {};
 
   @override
   void initState() {
     super.initState();
     widget.progressNotifier.addListener(_onDrawerProgressChanged);
-    _loadGalleryThumbs();
+    _loadPinnedApps();
   }
 
   void _onDrawerProgressChanged() {
@@ -287,9 +114,8 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
         _updateSearch('');
       }
       FocusManager.instance.primaryFocus?.unfocus();
-      // Collapse folders when drawer closes
-      if (_expandedFolder != -1) {
-        setState(() => _expandedFolder = -1);
+      if (_activeLetter != null) {
+        setState(() => _activeLetter = null);
       }
     }
   }
@@ -297,7 +123,6 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
   @override
   void didUpdateWidget(_AppDrawerSheet oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Force rebuild when app list changes
     if (widget.apps != oldWidget.apps) {
       setState(() {});
     }
@@ -306,77 +131,92 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
   void _updateSearch(String query) {
     setState(() {
       _searchQuery = query;
-      _expandedFolder = -1; // collapse folders during search
     });
   }
 
-  Future<void> _loadGalleryThumbs() async {
-    try {
-      final PermissionState ps = await PhotoManager.requestPermissionExtend();
-      if (!ps.hasAccess) {
-        setState(() => _galleryPermissionDenied = true);
-        return;
-      }
+  // ── Pinned Apps Persistence ────────────────────────────────────────────
 
-      final List<AssetPathEntity> albums = await PhotoManager.getAssetPathList(
-        type: RequestType.image,
-        filterOption: FilterOptionGroup(
-          imageOption: const FilterOption(
-            sizeConstraint: SizeConstraint(ignoreSize: true),
-          ),
-          orders: [const OrderOption(type: OrderOptionType.createDate, asc: false)],
-        ),
-      );
-
-      if (albums.isEmpty) return;
-
-      // Get recent images from the first album (camera roll)
-      final List<AssetEntity> recentImages = await albums.first.getAssetListRange(start: 0, end: 50);
-      if (recentImages.isEmpty) return;
-
-      // Pick 4 random ones
-      final random = Random();
-      final picked = <AssetEntity>[];
-      final indices = List.generate(recentImages.length, (i) => i)..shuffle(random);
-      for (int i = 0; i < min(4, indices.length); i++) {
-        picked.add(recentImages[indices[i]]);
-      }
-
-      final thumbs = <Uint8List>[];
-      for (final asset in picked) {
-        final data = await asset.thumbnailDataWithSize(const ThumbnailSize(200, 200));
-        if (data != null) thumbs.add(data);
-      }
-
-      if (mounted) {
-        setState(() => _galleryThumbs = thumbs);
-      }
-    } catch (e) {
-      debugPrint('Gallery thumbnail error: $e');
+  Future<void> _loadPinnedApps() async {
+    final prefs = await SharedPreferences.getInstance();
+    final List<String>? pinned = prefs.getStringList('pinned_drawer_apps');
+    if (pinned != null && mounted) {
+      setState(() => _pinnedPackages = pinned.toSet());
     }
   }
 
-  void _openGalleryApp() {
-    // Try common gallery package names
-    const galleryPackages = [
-      'com.google.android.apps.photos',      // Google Photos
-      'com.sec.android.gallery3d',            // Samsung Gallery
-      'com.miui.gallery',                     // Xiaomi Gallery
-      'com.oneplus.gallery',                  // OnePlus Gallery
-      'com.oppo.gallery3d',                   // Oppo Gallery
-      'com.android.gallery3d',                // AOSP Gallery
-    ];
+  Future<void> _savePinnedApps() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('pinned_drawer_apps', _pinnedPackages.toList());
+  }
 
-    // Try launching the first available one
-    for (final pkg in galleryPackages) {
-      // We'll just try the first few most common ones
-      if (widget.apps.any((a) => a.packageName == pkg)) {
-        AppLauncher.launchApp(pkg);
-        return;
+  void _togglePin(AppInfo app) {
+    setState(() {
+      if (_pinnedPackages.contains(app.packageName)) {
+        _pinnedPackages.remove(app.packageName);
+      } else {
+        _pinnedPackages.add(app.packageName);
       }
+    });
+    _savePinnedApps();
+  }
+
+  bool _isPinned(AppInfo app) => _pinnedPackages.contains(app.packageName);
+
+  // ── App Lists ─────────────────────────────────────────────────────────
+
+  List<AppInfo> get _pinnedApps {
+    return widget.apps
+        .where((app) => _pinnedPackages.contains(app.packageName))
+        .toList()
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+  }
+
+  List<AppInfo> get _unpinnedApps {
+    return widget.apps
+        .where((app) => !_pinnedPackages.contains(app.packageName))
+        .toList()
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+  }
+
+  Map<String, List<AppInfo>> get _groupedApps {
+    final Map<String, List<AppInfo>> groups = {};
+    for (final app in _unpinnedApps) {
+      final firstChar = app.name.trim().isNotEmpty
+          ? app.name.trim()[0].toUpperCase()
+          : '#';
+      final key = RegExp(r'[A-Z]').hasMatch(firstChar) ? firstChar : '#';
+      groups.putIfAbsent(key, () => []);
+      groups[key]!.add(app);
     }
-    // Fallback: try Google Photos (most common)
-    AppLauncher.launchApp('com.google.android.apps.photos');
+    final sortedKeys = groups.keys.toList()
+      ..sort((a, b) {
+        if (a == '#') return 1;
+        if (b == '#') return -1;
+        return a.compareTo(b);
+      });
+    return Map.fromEntries(sortedKeys.map((k) => MapEntry(k, groups[k]!)));
+  }
+
+  List<String> get _availableLetters {
+    final groups = _groupedApps;
+    return groups.keys.toList();
+  }
+
+  // ── Alphabet Navigation ───────────────────────────────────────────────
+
+  void _jumpToLetter(String letter) {
+    if (_activeLetter == letter) return; // Skip redundant jumps
+    _activeLetter = letter;
+    HapticFeedback.selectionClick();
+
+    final key = _sectionKeys[letter];
+    if (key?.currentContext != null) {
+      Scrollable.ensureVisible(
+        key!.currentContext!,
+        duration: Duration.zero, // Instant jump — no animation lag
+        alignment: 0.4,
+      );
+    }
   }
 
   @override
@@ -394,55 +234,77 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
         final double screenWidth = MediaQuery.of(context).size.width;
         final double contentOpacity = (progress * 2).clamp(0.0, 1.0);
 
+        // Ensure section keys exist for all available letters
+        for (final letter in _availableLetters) {
+          _sectionKeys.putIfAbsent(letter, () => GlobalKey());
+        }
+        // Remove stale keys
+        _sectionKeys.removeWhere((k, _) => !_availableLetters.contains(k));
+
         return Align(
           alignment: Alignment.bottomCenter,
           child: SizedBox(
             width: screenWidth,
             child: Stack(
               children: [
-                // Gradient opacity background
+                // Background - frosted glass with gradient opacity
                 _GradientBackground(progress: progress),
-                // Main scrollable content
-                CustomScrollView(
-                  controller: widget.scrollController,
-                  slivers: [
-                    // Drag handle
-                    SliverToBoxAdapter(
-                      child: Center(
-                        child: Container(
-                          margin: const EdgeInsets.symmetric(vertical: 10),
-                          width: 40,
-                          height: 4,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.3),
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                        ),
+                // Drag handle - full width, centered properly
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(vertical: 10),
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.3),
+                        borderRadius: BorderRadius.circular(2),
                       ),
                     ),
-                    // Content
-                    SliverOpacity(
-                      opacity: contentOpacity,
-                      sliver: SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: Column(
-                            children: [
-                              // Gallery widget
-                              _buildGalleryWidget(),
-                              const SizedBox(height: 20),
-                              // Folders or search results
-                              _searchQuery.isNotEmpty
-                                  ? _buildSearchResults()
-                                  : _buildFolders(),
-                              SizedBox(height: MediaQuery.of(context).viewInsets.bottom + 80),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
+                // Main scrollable content
+                Positioned.fill(
+                  top: 24, // below drag handle
+                  child: CustomScrollView(
+                    controller: widget.scrollController,
+                    physics: const ClampingScrollPhysics(),
+                    slivers: [
+                      // Content
+                      SliverOpacity(
+                        opacity: contentOpacity,
+                        sliver: SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.only(left: 16, right: 36),
+                            child: _searchQuery.isNotEmpty
+                                ? _buildSearchResults()
+                                : _buildAppList(),
+                          ),
+                        ),
+                      ),
+                      // Bottom padding for search bar
+                      SliverToBoxAdapter(
+                        child: SizedBox(
+                          height: MediaQuery.of(context).viewInsets.bottom + 80,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Alphabet sidebar - positioned on right edge
+                if (_searchQuery.isEmpty)
+                  Positioned(
+                    right: 10,
+                    top: 0,
+                    bottom: 80,
+                    child: Opacity(
+                      opacity: contentOpacity,
+                      child: _buildAlphabetSidebar(),
+                    ),
+                  ),
                 // Search bar
                 Positioned(
                   left: 0,
@@ -523,90 +385,255 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
     );
   }
 
-  // ── Gallery Widget ──────────────────────────────────────────────────────
+  // ── App List (Pinned + Alphabetical) ──────────────────────────────────
 
-  Widget _buildGalleryWidget() {
-    return GestureDetector(
-      onTap: _openGalleryApp,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-          child: Container(
-            height: 90,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.3),
-                width: 1.2,
+  Widget _buildAppList() {
+    final pinned = _pinnedApps;
+    final grouped = _groupedApps;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Pinned section
+        if (pinned.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.only(left: 16, top: 8, bottom: 4),
+            child: Text(
+              'PINNED',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.4),
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                letterSpacing: 1.5,
               ),
             ),
-            child: _galleryPermissionDenied
-                ? Center(
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.photo_library_outlined, color: Colors.white.withValues(alpha: 0.5), size: 24),
-                        const SizedBox(width: 10),
-                        Text(
-                          'Tap to open Gallery',
-                          style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 14),
-                        ),
-                      ],
-                    ),
-                  )
-                : _galleryThumbs.isEmpty
-                    ? Center(
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.photo_library_outlined, color: Colors.white.withValues(alpha: 0.5), size: 24),
-                            const SizedBox(width: 10),
-                            Text(
-                              'Gallery',
-                              style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 14),
-                            ),
-                          ],
-                        ),
-                      )
-                    : Padding(
-                        padding: const EdgeInsets.all(10),
-                        child: Row(
-                          children: [
-                            for (int i = 0; i < _galleryThumbs.length; i++) ...[
-                              if (i > 0) const SizedBox(width: 8),
-                              Expanded(
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: Image.memory(
-                                    _galleryThumbs[i],
-                                    fit: BoxFit.cover,
-                                    height: 70,
-                                    gaplessPlayback: true,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
           ),
+          for (final app in pinned)
+            _buildAppRow(app, isPinned: true),
+          // Separator
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Container(
+              height: 0.5,
+              color: Colors.white.withValues(alpha: 0.1),
+            ),
+          ),
+        ],
+        // Alphabetical sections
+        for (final entry in grouped.entries) ...[
+          // Section header
+          Container(
+            key: _sectionKeys[entry.key],
+            padding: const EdgeInsets.only(left: 16, top: 16, bottom: 6),
+            child: Text(
+              entry.key,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.35),
+                fontSize: 12,
+                fontWeight: FontWeight.w400,
+                letterSpacing: 1.0,
+              ),
+            ),
+          ),
+          // Apps in this section
+          for (final app in entry.value)
+            _buildAppRow(app, isPinned: false),
+        ],
+      ],
+    );
+  }
+
+  // ── Single App Row ────────────────────────────────────────────────────
+
+  Widget _buildAppRow(AppInfo app, {required bool isPinned}) {
+    final hasIcon = app.icon != null && app.icon!.isNotEmpty;
+
+    return GestureDetector(
+      onTap: () => widget.onAppTap(app),
+      onLongPressStart: (details) {
+        _showContextMenu(app, details.globalPosition);
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Row(
+          children: [
+            // App icon
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: SizedBox(
+                width: 48,
+                height: 48,
+                child: hasIcon
+                    ? Image.memory(
+                        app.icon!,
+                        width: 48,
+                        height: 48,
+                        gaplessPlayback: true,
+                        errorBuilder: (_, _, _) =>
+                            const Icon(Icons.android, color: Colors.white54, size: 40),
+                      )
+                    : const Icon(Icons.android, color: Colors.white54, size: 40),
+              ),
+            ),
+            const SizedBox(width: 16),
+            // App name
+            Expanded(
+              child: Text(
+                app.name,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w400,
+                  height: 1.4,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            // Pin indicator
+            if (isPinned)
+              Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: Icon(
+                  Icons.push_pin,
+                  size: 14,
+                  color: Colors.white.withValues(alpha: 0.3),
+                ),
+              ),
+          ],
         ),
       ),
     );
   }
 
-  // ── Search Results (flat grid like before) ────────────────────────────
+  // ── Context Menu (Long Press) ─────────────────────────────────────────
+
+  void _showContextMenu(AppInfo app, Offset position) {
+    final screenSize = MediaQuery.of(context).size;
+    final pinned = _isPinned(app);
+    double left = (position.dx - 100).clamp(16.0, screenSize.width - 216.0);
+    double top = (position.dy - 80).clamp(16.0, screenSize.height - 220.0);
+
+    showDialog(
+      context: context,
+      barrierColor: Colors.transparent,
+      builder: (context) {
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(
+                onTap: () => Navigator.of(context).pop(),
+                child: Container(color: Colors.transparent),
+              ),
+            ),
+            Positioned(
+              left: left,
+              top: top,
+              child: Material(
+                color: Colors.transparent,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+                    child: Container(
+                      width: 200,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.3),
+                          width: 1.2,
+                        ),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Pin / Unpin
+                          InkWell(
+                            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                            onTap: () {
+                              Navigator.of(context).pop();
+                              _togglePin(app);
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    pinned ? Icons.push_pin_outlined : Icons.push_pin,
+                                    color: Colors.white,
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Text(
+                                    pinned ? 'Unpin' : 'Pin to Top',
+                                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          Container(height: 0.5, color: Colors.white.withValues(alpha: 0.2)),
+                          // Add to Home
+                          InkWell(
+                            onTap: () {
+                              Navigator.of(context).pop();
+                              widget.onAddToHome(app);
+                            },
+                            child: const Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.add_to_home_screen, color: Colors.white, size: 20),
+                                  SizedBox(width: 12),
+                                  Text('Add to Home', style: TextStyle(color: Colors.white, fontSize: 14)),
+                                ],
+                              ),
+                            ),
+                          ),
+                          Container(height: 0.5, color: Colors.white.withValues(alpha: 0.2)),
+                          // Uninstall
+                          InkWell(
+                            borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
+                            onTap: () {
+                              Navigator.of(context).pop();
+                              widget.onUninstall(app);
+                            },
+                            child: const Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
+                                  SizedBox(width: 12),
+                                  Text('Uninstall', style: TextStyle(color: Colors.redAccent, fontSize: 14)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // ── Search Results ────────────────────────────────────────────────────
 
   Widget _buildSearchResults() {
     final filtered = widget.apps
         .where((app) => app.name.toLowerCase().contains(_searchQuery.toLowerCase()))
-        .toList();
+        .toList()
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
 
     if (filtered.isEmpty) {
       return Padding(
-        padding: const EdgeInsets.only(top: 40),
+        padding: const EdgeInsets.only(top: 60),
         child: Center(
           child: Text(
             'No apps found',
@@ -616,281 +643,143 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
       );
     }
 
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 4,
-        crossAxisSpacing: 16,
-        mainAxisSpacing: 24,
-        childAspectRatio: 0.8,
-      ),
-      itemCount: filtered.length,
-      itemBuilder: (context, index) => _buildAppTile(filtered[index]),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final app in filtered)
+          _buildAppRow(app, isPinned: _isPinned(app)),
+      ],
     );
   }
 
-  // ── Folder Grid ───────────────────────────────────────────────────────
+  // ── Alphabet Sidebar with Fisheye Morph ────────────────────────────────
 
-  Widget _buildFolders() {
-    final categories = _categorizeApps(widget.apps);
+  Widget _buildAlphabetSidebar() {
+    final letters = _availableLetters;
+    if (letters.isEmpty) return const SizedBox(width: 28);
 
-    // Build a list of widgets: 2-column rows of folders, with expanded folder inline
-    final List<Widget> children = [];
+    return SafeArea(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // Sidebar starts near vertical center and extends down
+          // Each letter gets a base height, the whole column aligns from center-down
+          const double baseLetterSize = 10.0;
+          const double maxLetterSize = 22.0;
+          const double morphRadius = 3.5; // How many letters away the effect reaches
+          const double sidebarWidth = 28.0;
 
-    int i = 0;
-    while (i < categories.length) {
-      if (_expandedFolder == i) {
-        // This folder is expanded — show it full width
-        children.add(_buildExpandedFolder(categories[i], i));
-        i++;
-      } else if (_expandedFolder == i + 1 && i + 1 < categories.length) {
-        // The next folder is expanded: show this one alone, then expanded next
-        children.add(Row(
-          children: [
-            Expanded(child: _buildFolderCard(categories[i], i)),
-            const Expanded(child: SizedBox()),
-          ],
-        ));
-        i++;
-      } else if (i + 1 < categories.length) {
-        // Normal: two folders side by side
-        if (_expandedFolder != i + 1) {
-          children.add(Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(child: _buildFolderCard(categories[i], i)),
-              const SizedBox(width: 12),
-              Expanded(child: _buildFolderCard(categories[i + 1], i + 1)),
-            ],
-          ));
-          i += 2;
-        } else {
-          children.add(Row(
-            children: [
-              Expanded(child: _buildFolderCard(categories[i], i)),
-              const Expanded(child: SizedBox()),
-            ],
-          ));
-          i++;
-        }
-      } else {
-        // Odd folder at end
-        children.add(Row(
-          children: [
-            Expanded(child: _buildFolderCard(categories[i], i)),
-            const Expanded(child: SizedBox()),
-          ],
-        ));
-        i++;
-      }
-    }
+          final double availableHeight = constraints.maxHeight;
+          final double letterSpacing = (availableHeight * 0.5) / letters.length;
+          final double topOffset = availableHeight * 0.42; // Start below center, easier to reach
 
-    return Column(children: children);
-  }
-
-  // ── Collapsed Folder Card ─────────────────────────────────────────────
-
-  Widget _buildFolderCard(_CategorizedApps category, int index) {
-    // Show up to 4 app icons as preview
-    final previewApps = category.apps.take(4).toList();
-
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          _expandedFolder = _expandedFolder == index ? -1 : index;
-        });
-      },
-      child: Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(18),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.2),
-                  width: 1,
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+          return SizedBox(
+            width: sidebarWidth,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onVerticalDragStart: (details) {
+                setState(() {
+                  _isAlphabetDragging = true;
+                  _alphabetDragLocalY = details.localPosition.dy;
+                });
+                final idx = ((details.localPosition.dy - topOffset) / letterSpacing)
+                    .floor()
+                    .clamp(0, letters.length - 1);
+                if (letters[idx] != _activeLetter) {
+                  _jumpToLetter(letters[idx]);
+                }
+              },
+              onVerticalDragUpdate: (details) {
+                _alphabetDragLocalY = details.localPosition.dy;
+                final idx = ((details.localPosition.dy - topOffset) / letterSpacing)
+                    .floor()
+                    .clamp(0, letters.length - 1);
+                if (letters[idx] != _activeLetter) {
+                  _jumpToLetter(letters[idx]);
+                }
+                setState(() {}); // Rebuild for morph effect only
+              },
+              onVerticalDragEnd: (_) {
+                setState(() => _isAlphabetDragging = false);
+                Future.delayed(const Duration(milliseconds: 600), () {
+                  if (mounted && !_isAlphabetDragging) {
+                    setState(() => _activeLetter = null);
+                  }
+                });
+              },
+              child: Stack(
+                clipBehavior: Clip.none,
                 children: [
-                  // Folder label
-                  Row(
-                    children: [
-                      Icon(category.icon, color: Colors.white70, size: 16),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          category.label,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
+                  for (int i = 0; i < letters.length; i++)
+                    Builder(builder: (context) {
+                      final letter = letters[i];
+                      final isActive = _activeLetter == letter;
+                      final double centerY = topOffset + (i * letterSpacing) + letterSpacing / 2;
+
+                      // Fisheye morph: letters near finger bulge outward
+                      double fontSize = baseLetterSize;
+                      double xOffset = 0.0;
+
+                      if (_isAlphabetDragging) {
+                        final double distFromFinger =
+                            (centerY - _alphabetDragLocalY).abs() / letterSpacing;
+                        if (distFromFinger < morphRadius) {
+                          final double t = 1.0 - (distFromFinger / morphRadius);
+                          // Smooth curve for the bulge
+                          final double curve = sin(t * pi / 2);
+                          fontSize = baseLetterSize + (maxLetterSize - baseLetterSize) * curve;
+                          // Push letters to the left so user's finger doesn't cover them
+                          xOffset = -28.0 * curve;
+                        }
+                      } else if (isActive) {
+                        fontSize = 13.0;
+                      }
+
+                      return Positioned(
+                        top: centerY - fontSize / 2,
+                        right: -xOffset, // Move left = increase right offset? No: left of sidebar
+                        child: GestureDetector(
+                          onTap: () => _jumpToLetter(letter),
+                          child: Transform.translate(
+                            offset: Offset(xOffset, 0),
+                            child: SizedBox(
+                              width: sidebarWidth + (-xOffset).abs(),
+                              height: max(fontSize + 8, 20),
+                              child: Align(
+                                alignment: Alignment.centerRight,
+                                child: Padding(
+                                  padding: const EdgeInsets.only(right: 4),
+                                  child: Text(
+                                    letter,
+                                    style: TextStyle(
+                                      color: isActive
+                                          ? Colors.white
+                                          : Colors.white.withValues(alpha: 0.45),
+                                      fontSize: fontSize,
+                                      fontWeight: isActive || (_isAlphabetDragging && fontSize > 14)
+                                          ? FontWeight.w600
+                                          : FontWeight.w400,
+                                      height: 1.0,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                         ),
-                      ),
-                      Text(
-                        '${category.apps.length}',
-                        style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  // App icon previews (2x2 grid)
-                  SizedBox(
-                    height: 72,
-                    child: GridView.builder(
-                      physics: const NeverScrollableScrollPhysics(),
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
-                        crossAxisSpacing: 8,
-                        mainAxisSpacing: 8,
-                      ),
-                      itemCount: previewApps.length,
-                      itemBuilder: (context, i) {
-                        final app = previewApps[i];
-                        final hasIcon = app.icon != null && app.icon!.isNotEmpty;
-                        return ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: hasIcon
-                              ? Image.memory(
-                                  app.icon!,
-                                  width: 32,
-                                  height: 32,
-                                  gaplessPlayback: true,
-                                  errorBuilder: (_, _, _) =>
-                                      const Icon(Icons.android, color: Colors.white54, size: 28),
-                                )
-                              : const Icon(Icons.android, color: Colors.white54, size: 28),
-                        );
-                      },
-                    ),
-                  ),
+                      );
+                    }),
                 ],
               ),
             ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ── Expanded Folder ───────────────────────────────────────────────────
-
-  Widget _buildExpandedFolder(_CategorizedApps category, int index) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.25),
-                width: 1.2,
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Folder header with close
-                GestureDetector(
-                  onTap: () => setState(() => _expandedFolder = -1),
-                  child: Row(
-                    children: [
-                      Icon(category.icon, color: Colors.white, size: 20),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          category.label,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      Icon(Icons.keyboard_arrow_up, color: Colors.white.withValues(alpha: 0.6), size: 24),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-                // App grid inside expanded folder
-                GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 4,
-                    crossAxisSpacing: 16,
-                    mainAxisSpacing: 20,
-                    childAspectRatio: 0.8,
-                  ),
-                  itemCount: category.apps.length,
-                  itemBuilder: (context, i) => _buildAppTile(category.apps[i]),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ── Single App Tile ───────────────────────────────────────────────────
-
-  Widget _buildAppTile(AppInfo app) {
-    final hasIcon = app.icon != null && app.icon!.isNotEmpty;
-
-    return GestureDetector(
-      onTap: () => widget.onAppTap(app),
-      onLongPressStart: (details) => widget.onAppLongPress(app, details.globalPosition),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            child: hasIcon
-                ? Image.memory(
-                    app.icon!,
-                    width: 48,
-                    height: 48,
-                    gaplessPlayback: true,
-                    errorBuilder: (context, error, stackTrace) =>
-                        const Icon(Icons.android, color: Colors.white, size: 48),
-                  )
-                : const Icon(Icons.android, color: Colors.white, size: 48),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            app.name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 12,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
+          );
+        },
       ),
     );
   }
 }
 
 // ─── Gradient Background ────────────────────────────────────────────────────
+// Frosted glass: high opacity at bottom → transparent at top
 
 class _GradientBackground extends StatelessWidget {
   final double progress;
@@ -902,18 +791,34 @@ class _GradientBackground extends StatelessWidget {
     return Positioned.fill(
       child: ClipRRect(
         borderRadius: BorderRadius.vertical(
-          top: Radius.circular(36.0 * (1.0 - progress)), // loses radius as it goes full screen
+          top: Radius.circular(36.0 * (1.0 - progress)),
         ),
         child: Stack(
           children: [
-            // Blur layer
+            // Full blur layer (frosted glass effect)
             Positioned.fill(
               child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+                filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
                 child: Container(color: Colors.transparent),
               ),
             ),
-            // Gradient opacity overlay: transparent at top → opaque at bottom
+            // Gradient: transparent at top → frosted glass with high opacity at bottom
+            Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.white.withValues(alpha: 0.0),    // fully transparent at top
+                    Colors.white.withValues(alpha: 0.03),
+                    Colors.white.withValues(alpha: 0.08),
+                    Colors.white.withValues(alpha: 0.14),   // frosted glass at bottom
+                  ],
+                  stops: const [0.0, 0.25, 0.55, 1.0],
+                ),
+              ),
+            ),
+            // Dark tint gradient for readability
             Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
@@ -921,23 +826,23 @@ class _GradientBackground extends StatelessWidget {
                   end: Alignment.bottomCenter,
                   colors: [
                     Colors.black.withValues(alpha: 0.0),
-                    Colors.black.withValues(alpha: 0.3),
-                    Colors.black.withValues(alpha: 0.7),
-                    Colors.black.withValues(alpha: 1.0),
+                    Colors.black.withValues(alpha: 0.15),
+                    Colors.black.withValues(alpha: 0.4),
+                    Colors.black.withValues(alpha: 0.65),
                   ],
                   stops: const [0.0, 0.3, 0.6, 1.0],
                 ),
               ),
             ),
-            // Subtle white glass border overlay at top
+            // Subtle glass border
             Container(
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.vertical(
                   top: Radius.circular(36.0 * (1.0 - progress)),
                 ),
                 border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.15),
-                  width: 1,
+                  color: Colors.white.withValues(alpha: 0.12),
+                  width: 0.5,
                 ),
               ),
             ),
