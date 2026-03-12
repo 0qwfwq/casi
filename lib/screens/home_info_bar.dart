@@ -18,6 +18,7 @@ import '../pills/dynamic_pill.dart';
 import '../pills/d_clock_pill.dart';
 import '../pills/d_calendar_pill.dart';
 import '../utils/app_launcher.dart';
+import '../widgets/notify_pill.dart';
 
 class AppTimer {
   int totalSeconds;
@@ -260,9 +261,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       }
     });
     
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Snoozed for 5 minutes ($snoozeTime)')),
-    );
+    NotifyPill.show(context, 'Snoozed for 5 minutes ($snoozeTime)', icon: Icons.snooze);
   }
 
   void _stopAlarm() {
@@ -548,19 +547,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           _homeApps[i] = app;
         });
         _saveLayout();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${app.name} added to Home Screen'),
-            duration: const Duration(seconds: 1),
-          ),
-        );
+        NotifyPill.show(context, '${app.name} added to Home Screen', icon: Icons.add_to_home_screen);
         return;
       }
     }
     
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Home Screen is full!')),
-    );
+    NotifyPill.show(context, 'Home Screen is full!', icon: Icons.block);
   }
 
   // --- Calendar Logic ---
@@ -913,9 +905,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                                                 });
                                                                 _saveCalendarEvents();
                                                               } else {
-                                                                ScaffoldMessenger.of(context).showSnackBar(
-                                                                  const SnackBar(content: Text('Select an event to delete', style: TextStyle(color: Colors.white))),
-                                                                );
+                                                                NotifyPill.show(context, 'Select an event to delete', icon: Icons.touch_app);
                                                               }
                                                             },
                                                             onCloseEvents: () => setState(() {
