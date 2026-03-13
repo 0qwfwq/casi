@@ -1,16 +1,20 @@
 import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'weather_brief_service.dart';
+import 'notification_brief_service.dart';
 
 class MorningBriefPanel extends StatefulWidget {
   final VoidCallback onDismiss;
   final WeatherBriefData? weatherData;
+  final NotificationBriefData? notificationData;
 
   const MorningBriefPanel({
     super.key,
     required this.onDismiss,
     this.weatherData,
+    this.notificationData,
   });
 
   @override
@@ -20,6 +24,7 @@ class MorningBriefPanel extends StatefulWidget {
 class _MorningBriefPanelState extends State<MorningBriefPanel> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
+  static const int _totalPages = 3;
 
   @override
   void dispose() {
@@ -84,6 +89,32 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
     }
   }
 
+  IconData _categoryIcon(String category) {
+    switch (category) {
+      case 'email':
+        return Icons.email_outlined;
+      case 'work':
+        return Icons.work_outline;
+      case 'social':
+        return Icons.chat_bubble_outline;
+      default:
+        return Icons.notifications_outlined;
+    }
+  }
+
+  Color _categoryColor(String category) {
+    switch (category) {
+      case 'email':
+        return Colors.red.shade300;
+      case 'work':
+        return Colors.blue.shade300;
+      case 'social':
+        return Colors.purple.shade300;
+      default:
+        return Colors.teal.shade300;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
@@ -94,21 +125,21 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(28),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+          filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
           child: Container(
             width: panelWidth,
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha:0.1),
+              color: Colors.white.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(28),
               border: Border.all(
-                color: Colors.white.withValues(alpha:0.2),
+                color: Colors.white.withValues(alpha: 0.3),
                 width: 1.2,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha:0.15),
-                  blurRadius: 20,
-                  spreadRadius: 2,
+                  color: Colors.black.withValues(alpha: 0.1),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
                 ),
               ],
             ),
@@ -127,6 +158,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
                         children: [
                           _buildGreetingPage(),
                           _buildWeatherPage(),
+                          _buildNotificationsPage(),
                         ],
                       ),
                     ),
@@ -140,14 +172,10 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
                   right: 8,
                   child: GestureDetector(
                     onTap: widget.onDismiss,
-                    child: Container(
+                    child: const SizedBox(
                       width: 28,
                       height: 28,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha:0.1),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
+                      child: Icon(
                         Icons.close,
                         color: Colors.white54,
                         size: 16,
@@ -168,7 +196,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
   Widget _buildPageIndicator() {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(2, (index) {
+      children: List.generate(_totalPages, (index) {
         final isActive = _currentPage == index;
         return AnimatedContainer(
           duration: const Duration(milliseconds: 250),
@@ -203,7 +231,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
           Text(
             _getDateString(),
             style: TextStyle(
-              color: Colors.white.withValues(alpha:0.6),
+              color: Colors.white.withValues(alpha: 0.6),
               fontSize: 14,
               fontWeight: FontWeight.w400,
               letterSpacing: 0.3,
@@ -216,7 +244,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
               Text(
                 'Swipe to see your day',
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha:0.4),
+                  color: Colors.white.withValues(alpha: 0.4),
                   fontSize: 12,
                   fontWeight: FontWeight.w400,
                 ),
@@ -224,7 +252,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
               const SizedBox(width: 4),
               Icon(
                 Icons.arrow_forward_ios,
-                color: Colors.white.withValues(alpha:0.4),
+                color: Colors.white.withValues(alpha: 0.4),
                 size: 10,
               ),
             ],
@@ -258,14 +286,13 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Clothing suggestion
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: iconColor.withValues(alpha:0.15),
+                    color: iconColor.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(icon, color: iconColor, size: 24),
@@ -288,7 +315,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
                           Text(
                             ' / ${weather.lowTemp.round()}°C',
                             style: TextStyle(
-                              color: Colors.white.withValues(alpha:0.5),
+                              color: Colors.white.withValues(alpha: 0.5),
                               fontSize: 14,
                               fontWeight: FontWeight.w400,
                             ),
@@ -310,12 +337,11 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
               ],
             ),
             const SizedBox(height: 14),
-            // Clothing row
             Row(
               children: [
                 Icon(
                   Icons.checkroom,
-                  color: Colors.white.withValues(alpha:0.5),
+                  color: Colors.white.withValues(alpha: 0.5),
                   size: 14,
                 ),
                 const SizedBox(width: 6),
@@ -323,7 +349,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
                   child: Text(
                     weather.clothingSuggestion,
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha:0.7),
+                      color: Colors.white.withValues(alpha: 0.7),
                       fontSize: 12,
                       fontWeight: FontWeight.w400,
                       height: 1.4,
@@ -335,18 +361,17 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
               ],
             ),
             const SizedBox(height: 12),
-            // Weather summary
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha:0.06),
+                color: Colors.white.withValues(alpha: 0.06),
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Text(
                 weather.weatherSummary,
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha:0.6),
+                  color: Colors.white.withValues(alpha: 0.6),
                   fontSize: 11.5,
                   fontWeight: FontWeight.w400,
                   height: 1.5,
@@ -357,6 +382,215 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildNotificationsPage() {
+    final notifData = widget.notificationData;
+
+    // No notification access granted
+    if (notifData != null && !notifData.hasNotificationAccess) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.notifications_off_outlined,
+              color: Colors.white.withValues(alpha: 0.4),
+              size: 32,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Enable notification access to see\nimportant updates here',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.6),
+                fontSize: 13,
+                fontWeight: FontWeight.w400,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 12),
+            GestureDetector(
+              onTap: () {
+                const MethodChannel('casi.launcher/media')
+                    .invokeMethod('openNotificationSettings');
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.2),
+                  ),
+                ),
+                child: const Text(
+                  'Open Settings',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Still loading
+    if (notifData == null) {
+      return const Padding(
+        padding: EdgeInsets.all(24),
+        child: Center(
+          child: Text(
+            'Checking notifications...',
+            style: TextStyle(color: Colors.white54, fontSize: 14),
+          ),
+        ),
+      );
+    }
+
+    // No important notifications
+    if (notifData.items.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.check_circle_outline,
+              color: Colors.green.shade300,
+              size: 32,
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'All clear!',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w300,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'No important notifications right now',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.5),
+                fontSize: 13,
+                fontWeight: FontWeight.w400,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Show important notifications
+    final items = notifData.items;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.priority_high_rounded,
+                color: Colors.amber.shade300,
+                size: 16,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Things you should know',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.8),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Expanded(
+            child: ListView.separated(
+              padding: EdgeInsets.zero,
+              physics: const BouncingScrollPhysics(),
+              itemCount: items.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 6),
+              itemBuilder: (context, index) {
+                final item = items[index];
+                final catIcon = _categoryIcon(item.appCategory);
+                final catColor = _categoryColor(item.appCategory);
+
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.06),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(catIcon, color: catColor, size: 16),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Text(
+                                  item.appLabel,
+                                  style: TextStyle(
+                                    color: catColor,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    item.title,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (item.summary.isNotEmpty) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                item.summary,
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.55),
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w400,
+                                  height: 1.3,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }

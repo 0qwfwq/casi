@@ -22,6 +22,7 @@ import '../utils/app_launcher.dart';
 import '../widgets/notify_pill.dart';
 import '../morning_brief/morning_brief_panel.dart';
 import '../morning_brief/weather_brief_service.dart';
+import '../morning_brief/notification_brief_service.dart';
 
 class AppTimer {
   int totalSeconds;
@@ -126,6 +127,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   bool _showMorningBrief = true;
   int _morningBriefDismissDay = -1;
   WeatherBriefData? _weatherBriefData;
+  NotificationBriefData? _notificationBriefData;
   bool _isForecastVisible = false;
 
   // --- Settings ---
@@ -168,6 +170,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _loadTimers();
     _loadMorningBriefState();
     _refreshWeatherBrief();
+    _refreshNotificationBrief();
 
     final days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     _scrolledDay = days[DateTime.now().weekday - 1];
@@ -196,6 +199,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       _syncTimersOnResume();
       _loadMorningBriefState();
       _refreshWeatherBrief();
+      _refreshNotificationBrief();
       // Instantly close the drawer when returning to the launcher
       if (_drawerController.isAttached && _drawerController.size > 0.0) {
         _drawerController.jumpTo(0.0);
@@ -282,6 +286,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       if (_morningBriefDismissDay != today) {
         _showMorningBrief = true;
         _refreshWeatherBrief();
+        _refreshNotificationBrief();
       }
     }
 
@@ -620,6 +625,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       _showMorningBrief = true;
     });
     _refreshWeatherBrief();
+    _refreshNotificationBrief();
   }
 
   Future<void> _refreshWeatherBrief() async {
@@ -627,6 +633,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (mounted && data != null) {
       setState(() {
         _weatherBriefData = data;
+      });
+    }
+  }
+
+  Future<void> _refreshNotificationBrief() async {
+    final data = await NotificationBriefService.generateBrief();
+    if (mounted) {
+      setState(() {
+        _notificationBriefData = data;
       });
     }
   }
@@ -1016,6 +1031,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                                 padding: const EdgeInsets.only(bottom: 16),
                                                 child: MorningBriefPanel(
                                                   weatherData: _weatherBriefData,
+                                                  notificationData: _notificationBriefData,
                                                   onDismiss: _dismissMorningBrief,
                                                 ),
                                               ),

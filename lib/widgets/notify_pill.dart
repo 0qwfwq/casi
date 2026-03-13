@@ -150,16 +150,16 @@ class _NotifyPillOverlayState extends State<_NotifyPillOverlay>
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                 constraints: const BoxConstraints(maxWidth: 300),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.12),
+                  color: Colors.white.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(28),
                   border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.25),
-                    width: 1.0,
+                    color: Colors.white.withValues(alpha: 0.3),
+                    width: 1.2,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.3),
-                      blurRadius: 16,
+                      color: Colors.black.withValues(alpha: 0.1),
+                      blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),
                   ],

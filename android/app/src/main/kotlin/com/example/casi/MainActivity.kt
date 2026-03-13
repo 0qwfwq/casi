@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.provider.Settings
 import android.media.AudioManager
 import android.media.MediaMetadata
 import android.media.session.MediaController
@@ -19,9 +20,33 @@ import java.io.ByteArrayOutputStream
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "casi.launcher/media"
     private val APP_CHANNEL = "casi.launcher/apps"
+    private val NOTIF_CHANNEL = "casi.launcher/notifications"
 
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        // --- Notifications Channel ---
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, NOTIF_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getNotifications" -> {
+                    val prefs = getSharedPreferences("casi_notifications", MODE_PRIVATE)
+                    val json = prefs.getString("captured_notifications", "[]") ?: "[]"
+                    result.success(json)
+                }
+                "clearNotifications" -> {
+                    val prefs = getSharedPreferences("casi_notifications", MODE_PRIVATE)
+                    prefs.edit().putString("captured_notifications", "[]").apply()
+                    result.success(null)
+                }
+                "isNotificationAccessGranted" -> {
+                    val componentName = ComponentName(this, CasiNotificationListenerService::class.java)
+                    val flat = android.provider.Settings.Secure.getString(contentResolver, "enabled_notification_listeners")
+                    val enabled = flat != null && flat.contains(componentName.flattenToString())
+                    result.success(enabled)
+                }
+                else -> result.notImplemented()
+            }
+        }
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, APP_CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
