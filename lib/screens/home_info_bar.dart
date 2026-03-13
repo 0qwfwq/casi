@@ -20,6 +20,8 @@ import '../pills/d_clock_pill.dart';
 import '../pills/d_calendar_pill.dart';
 import '../utils/app_launcher.dart';
 import '../widgets/notify_pill.dart';
+import '../morning_brief/morning_brief_panel.dart';
+import '../morning_brief/weather_brief_service.dart';
 
 class AppTimer {
   int totalSeconds;
@@ -27,9 +29,27 @@ class AppTimer {
   bool isRunning;
   DateTime? endTime;
 
-  AppTimer({required this.totalSeconds}) 
-    : remainingSeconds = totalSeconds, 
+  AppTimer({required this.totalSeconds})
+    : remainingSeconds = totalSeconds,
       isRunning = false;
+
+  Map<String, dynamic> toJson() => {
+    'totalSeconds': totalSeconds,
+    'remainingSeconds': remainingSeconds,
+    'isRunning': isRunning,
+    'endTime': endTime?.millisecondsSinceEpoch,
+  };
+
+  factory AppTimer.fromJson(Map<String, dynamic> json) {
+    final t = AppTimer(totalSeconds: json['totalSeconds'] as int);
+    t.remainingSeconds = json['remainingSeconds'] as int;
+    t.isRunning = json['isRunning'] as bool;
+    final endMs = json['endTime'] as int?;
+    if (endMs != null) {
+      t.endTime = DateTime.fromMillisecondsSinceEpoch(endMs);
+    }
+    return t;
+  }
 }
 
 class HomePage extends StatefulWidget {
@@ -102,6 +122,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   Map<DateTime, List<CalendarEvent>> _calendarEvents = {};
   bool _eventPillDismissed = false; // Reset daily or when events change
 
+  // --- Morning Brief State ---
+  bool _showMorningBrief = true;
+  int _morningBriefDismissDay = -1;
+  WeatherBriefData? _weatherBriefData;
+  bool _isForecastVisible = false;
+
   // --- Settings ---
   String _bgType = 'color';
   Color _bgColor = Colors.black;
@@ -138,6 +164,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     
     _loadSettings();
     _loadCalendarEvents();
+    _loadAlarms();
+    _loadTimers();
+    _loadMorningBriefState();
+    _refreshWeatherBrief();
 
     final days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     _scrolledDay = days[DateTime.now().weekday - 1];
@@ -164,6 +194,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       _applyImmersiveMode();
       _checkAppChangesOnResume();
       _syncTimersOnResume();
+      _loadMorningBriefState();
+      _refreshWeatherBrief();
       // Instantly close the drawer when returning to the launcher
       if (_drawerController.isAttached && _drawerController.size > 0.0) {
         _drawerController.jumpTo(0.0);
@@ -242,11 +274,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   // --- Alarm Background Logic ---
   void _checkAlarms() {
-    // Reset event pill dismiss when the day changes
+    // Reset event pill dismiss and morning brief when the day changes
     final today = DateTime.now().day;
     if (today != _lastCheckedDay) {
       _lastCheckedDay = today;
       _eventPillDismissed = false;
+      if (_morningBriefDismissDay != today) {
+        _showMorningBrief = true;
+        _refreshWeatherBrief();
+      }
     }
 
     if (_isAlarmRinging) return;
@@ -310,7 +346,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         _activeAlarms.add(snoozeTime);
       }
     });
-    
+    _saveAlarms();
+
     NotifyPill.show(context, 'Snoozed for 5 minutes ($snoozeTime)', icon: Icons.snooze);
   }
 
@@ -398,6 +435,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         _isTimerMode = false;
       });
       _startAlarmSound();
+      _saveTimers();
     }
 
     if (mounted) setState(() {});
@@ -405,6 +443,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (!anyRunning) {
       _countdownTimer?.cancel();
       _countdownTimer = null;
+      _saveTimers();
     }
   }
 
@@ -417,33 +456,35 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   void _toggleTimer(int index) {
     if (index < 0 || index >= _appTimers.length) return;
-    
+
     var t = _appTimers[index];
     setState(() {
       if (t.isRunning) {
         t.isRunning = false;
-        t.endTime = null; 
+        t.endTime = null;
       } else {
         if (t.remainingSeconds <= 0) t.remainingSeconds = t.totalSeconds;
         t.isRunning = true;
         t.endTime = DateTime.now().add(Duration(seconds: t.remainingSeconds));
-        
+
         if (_countdownTimer == null || !_countdownTimer!.isActive) {
           _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) => _tickTimers());
         }
       }
     });
+    _saveTimers();
   }
 
   void _stopTimer() {
     if (_selectedTimerIndex == null || _appTimers.isEmpty) return;
-    
+
     setState(() {
       var t = _appTimers[_selectedTimerIndex!];
       t.isRunning = false;
       t.endTime = null;
-      t.remainingSeconds = t.totalSeconds; 
+      t.remainingSeconds = t.totalSeconds;
     });
+    _saveTimers();
   }
 
   Future<void> _initApps() async {
@@ -551,6 +592,97 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         .map((e) => '${e.key}:${e.value.packageName}')
         .toList();
     await prefs.setStringList('home_layout', layout);
+  }
+
+  Future<void> _loadMorningBriefState() async {
+    final prefs = await SharedPreferences.getInstance();
+    final dismissDay = prefs.getInt('morning_brief_dismiss_day') ?? -1;
+    final today = DateTime.now().day;
+    final dismissed = dismissDay == today;
+    setState(() {
+      _morningBriefDismissDay = dismissDay;
+      _showMorningBrief = !dismissed;
+    });
+  }
+
+  Future<void> _dismissMorningBrief() async {
+    final today = DateTime.now().day;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('morning_brief_dismiss_day', today);
+    setState(() {
+      _morningBriefDismissDay = today;
+      _showMorningBrief = false;
+    });
+  }
+
+  void _showMorningBriefAgain() {
+    setState(() {
+      _showMorningBrief = true;
+    });
+    _refreshWeatherBrief();
+  }
+
+  Future<void> _refreshWeatherBrief() async {
+    final data = await WeatherBriefService.generateBrief();
+    if (mounted && data != null) {
+      setState(() {
+        _weatherBriefData = data;
+      });
+    }
+  }
+
+  Future<void> _saveAlarms() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('active_alarms', _activeAlarms);
+  }
+
+  Future<void> _loadAlarms() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getStringList('active_alarms');
+    if (saved != null) {
+      setState(() {
+        _activeAlarms = saved;
+      });
+    }
+  }
+
+  Future<void> _saveTimers() async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonList = _appTimers.map((t) => jsonEncode(t.toJson())).toList();
+    await prefs.setStringList('app_timers', jsonList);
+  }
+
+  Future<void> _loadTimers() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getStringList('app_timers');
+    if (saved != null) {
+      final now = DateTime.now();
+      final loaded = <AppTimer>[];
+      for (final jsonStr in saved) {
+        try {
+          final t = AppTimer.fromJson(jsonDecode(jsonStr));
+          if (t.isRunning && t.endTime != null) {
+            final remaining = t.endTime!.difference(now).inSeconds;
+            if (remaining <= 0) {
+              t.remainingSeconds = t.totalSeconds;
+              t.isRunning = false;
+              t.endTime = null;
+            } else {
+              t.remainingSeconds = remaining;
+            }
+          }
+          loaded.add(t);
+        } catch (e) {
+          debugPrint("Error loading timer: $e");
+        }
+      }
+      setState(() {
+        _appTimers = loaded;
+      });
+      if (_appTimers.any((t) => t.isRunning)) {
+        _countdownTimer ??= Timer.periodic(const Duration(seconds: 1), (_) => _tickTimers());
+      }
+    }
   }
 
   Future<void> _saveCalendarEvents() async {
@@ -788,6 +920,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           _buildBackground(),
           GestureDetector(
             behavior: HitTestBehavior.translucent,
+            onLongPressStart: (details) {
+              _showHomescreenContextMenu(details.globalPosition);
+            },
             onVerticalDragStart: (details) {
               _dragStartY = details.globalPosition.dy;
             },
@@ -875,6 +1010,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                         child: Column(
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
+                                            // Morning Brief panel (hidden when weather/clock/calendar UI is open)
+                                            if (_showMorningBrief && !_showPill && !_isAlarmRinging && !_isForecastVisible)
+                                              Padding(
+                                                padding: const EdgeInsets.only(bottom: 16),
+                                                child: MorningBriefPanel(
+                                                  weatherData: _weatherBriefData,
+                                                  onDismiss: _dismissMorningBrief,
+                                                ),
+                                              ),
                                             // Active alarm/timer status pills
                                             if (!_showPill && !_isAlarmRinging)
                                               _buildStatusPills(),
@@ -904,6 +1048,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                               isCalendarMode: _isCalendarMode,
                                               webLongPressAction: _webLongPressAction,
                                               webLongPressCustomApp: _webLongPressCustomApp,
+                                              onForecastVisibilityChanged: (visible) {
+                                                setState(() => _isForecastVisible = visible);
+                                              },
                                               onRemove: (app) {
                                                 setState(() {
                                                   _homeApps.removeWhere((key, value) => value.packageName == app.packageName);
@@ -1032,7 +1179,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                                               setState(() {
                                                                 String minStr = _scrolledMinute.toString().padLeft(2, '0');
                                                                 String newAlarm = "$_scrolledDay $_scrolledHour:$minStr $_scrolledAmPm";
-                                                                
+
                                                                 if (_isEditingAlarm && _selectedAlarmIndex != null) {
                                                                   _activeAlarms[_selectedAlarmIndex!] = newAlarm;
                                                                 } else {
@@ -1040,12 +1187,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                                                     _activeAlarms.add(newAlarm);
                                                                   }
                                                                 }
-                                                                
+
                                                                 _isAlarmMode = false;
-                                                                _isViewingAlarms = true; 
+                                                                _isViewingAlarms = true;
                                                                 _selectedAlarmIndex = null;
                                                                 _isEditingAlarm = false;
                                                               });
+                                                              _saveAlarms();
                                                             },
                                                             onDeleteAlarm: (index) {
                                                               setState(() {
@@ -1056,6 +1204,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                                                   _selectedAlarmIndex = _selectedAlarmIndex! - 1;
                                                                 }
                                                               });
+                                                              _saveAlarms();
                                                             },
                                                             onEditAlarmTapped: (index) {
                                                               final alarm = _activeAlarms[index];
@@ -1129,6 +1278,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                                                   _isEditingTimer = false;
                                                                 }
                                                               });
+                                                              _saveTimers();
                                                             },
                                                             onDeleteTimer: (index) {
                                                               setState(() {
@@ -1142,6 +1292,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                                                   _selectedTimerIndex = _selectedTimerIndex! - 1;
                                                                 }
                                                               });
+                                                              _saveTimers();
                                                             },
                                                             onSelectAlarm: (index) {
                                                               setState(() {
@@ -1470,6 +1621,73 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         mainAxisSize: MainAxisSize.min,
         children: pills,
       ),
+    );
+  }
+
+  void _showHomescreenContextMenu(Offset position) {
+    // Don't show "Show Brief" if already visible
+    if (_showMorningBrief) return;
+
+    final screenSize = MediaQuery.of(context).size;
+    double left = (position.dx - 100).clamp(16.0, screenSize.width - 216.0);
+    double top = (position.dy - 40).clamp(16.0, screenSize.height - 100.0);
+
+    showDialog(
+      context: context,
+      barrierColor: Colors.transparent,
+      builder: (ctx) {
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(
+                onTap: () => Navigator.of(ctx).pop(),
+                child: Container(color: Colors.transparent),
+              ),
+            ),
+            Positioned(
+              left: left,
+              top: top,
+              child: Material(
+                color: Colors.transparent,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+                    child: Container(
+                      width: 200,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.3),
+                          width: 1.2,
+                        ),
+                      ),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: () {
+                          Navigator.of(ctx).pop();
+                          _showMorningBriefAgain();
+                        },
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                          child: Row(
+                            children: [
+                              Icon(Icons.wb_sunny_outlined, color: Colors.white, size: 20),
+                              SizedBox(width: 12),
+                              Text('Show Brief', style: TextStyle(color: Colors.white, fontSize: 14)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 

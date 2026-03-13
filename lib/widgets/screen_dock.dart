@@ -35,6 +35,7 @@ class ScreenDock extends StatefulWidget {
 
   final String webLongPressAction;
   final String? webLongPressCustomApp;
+  final ValueChanged<bool>? onForecastVisibilityChanged;
 
   const ScreenDock({
     super.key,
@@ -56,6 +57,7 @@ class ScreenDock extends StatefulWidget {
     this.onDragEnded,
     this.webLongPressAction = 'assistant',
     this.webLongPressCustomApp,
+    this.onForecastVisibilityChanged,
   });
 
   @override
@@ -113,6 +115,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
     super.didUpdateWidget(oldWidget);
     if ((widget.isAlarmMode || widget.isStopwatchMode || widget.isTimerMode || widget.isCalendarMode) && _showForecast) {
       setState(() => _showForecast = false);
+      widget.onForecastVisibilityChanged?.call(false);
     }
   }
 
@@ -441,6 +444,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
       onTap: () {
         _checkAndFetchWeather();
         setState(() => _showForecast = true);
+        widget.onForecastVisibilityChanged?.call(true);
       },
       borderRadius: BorderRadius.circular(30),
       child: Center(
@@ -685,6 +689,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
                           setState(() {
                             _showForecast = false;
                           });
+                          widget.onForecastVisibilityChanged?.call(false);
                         },
                         child: SizedBox(
                           width: maxWidth,
