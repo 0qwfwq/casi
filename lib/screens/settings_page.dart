@@ -59,7 +59,14 @@ class _SettingsPageState extends State<SettingsPage> {
             leading: const Icon(Icons.wallpaper, color: Colors.white),
             trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 16),
             onTap: () {
-              Navigator.push(context, MaterialPageRoute(builder: (context) => const BackgroundSettingsPage()));
+              Navigator.push(context, PageRouteBuilder(
+                pageBuilder: (context, animation, secondaryAnimation) => const BackgroundSettingsPage(),
+                transitionDuration: const Duration(milliseconds: 80),
+                reverseTransitionDuration: const Duration(milliseconds: 60),
+                transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                  return FadeTransition(opacity: animation, child: child);
+                },
+              ));
             },
           ),
           SwitchListTile(
@@ -75,7 +82,14 @@ class _SettingsPageState extends State<SettingsPage> {
             leading: const Icon(Icons.touch_app, color: Colors.white),
             trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 16),
             onTap: () {
-              Navigator.push(context, MaterialPageRoute(builder: (context) => const WebLongPressSettingsPage()));
+              Navigator.push(context, PageRouteBuilder(
+                pageBuilder: (context, animation, secondaryAnimation) => const WebLongPressSettingsPage(),
+                transitionDuration: const Duration(milliseconds: 80),
+                reverseTransitionDuration: const Duration(milliseconds: 60),
+                transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                  return FadeTransition(opacity: animation, child: child);
+                },
+              ));
             },
           ),
         ],

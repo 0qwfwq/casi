@@ -198,8 +198,8 @@ class DClockPill extends StatelessWidget {
     }
 
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOutQuart,
+      duration: const Duration(milliseconds: 120),
+      curve: Curves.easeOutCubic,
       width: _getDesiredWidth(),
       height: _getDesiredHeight(),
       padding: const EdgeInsets.fromLTRB(12.0, 12.0, 12.0, 8.0), 
@@ -207,7 +207,7 @@ class DClockPill extends StatelessWidget {
         children: [
           Expanded(
             child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 250),
+              duration: const Duration(milliseconds: 100),
               child: content,
             ),
           ),
@@ -239,7 +239,7 @@ class DClockPill extends StatelessWidget {
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 250),
+        duration: const Duration(milliseconds: 100),
         width: 44,
         height: 44,
         decoration: BoxDecoration(
@@ -308,7 +308,7 @@ class DClockPill extends StatelessWidget {
                 return GestureDetector(
                   onTap: () => onSelectAlarm?.call(index),
                   child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
+                    duration: const Duration(milliseconds: 100),
                     height: 52,
                     margin: const EdgeInsets.only(bottom: 6),
                     padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -534,7 +534,7 @@ class DClockPill extends StatelessWidget {
                 return GestureDetector(
                   onTap: () => onSelectTimer?.call(index),
                   child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
+                    duration: const Duration(milliseconds: 100),
                     height: 56,
                     margin: const EdgeInsets.only(bottom: 6),
                     padding: const EdgeInsets.symmetric(horizontal: 16),

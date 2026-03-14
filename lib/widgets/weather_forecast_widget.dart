@@ -110,11 +110,11 @@ class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
             else
               // Smooth crossfade AND smooth resize when switching between Daily/Hourly/Details
               AnimatedSize(
-                duration: const Duration(milliseconds: 300),
+                duration: const Duration(milliseconds: 120),
                 curve: Curves.easeOutCubic,
                 alignment: Alignment.topCenter,
                 child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 250),
+                  duration: const Duration(milliseconds: 100),
                   // This layout builder prevents the height from "snapping" after the fade completes
                   layoutBuilder: (Widget? currentChild, List<Widget> previousChildren) {
                     return Stack(

@@ -164,8 +164,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
 
     _notifSlideController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 200),
-      reverseDuration: const Duration(milliseconds: 150),
+      duration: const Duration(milliseconds: 100),
+      reverseDuration: const Duration(milliseconds: 80),
     );
 
     if (_cachedFullApps != null) {
@@ -979,7 +979,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
       onPopInvoked: (didPop) {
         if (didPop) return;
         if (_drawerController.isAttached && _drawerController.size > 0.1) {
-          _drawerController.animateTo(0.0, duration: const Duration(milliseconds: 250), curve: Curves.easeOutCubic);
+          _drawerController.animateTo(0.0, duration: const Duration(milliseconds: 120), curve: Curves.easeOutCubic);
         }
       },
       child: Scaffold(
@@ -1015,7 +1015,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
               if (_dragStartY < screenHeight - 60 && details.primaryVelocity! < -500) {
                 _drawerController.animateTo(
                   0.75,
-                  duration: const Duration(milliseconds: 250),
+                  duration: const Duration(milliseconds: 120),
                   curve: Curves.easeOutCubic,
                 );
               }
@@ -1101,7 +1101,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                           children: [
                                             // Morning Brief panel — animated show/hide
                                             AnimatedCrossFade(
-                                              duration: const Duration(milliseconds: 300),
+                                              duration: const Duration(milliseconds: 120),
                                               sizeCurve: Curves.easeOutCubic,
                                               firstCurve: Curves.easeOutCubic,
                                               secondCurve: Curves.easeInCubic,
@@ -1490,8 +1490,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                               onOpenSettings: () {
                                 Navigator.push(context, PageRouteBuilder(
                                       pageBuilder: (context, animation, secondaryAnimation) => const SettingsPage(),
-                                      transitionDuration: const Duration(milliseconds: 200),
-                                      reverseTransitionDuration: const Duration(milliseconds: 150),
+                                      transitionDuration: const Duration(milliseconds: 80),
+                                      reverseTransitionDuration: const Duration(milliseconds: 60),
                                       transitionsBuilder: (context, animation, secondaryAnimation, child) {
                                         return FadeTransition(
                                           opacity: CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),

@@ -82,8 +82,8 @@ class _NotifyPillOverlayState extends State<_NotifyPillOverlay>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 400),
-      reverseDuration: const Duration(milliseconds: 300),
+      duration: const Duration(milliseconds: 150),
+      reverseDuration: const Duration(milliseconds: 100),
     );
 
     // Slide: starts above screen (-1.0) → drops to position (0.0)

@@ -43,7 +43,7 @@ class AppDrawer extends StatelessWidget {
         maxChildSize: 0.75,
         snap: true,
         snapSizes: const [0.0, 0.75],
-        snapAnimationDuration: const Duration(milliseconds: 250),
+        snapAnimationDuration: const Duration(milliseconds: 120),
         builder: (context, scrollController) {
           return _AppDrawerSheet(
             apps: apps,
@@ -704,8 +704,8 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                         onTap: () {
                           widget.scrollController.animateTo(
                             0,
-                            duration: const Duration(milliseconds: 300),
-                            curve: Curves.easeOut,
+                            duration: const Duration(milliseconds: 100),
+                            curve: Curves.easeOutCubic,
                           );
                         },
                         child: SizedBox(

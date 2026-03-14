@@ -84,7 +84,7 @@ class _DCalendarPillState extends State<DCalendarPill> {
   @override
   Widget build(BuildContext context) {
     return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 300),
+      duration: const Duration(milliseconds: 100),
       switchInCurve: Curves.easeOutBack,
       switchOutCurve: Curves.easeIn,
       transitionBuilder: (child, animation) {
@@ -126,7 +126,7 @@ class _DCalendarPillState extends State<DCalendarPill> {
 
     return AnimatedContainer(
       key: key,
-      duration: const Duration(milliseconds: 300),
+      duration: const Duration(milliseconds: 120),
       width: _fixedPillWidth,
       height: totalHeight,
       padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 12.0),
@@ -159,7 +159,7 @@ class _DCalendarPillState extends State<DCalendarPill> {
                       return GestureDetector(
                         onTap: () => widget.onEventSelected?.call(index),
                         child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
+                          duration: const Duration(milliseconds: 100),
                           height: event.description.isNotEmpty ? 52 : 36,
                           margin: const EdgeInsets.symmetric(vertical: 4.0),
                           padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 4.0),
@@ -276,7 +276,7 @@ class _DCalendarPillState extends State<DCalendarPill> {
 
     return AnimatedContainer(
       key: key,
-      duration: const Duration(milliseconds: 300),
+      duration: const Duration(milliseconds: 120),
       width: _fixedPillWidth,
       padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 12.0),
       child: Column(
@@ -344,7 +344,7 @@ class _DCalendarPillState extends State<DCalendarPill> {
               return GestureDetector(
                 onTap: () => widget.onDateSelected(normalizedDay),
                 child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
+                  duration: const Duration(milliseconds: 100),
                   width: 32,
                   height: 32,
                   alignment: Alignment.center,

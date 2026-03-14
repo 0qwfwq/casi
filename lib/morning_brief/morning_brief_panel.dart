@@ -208,7 +208,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
       children: List.generate(_totalPages, (index) {
         final isActive = _currentPage == index;
         return AnimatedContainer(
-          duration: const Duration(milliseconds: 250),
+          duration: const Duration(milliseconds: 100),
           margin: const EdgeInsets.symmetric(horizontal: 3),
           width: isActive ? 18 : 6,
           height: 6,

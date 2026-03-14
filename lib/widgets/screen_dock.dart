@@ -472,7 +472,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
       builder: (context, candidateData, rejectedData) {
         final isHovered = candidateData.isNotEmpty;
         return AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
+          duration: const Duration(milliseconds: 100),
           decoration: BoxDecoration(
             color: isHovered ? Colors.red.withOpacity(0.6) : Colors.transparent,
             borderRadius: BorderRadius.circular(32),
@@ -492,7 +492,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
       builder: (context, candidateData, rejectedData) {
         final isHovered = candidateData.isNotEmpty;
         return AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
+          duration: const Duration(milliseconds: 100),
           decoration: BoxDecoration(
             color: isHovered ? Colors.orange.withOpacity(0.6) : Colors.transparent,
             borderRadius: BorderRadius.circular(32),
@@ -615,7 +615,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
             child: Material(
               color: Colors.transparent,
               child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 300),
+                duration: const Duration(milliseconds: 100),
                 child: widget.isDragging ? _buildUninstallTarget(key: const ValueKey('uninstall')) : _buildWebButton(key: const ValueKey('web')),
               ),
             ),
@@ -648,12 +648,12 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
           child: Container(
             color: Colors.white.withOpacity(0.2), 
             child: AnimatedSize(
-              duration: const Duration(milliseconds: 450),
-              curve: Curves.easeOutQuart,
+              duration: const Duration(milliseconds: 120),
+              curve: Curves.easeOutCubic,
               alignment: Alignment.bottomLeft,
-              clipBehavior: Clip.antiAlias, 
+              clipBehavior: Clip.antiAlias,
               child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 350),
+                duration: const Duration(milliseconds: 100),
                 switchInCurve: Curves.easeOutCubic,
                 switchOutCurve: Curves.easeInCubic,
                 transitionBuilder: (Widget child, Animation<double> animation) {
@@ -754,15 +754,15 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
               alignment: Alignment.bottomCenter,
               child: AnimatedOpacity(
                 opacity: hidePill ? 0.0 : 1.0,
-                duration: const Duration(milliseconds: 350),
+                duration: const Duration(milliseconds: 100),
                 child: IgnorePointer(
                   ignoring: hidePill,
                   child: AnimatedSize(
-                    duration: const Duration(milliseconds: 300),
-                    curve: Curves.easeOutQuart,
+                    duration: const Duration(milliseconds: 100),
+                    curve: Curves.easeOutCubic,
                     alignment: Alignment.bottomCenter,
                     child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 300),
+                      duration: const Duration(milliseconds: 100),
                       transitionBuilder: (child, animation) {
                         return SlideTransition(
                           position: Tween<Offset>(
@@ -797,7 +797,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
                 padding: const EdgeInsets.only(left: 68.0, right: 68.0, bottom: 10.0),
                 child: AnimatedOpacity(
                   opacity: (hideLeftCircle || hideRightCircle || isForecastMode) ? 0.0 : 1.0,
-                  duration: const Duration(milliseconds: 350),
+                  duration: const Duration(milliseconds: 100),
                   child: IgnorePointer(
                     ignoring: hideLeftCircle || hideRightCircle || isForecastMode,
                     child: _buildHomeAppRow(),
@@ -811,7 +811,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
               alignment: Alignment.bottomRight,
               child: AnimatedOpacity(
                 opacity: hideRightCircle ? 0.0 : 1.0,
-                duration: const Duration(milliseconds: 350),
+                duration: const Duration(milliseconds: 100),
                 child: IgnorePointer(
                   ignoring: hideRightCircle,
                   child: _buildRightGlassCircle(),
@@ -822,7 +822,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
             // Left Circle
             AnimatedOpacity(
               opacity: hideLeftCircle ? 0.0 : 1.0,
-              duration: const Duration(milliseconds: 350),
+              duration: const Duration(milliseconds: 100),
               child: IgnorePointer(
                 ignoring: hideLeftCircle,
                 child: _buildLeftGlassArea(context, maxWidth),
