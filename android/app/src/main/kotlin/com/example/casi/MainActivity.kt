@@ -44,6 +44,14 @@ class MainActivity: FlutterActivity() {
                     val enabled = flat != null && flat.contains(componentName.flattenToString())
                     result.success(enabled)
                 }
+                "getActiveNotifications" -> {
+                    val service = CasiNotificationListenerService.instance
+                    if (service != null) {
+                        result.success(service.getActiveNotifs())
+                    } else {
+                        result.success("[]")
+                    }
+                }
                 else -> result.notImplemented()
             }
         }

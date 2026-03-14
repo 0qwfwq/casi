@@ -12,15 +12,21 @@ class CasiNotificationListenerService : NotificationListenerService() {
     companion object {
         private const val PREFS_NAME = "casi_notifications"
         private const val KEY_NOTIFICATIONS = "captured_notifications"
-        private const val MAX_NOTIFICATIONS = 100
+        private const val MAX_NOTIFICATIONS = 200
+
+        // Static instance so MainActivity can call getActiveNotifications()
+        var instance: CasiNotificationListenerService? = null
+            private set
     }
 
     override fun onListenerConnected() {
         super.onListenerConnected()
+        instance = this
     }
 
     override fun onListenerDisconnected() {
         super.onListenerDisconnected()
+        instance = null
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
@@ -59,6 +65,54 @@ class CasiNotificationListenerService : NotificationListenerService() {
         saveNotification(notifJson)
     }
 
+    override fun onNotificationRemoved(sbn: StatusBarNotification?) {
+        super.onNotificationRemoved(sbn)
+        // No action needed for history — history keeps all notifications.
+        // Active notifications are read live via getActiveNotifs().
+    }
+
+    /**
+     * Returns a JSON array string of currently active (non-dismissed) notifications
+     * from the system notification shade.
+     */
+    fun getActiveNotifs(): String {
+        val sbns = try {
+            activeNotifications ?: emptyArray()
+        } catch (e: Exception) {
+            emptyArray<StatusBarNotification>()
+        }
+
+        val array = JSONArray()
+        for (sbn in sbns) {
+            val packageName = sbn.packageName ?: continue
+            if (packageName == "com.example.casi") continue
+            if (packageName == "android" || packageName == "com.android.systemui") continue
+
+            val notification = sbn.notification ?: continue
+            val extras = notification.extras ?: continue
+
+            val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString() ?: ""
+            val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString() ?: ""
+            val bigText = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString() ?: ""
+            val subText = extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString() ?: ""
+
+            if (title.isBlank() && text.isBlank()) continue
+
+            val obj = JSONObject().apply {
+                put("packageName", packageName)
+                put("title", title)
+                put("text", text)
+                put("bigText", bigText)
+                put("subText", subText)
+                put("timestamp", sbn.postTime)
+                put("key", sbn.key ?: "")
+                put("category", notification.category ?: "")
+            }
+            array.put(obj)
+        }
+        return array.toString()
+    }
+
     private fun saveNotification(notifJson: JSONObject) {
         val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
         val existing = prefs.getString(KEY_NOTIFICATIONS, "[]") ?: "[]"
@@ -77,11 +131,11 @@ class CasiNotificationListenerService : NotificationListenerService() {
         val fiveMinutes = 5 * 60 * 1000L
 
         for (i in 0 until array.length()) {
-            val existing_item = array.optJSONObject(i) ?: continue
-            if (existing_item.optString("packageName") == newPkg &&
-                existing_item.optString("title") == newTitle &&
-                existing_item.optString("text") == newText &&
-                (newTimestamp - existing_item.optLong("timestamp")) < fiveMinutes) {
+            val existingItem = array.optJSONObject(i) ?: continue
+            if (existingItem.optString("packageName") == newPkg &&
+                existingItem.optString("title") == newTitle &&
+                existingItem.optString("text") == newText &&
+                (newTimestamp - existingItem.optLong("timestamp")) < fiveMinutes) {
                 return // Duplicate, skip
             }
         }

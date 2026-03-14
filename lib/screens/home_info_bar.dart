@@ -23,6 +23,7 @@ import '../widgets/notify_pill.dart';
 import '../morning_brief/morning_brief_panel.dart';
 import '../morning_brief/weather_brief_service.dart';
 import '../morning_brief/notification_brief_service.dart';
+import '../notification_history/notification_history_screen.dart';
 
 class AppTimer {
   int totalSeconds;
@@ -197,7 +198,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       _applyImmersiveMode();
       _checkAppChangesOnResume();
       _syncTimersOnResume();
-      _loadMorningBriefState();
       _refreshWeatherBrief();
       _refreshNotificationBrief();
       // Instantly close the drawer when returning to the launcher
@@ -620,8 +620,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     });
   }
 
-  void _showMorningBriefAgain() {
+  Future<void> _showMorningBriefAgain() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('morning_brief_dismiss_day');
     setState(() {
+      _morningBriefDismissDay = -1;
       _showMorningBrief = true;
     });
     _refreshWeatherBrief();
@@ -635,6 +638,35 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         _weatherBriefData = data;
       });
     }
+  }
+
+  void _openNotificationHistory() {
+    Navigator.push(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            NotificationHistoryScreen(
+          bgType: _bgType,
+          bgColor: _bgColor,
+          bgImagePath: _bgImagePath,
+          immersiveMode: _immersiveMode,
+        ),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(-1.0, 0.0),
+              end: Offset.zero,
+            ).animate(CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeOutCubic,
+            )),
+            child: child,
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 250),
+        reverseTransitionDuration: const Duration(milliseconds: 200),
+      ),
+    );
   }
 
   Future<void> _refreshNotificationBrief() async {
@@ -951,6 +983,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 );
               }
             },
+            onHorizontalDragEnd: (details) {
+              if (details.primaryVelocity != null && details.primaryVelocity! > 300) {
+                _openNotificationHistory();
+              }
+            },
             child: NotificationListener<CalendarTapNotification>(
               onNotification: (notification) {
                 if (_showPill && _isCalendarMode) {
@@ -1025,9 +1062,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                         child: Column(
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
-                                            // Morning Brief panel (hidden when weather/clock/calendar UI is open)
-                                            if (_showMorningBrief && !_showPill && !_isAlarmRinging && !_isForecastVisible)
-                                              Padding(
+                                            // Morning Brief panel — animated show/hide
+                                            AnimatedCrossFade(
+                                              duration: const Duration(milliseconds: 300),
+                                              sizeCurve: Curves.easeOutCubic,
+                                              firstCurve: Curves.easeOutCubic,
+                                              secondCurve: Curves.easeInCubic,
+                                              crossFadeState: (_showMorningBrief && !_showPill && !_isAlarmRinging && !_isForecastVisible)
+                                                  ? CrossFadeState.showFirst
+                                                  : CrossFadeState.showSecond,
+                                              firstChild: Padding(
                                                 padding: const EdgeInsets.only(bottom: 16),
                                                 child: MorningBriefPanel(
                                                   weatherData: _weatherBriefData,
@@ -1035,6 +1079,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                                   onDismiss: _dismissMorningBrief,
                                                 ),
                                               ),
+                                              secondChild: const SizedBox(width: double.infinity),
+                                            ),
                                             // Active alarm/timer status pills
                                             if (!_showPill && !_isAlarmRinging)
                                               _buildStatusPills(),

@@ -41,6 +41,7 @@ class CapturedNotification {
 class ImportantNotification {
   final String appCategory; // 'email', 'work', 'social', 'other'
   final String appLabel;
+  final String packageName;
   final String title;
   final String summary;
   final int score;
@@ -49,6 +50,7 @@ class ImportantNotification {
   ImportantNotification({
     required this.appCategory,
     required this.appLabel,
+    required this.packageName,
     required this.title,
     required this.summary,
     required this.score,
@@ -107,7 +109,7 @@ class NotificationBriefService {
     'game', 'play.games',
   ];
 
-  static String _categorizeApp(String packageName) {
+  static String categorizeApp(String packageName) {
     final lower = packageName.toLowerCase();
 
     for (final p in _ignorePatterns) {
@@ -125,7 +127,7 @@ class NotificationBriefService {
     return 'other';
   }
 
-  static String _appLabel(String packageName) {
+  static String appLabel(String packageName) {
     final lower = packageName.toLowerCase();
     // Return a human-readable short name from the package
     if (lower.contains('gmail')) return 'Gmail';
@@ -308,8 +310,9 @@ class NotificationBriefService {
 
   // ─── Public API ───────────────────────────────────────────────────────────
 
-  /// Fetches notifications from the native side, scores and filters them,
-  /// and returns a digest of the most important ones.
+  /// Fetches only currently active (non-dismissed) notifications from the
+  /// system notification shade, scores and filters them, and returns a
+  /// digest of the most important ones.
   static Future<NotificationBriefData> generateBrief() async {
     // Check if notification access is granted
     bool hasAccess = false;
@@ -323,10 +326,10 @@ class NotificationBriefService {
       return NotificationBriefData(items: [], hasNotificationAccess: false);
     }
 
-    // Fetch raw notifications
+    // Fetch currently active notifications (non-dismissed)
     String rawJson;
     try {
-      rawJson = await _channel.invokeMethod('getNotifications') as String? ?? '[]';
+      rawJson = await _channel.invokeMethod('getActiveNotifications') as String? ?? '[]';
     } on PlatformException {
       return NotificationBriefData(items: [], hasNotificationAccess: true);
     }
@@ -349,14 +352,15 @@ class NotificationBriefService {
     // Score and categorize
     final scored = <ImportantNotification>[];
     for (final notif in recent) {
-      final category = _categorizeApp(notif.packageName);
+      final category = categorizeApp(notif.packageName);
       final score = _scoreNotification(notif, category);
 
       // Threshold: only include notifications scoring 5 or above
       if (score >= 5) {
         scored.add(ImportantNotification(
           appCategory: category,
-          appLabel: _appLabel(notif.packageName),
+          appLabel: appLabel(notif.packageName),
+          packageName: notif.packageName,
           title: notif.title,
           summary: _truncate(notif.fullText, 120),
           score: score,
@@ -387,6 +391,47 @@ class NotificationBriefService {
     final topItems = deduped.take(6).toList();
 
     return NotificationBriefData(items: topItems, hasNotificationAccess: true);
+  }
+
+  /// Fetches all stored notifications from the history (SharedPreferences).
+  /// Returns all notifications from the last 24 hours, sorted by timestamp
+  /// descending (newest first). Used by the notification history screen.
+  static Future<List<CapturedNotification>> getAllNotifications() async {
+    bool hasAccess = false;
+    try {
+      hasAccess = await _channel.invokeMethod('isNotificationAccessGranted') as bool? ?? false;
+    } on PlatformException {
+      hasAccess = false;
+    }
+
+    if (!hasAccess) return [];
+
+    String rawJson;
+    try {
+      rawJson = await _channel.invokeMethod('getNotifications') as String? ?? '[]';
+    } on PlatformException {
+      return [];
+    }
+
+    List<dynamic> parsed;
+    try {
+      parsed = jsonDecode(rawJson) as List<dynamic>;
+    } catch (_) {
+      return [];
+    }
+
+    final notifications = parsed
+        .map((e) => CapturedNotification.fromJson(e as Map<String, dynamic>))
+        .toList();
+
+    // Only last 24 hours
+    final cutoff = DateTime.now().millisecondsSinceEpoch - (24 * 60 * 60 * 1000);
+    final recent = notifications.where((n) => n.timestamp > cutoff).toList();
+
+    // Sort by timestamp descending (newest first)
+    recent.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+
+    return recent;
   }
 
   static String _truncate(String text, int maxLen) {
