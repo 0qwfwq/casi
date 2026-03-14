@@ -222,6 +222,29 @@ class NotificationBriefService {
     'where is', 'when is', 'how do', 'how is',
   ];
 
+  /// Casual/low-substance patterns — reduce score for social chitchat.
+  static const _casualPatterns = [
+    'hi', 'hey', 'yo', 'sup',
+    'ok', 'okay', 'k', 'kk',
+    'bet', 'aight',
+    'lol', 'lmao', 'lmfao', 'haha',
+    'ya', 'yea', 'yeah', 'yep', 'yup', 'nah', 'nope',
+    'bruh', 'bro', 'dude', 'ight',
+    'gn', 'gm', 'ttyl', 'gtg', 'omg', 'omw',
+    'wya', 'wyd', 'nm', 'nmu',
+    'gg', 'fs', 'fr', 'smh', 'ngl',
+    'idk', 'idc', 'idm', 'imo',
+    'ty', 'thx', 'tysm', 'np', 'yw',
+    'hbu', 'wbu', 'ikr',
+    'nice', 'cool', 'fire', 'lit', 'slay',
+    'true', 'facts', 'same', 'mood', 'real',
+  ];
+
+  /// Collapses repeated characters: "betttt" → "bet", "hiiii" → "hi"
+  static String _collapseRepeats(String s) {
+    return s.replaceAll(RegExp(r'(.)\1+'), r'$1');
+  }
+
   static int _scoreNotification(CapturedNotification notif, String category) {
     if (category == 'ignore') return -100;
 
@@ -303,6 +326,19 @@ class NotificationBriefService {
       score += 2;
     } else if (age < 12 * 60 * 60 * 1000) {
       score += 1;
+    }
+
+    // Casual/low-substance penalty for social messages
+    if (category == 'social') {
+      final textLower = notif.fullText.toLowerCase().trim();
+      final collapsed = _collapseRepeats(textLower);
+      final stripped = collapsed.replaceAll(RegExp(r'[^\w\s]'), '').trim();
+
+      if (_casualPatterns.contains(stripped)) {
+        score -= 4;
+      } else if (textLower.length < 12 && urgencyHits == 0 && actionHits == 0 && personalHits == 0 && questionHits == 0) {
+        score -= 3;
+      }
     }
 
     return score;

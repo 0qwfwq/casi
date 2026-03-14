@@ -249,26 +249,9 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
               children: [
                 // Background - frosted glass with gradient opacity
                 _GradientBackground(progress: progress),
-                // Drag handle - full width, centered properly
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  child: Center(
-                    child: Container(
-                      margin: const EdgeInsets.symmetric(vertical: 10),
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.3),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                ),
                 // Main scrollable content
                 Positioned.fill(
-                  top: 24, // below drag handle
+                  top: 0,
                   child: CustomScrollView(
                     controller: widget.scrollController,
                     physics: const ClampingScrollPhysics(),
@@ -712,6 +695,35 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
               child: Stack(
                 clipBehavior: Clip.none,
                 children: [
+                  // Star icon for pinned apps
+                  if (_pinnedPackages.isNotEmpty)
+                    Positioned(
+                      top: topOffset - 16,
+                      right: 0,
+                      child: GestureDetector(
+                        onTap: () {
+                          widget.scrollController.animateTo(
+                            0,
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeOut,
+                          );
+                        },
+                        child: SizedBox(
+                          width: sidebarWidth,
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: Padding(
+                              padding: const EdgeInsets.only(right: 5),
+                              child: Icon(
+                                Icons.star_rounded,
+                                size: 12,
+                                color: Colors.white.withValues(alpha: 0.5),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                   for (int i = 0; i < letters.length; i++)
                     Builder(builder: (context) {
                       final letter = letters[i];
@@ -805,47 +817,19 @@ class _GradientBackground extends StatelessWidget {
                 child: Container(color: Colors.transparent),
               ),
             ),
-            // Gradient: transparent at top → frosted glass with high opacity at bottom
+            // Frosted tint: transparent at top → visible frost at bottom
             Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    Colors.white.withValues(alpha: 0.0),    // fully transparent at top
+                    Colors.white.withValues(alpha: 0.0),
                     Colors.white.withValues(alpha: 0.03),
                     Colors.white.withValues(alpha: 0.08),
-                    Colors.white.withValues(alpha: 0.14),   // frosted glass at bottom
-                  ],
-                  stops: const [0.0, 0.25, 0.55, 1.0],
-                ),
-              ),
-            ),
-            // Dark tint gradient for readability
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.black.withValues(alpha: 0.0),
-                    Colors.black.withValues(alpha: 0.15),
-                    Colors.black.withValues(alpha: 0.4),
-                    Colors.black.withValues(alpha: 0.65),
+                    Colors.white.withValues(alpha: 0.15),
                   ],
                   stops: const [0.0, 0.3, 0.6, 1.0],
-                ),
-              ),
-            ),
-            // Subtle glass border
-            Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.vertical(
-                  top: Radius.circular(36.0 * (1.0 - progress)),
-                ),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.12),
-                  width: 0.5,
                 ),
               ),
             ),

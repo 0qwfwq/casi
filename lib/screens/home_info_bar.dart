@@ -61,7 +61,7 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
+class _HomePageState extends State<HomePage> with WidgetsBindingObserver, TickerProviderStateMixin {
   static List<AppInfo>? _cachedFullApps;
 
   List<AppInfo> _apps = [];
@@ -149,11 +149,21 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   final DraggableScrollableController _drawerController = DraggableScrollableController();
   double _dragStartY = 0.0;
 
+  // --- Notification History Slide ---
+  late final AnimationController _notifSlideController;
+  bool _isNotifHistoryOpen = false;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    
+
+    _notifSlideController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 250),
+      reverseDuration: const Duration(milliseconds: 200),
+    );
+
     if (_cachedFullApps != null) {
       _apps = _cachedFullApps!;
       _isLoading = false;
@@ -185,10 +195,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _alarmTimer?.cancel();
-    _stopwatchTimer?.cancel(); 
-    _countdownTimer?.cancel(); 
-    _stopAlarmSound(); 
+    _stopwatchTimer?.cancel();
+    _countdownTimer?.cancel();
+    _stopAlarmSound();
     _audioPlayer.dispose();
+    _notifSlideController.dispose();
     super.dispose();
   }
 
@@ -641,32 +652,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   void _openNotificationHistory() {
-    Navigator.push(
-      context,
-      PageRouteBuilder(
-        pageBuilder: (context, animation, secondaryAnimation) =>
-            NotificationHistoryScreen(
-          bgType: _bgType,
-          bgColor: _bgColor,
-          bgImagePath: _bgImagePath,
-          immersiveMode: _immersiveMode,
-        ),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          return SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(-1.0, 0.0),
-              end: Offset.zero,
-            ).animate(CurvedAnimation(
-              parent: animation,
-              curve: Curves.easeOutCubic,
-            )),
-            child: child,
-          );
-        },
-        transitionDuration: const Duration(milliseconds: 250),
-        reverseTransitionDuration: const Duration(milliseconds: 200),
-      ),
-    );
+    setState(() => _isNotifHistoryOpen = true);
+    _notifSlideController.forward();
+  }
+
+  void _closeNotificationHistory() {
+    _notifSlideController.reverse().then((_) {
+      if (mounted) setState(() => _isNotifHistoryOpen = false);
+    });
   }
 
   Future<void> _refreshNotificationBrief() async {
@@ -965,8 +958,22 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       body: Stack(
         children: [
           _buildBackground(),
-          GestureDetector(
+          // Main content — slides right when notification history opens
+          SlideTransition(
+            position: Tween<Offset>(
+              begin: Offset.zero,
+              end: const Offset(1.0, 0.0),
+            ).animate(CurvedAnimation(
+              parent: _notifSlideController,
+              curve: Curves.easeOutCubic,
+            )),
+            child: GestureDetector(
             behavior: HitTestBehavior.translucent,
+            onDoubleTap: () {
+              if (_drawerProgress.value > 0.05 || _showPill || _isAlarmRinging ||
+                  _isForecastVisible || _isNotifHistoryOpen) return;
+              const MethodChannel('casi.launcher/apps').invokeMethod('lockScreen');
+            },
             onLongPressStart: (details) {
               _showHomescreenContextMenu(details.globalPosition);
             },
@@ -1459,6 +1466,21 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               ),
             ),
           ),
+          ), // SlideTransition (main content)
+          // Notification history — slides in from the left
+          if (_isNotifHistoryOpen)
+            SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(-1.0, 0.0),
+                end: Offset.zero,
+              ).animate(CurvedAnimation(
+                parent: _notifSlideController,
+                curve: Curves.easeOutCubic,
+              )),
+              child: NotificationHistoryPanel(
+                onDismiss: _closeNotificationHistory,
+              ),
+            ),
         ],
       ),
       ),
@@ -1687,8 +1709,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   void _showHomescreenContextMenu(Offset position) {
-    // Don't show "Show Brief" if already visible
-    if (_showMorningBrief) return;
+    // Only show on bare wallpaper — not when drawer, pill, forecast, etc. are active
+    if (_showMorningBrief || _showPill || _isAlarmRinging ||
+        _isForecastVisible || _isNotifHistoryOpen ||
+        _drawerProgress.value > 0.05) return;
 
     final screenSize = MediaQuery.of(context).size;
     double left = (position.dx - 100).clamp(16.0, screenSize.width - 216.0);

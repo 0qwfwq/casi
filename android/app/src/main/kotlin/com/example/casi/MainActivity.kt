@@ -74,6 +74,22 @@ class MainActivity: FlutterActivity() {
                         result.error("INVALID_ARGUMENT", "packageName is required", null)
                     }
                 }
+                "lockScreen" -> {
+                    val devicePolicyManager = getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
+                    val adminComponent = ComponentName(this, CasiDeviceAdminReceiver::class.java)
+
+                    if (devicePolicyManager.isAdminActive(adminComponent)) {
+                        devicePolicyManager.lockNow()
+                        result.success(true)
+                    } else {
+                        val intent = Intent(android.app.admin.DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
+                            putExtra(android.app.admin.DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent)
+                            putExtra(android.app.admin.DevicePolicyManager.EXTRA_ADD_EXPLANATION, "Casi needs device admin to turn off the screen on double-tap")
+                        }
+                        startActivity(intent)
+                        result.success(false)
+                    }
+                }
                 else -> result.notImplemented()
             }
         }
