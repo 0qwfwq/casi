@@ -40,10 +40,10 @@ class AppDrawer extends StatelessWidget {
         controller: controller,
         initialChildSize: 0.0,
         minChildSize: 0.0,
-        maxChildSize: 1.0,
+        maxChildSize: 0.75,
         snap: true,
-        snapSizes: const [0.0, 1.0],
-        snapAnimationDuration: const Duration(milliseconds: 200),
+        snapSizes: const [0.0, 0.75],
+        snapAnimationDuration: const Duration(milliseconds: 250),
         builder: (context, scrollController) {
           return _AppDrawerSheet(
             apps: apps,
@@ -805,8 +805,8 @@ class _GradientBackground extends StatelessWidget {
   Widget build(BuildContext context) {
     return Positioned.fill(
       child: ClipRRect(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(36.0 * (1.0 - progress)),
+        borderRadius: const BorderRadius.vertical(
+          top: Radius.circular(36.0),
         ),
         child: Stack(
           children: [

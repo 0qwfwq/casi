@@ -1,9 +1,14 @@
 package com.example.casi
 
+import android.Manifest
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.database.Cursor
 import android.graphics.Bitmap
+import android.net.Uri
+import android.provider.CalendarContract
 import android.provider.Settings
 import android.media.AudioManager
 import android.media.MediaMetadata
@@ -12,15 +17,30 @@ import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
 import android.view.KeyEvent
 import androidx.annotation.NonNull
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import androidx.health.connect.client.HealthConnectClient
+import androidx.health.connect.client.records.*
+import androidx.health.connect.client.request.ReadRecordsRequest
+import androidx.health.connect.client.time.TimeRangeFilter
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import kotlinx.coroutines.*
 import java.io.ByteArrayOutputStream
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.ZoneId
+import java.time.Instant
 
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "casi.launcher/media"
     private val APP_CHANNEL = "casi.launcher/apps"
     private val NOTIF_CHANNEL = "casi.launcher/notifications"
+    private val CALENDAR_CHANNEL = "casi.launcher/calendar"
+    private val HEALTH_CHANNEL = "casi.launcher/health"
+    private val CALENDAR_PERMISSION_REQUEST = 100
+    private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -56,6 +76,70 @@ class MainActivity: FlutterActivity() {
             }
         }
 
+        // --- Calendar Channel ---
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CALENDAR_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "hasCalendarPermission" -> {
+                    val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CALENDAR) == PackageManager.PERMISSION_GRANTED
+                    result.success(granted)
+                }
+                "requestCalendarPermission" -> {
+                    ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.READ_CALENDAR), CALENDAR_PERMISSION_REQUEST)
+                    result.success(null)
+                }
+                "getTodayEvents" -> {
+                    if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CALENDAR) != PackageManager.PERMISSION_GRANTED) {
+                        result.success("[]")
+                        return@setMethodCallHandler
+                    }
+                    try {
+                        val events = readTodayCalendarEvents()
+                        result.success(events)
+                    } catch (e: Exception) {
+                        result.success("[]")
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        // --- Health Channel ---
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, HEALTH_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "isHealthConnectAvailable" -> {
+                    val status = HealthConnectClient.getSdkStatus(this)
+                    result.success(status == HealthConnectClient.SDK_AVAILABLE)
+                }
+                "requestHealthPermissions" -> {
+                    try {
+                        val intent = Intent("androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE")
+                        startActivity(intent)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.success(false)
+                    }
+                }
+                "getTodayHealthData" -> {
+                    scope.launch {
+                        try {
+                            val data = readTodayHealthData()
+                            result.success(data)
+                        } catch (e: Exception) {
+                            result.success(mapOf(
+                                "steps" to 0,
+                                "sleepMinutes" to 0,
+                                "activeMinutes" to 0,
+                                "calories" to 0,
+                                "distanceMeters" to 0.0,
+                                "available" to false
+                            ))
+                        }
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
+
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, APP_CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
                 "launchApp" -> {
@@ -63,6 +147,7 @@ class MainActivity: FlutterActivity() {
                     if (packageName != null) {
                         val intent = packageManager.getLaunchIntentForPackage(packageName)
                         if (intent != null) {
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
                             startActivity(intent)
                             @Suppress("DEPRECATION")
                             overridePendingTransition(R.anim.slide_in_bottom, R.anim.no_animation)
@@ -201,8 +286,170 @@ class MainActivity: FlutterActivity() {
     private fun sendMediaButton(audioManager: AudioManager, keyCode: Int) {
         val eventDown = KeyEvent(KeyEvent.ACTION_DOWN, keyCode)
         audioManager.dispatchMediaKeyEvent(eventDown)
-        
+
         val eventUp = KeyEvent(KeyEvent.ACTION_UP, keyCode)
         audioManager.dispatchMediaKeyEvent(eventUp)
+    }
+
+    /**
+     * Reads today's calendar events from all device calendars using CalendarContract.
+     * Returns a JSON array string of events.
+     */
+    private fun readTodayCalendarEvents(): String {
+        val zone = java.util.TimeZone.getDefault()
+        val cal = java.util.Calendar.getInstance(zone)
+        cal.set(java.util.Calendar.HOUR_OF_DAY, 0)
+        cal.set(java.util.Calendar.MINUTE, 0)
+        cal.set(java.util.Calendar.SECOND, 0)
+        cal.set(java.util.Calendar.MILLISECOND, 0)
+        val startMillis = cal.timeInMillis
+
+        cal.set(java.util.Calendar.HOUR_OF_DAY, 23)
+        cal.set(java.util.Calendar.MINUTE, 59)
+        cal.set(java.util.Calendar.SECOND, 59)
+        val endMillis = cal.timeInMillis
+
+        val projection = arrayOf(
+            CalendarContract.Instances.TITLE,
+            CalendarContract.Instances.BEGIN,
+            CalendarContract.Instances.END,
+            CalendarContract.Instances.ALL_DAY,
+            CalendarContract.Instances.EVENT_LOCATION,
+            CalendarContract.Instances.DESCRIPTION,
+            CalendarContract.Instances.CALENDAR_DISPLAY_NAME
+        )
+
+        val uri = CalendarContract.Instances.CONTENT_URI.buildUpon()
+            .appendPath(startMillis.toString())
+            .appendPath(endMillis.toString())
+            .build()
+
+        val cursor: Cursor? = contentResolver.query(
+            uri,
+            projection,
+            null,
+            null,
+            "${CalendarContract.Instances.BEGIN} ASC"
+        )
+
+        val events = mutableListOf<String>()
+        cursor?.use {
+            while (it.moveToNext()) {
+                val title = it.getString(0) ?: "Untitled"
+                val begin = it.getLong(1)
+                val end = it.getLong(2)
+                val allDay = it.getInt(3) == 1
+                val location = it.getString(4) ?: ""
+                val description = it.getString(5) ?: ""
+                val calendarName = it.getString(6) ?: ""
+
+                // Escape JSON strings
+                val escapedTitle = title.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
+                val escapedLocation = location.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
+                val escapedDesc = description.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
+                val escapedCalName = calendarName.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
+
+                events.add("""{"title":"$escapedTitle","begin":$begin,"end":$end,"allDay":$allDay,"location":"$escapedLocation","description":"$escapedDesc","calendarName":"$escapedCalName"}""")
+            }
+        }
+
+        return "[${events.joinToString(",")}]"
+    }
+
+    /**
+     * Reads today's health data from Health Connect.
+     * Returns a map with steps, sleep, active time, calories, distance.
+     */
+    private suspend fun readTodayHealthData(): Map<String, Any> {
+        val status = HealthConnectClient.getSdkStatus(this)
+        if (status != HealthConnectClient.SDK_AVAILABLE) {
+            return mapOf(
+                "steps" to 0,
+                "sleepMinutes" to 0,
+                "activeMinutes" to 0,
+                "calories" to 0,
+                "distanceMeters" to 0.0,
+                "available" to false
+            )
+        }
+
+        val client = HealthConnectClient.getOrCreate(this)
+        val now = Instant.now()
+        val startOfDay = LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant()
+        val timeRange = TimeRangeFilter.between(startOfDay, now)
+
+        var totalSteps = 0L
+        var totalCalories = 0.0
+        var totalDistance = 0.0
+        var totalActiveMinutes = 0L
+        var totalSleepMinutes = 0L
+
+        try {
+            // Steps
+            val stepsResponse = client.readRecords(
+                ReadRecordsRequest(StepsRecord::class, timeRangeFilter = timeRange)
+            )
+            for (record in stepsResponse.records) {
+                totalSteps += record.count
+            }
+        } catch (_: Exception) {}
+
+        try {
+            // Active calories
+            val caloriesResponse = client.readRecords(
+                ReadRecordsRequest(ActiveCaloriesBurnedRecord::class, timeRangeFilter = timeRange)
+            )
+            for (record in caloriesResponse.records) {
+                totalCalories += record.energy.inKilocalories
+            }
+        } catch (_: Exception) {}
+
+        try {
+            // Distance
+            val distanceResponse = client.readRecords(
+                ReadRecordsRequest(DistanceRecord::class, timeRangeFilter = timeRange)
+            )
+            for (record in distanceResponse.records) {
+                totalDistance += record.distance.inMeters
+            }
+        } catch (_: Exception) {}
+
+        try {
+            // Exercise (active time)
+            val exerciseResponse = client.readRecords(
+                ReadRecordsRequest(ExerciseSessionRecord::class, timeRangeFilter = timeRange)
+            )
+            for (record in exerciseResponse.records) {
+                val duration = java.time.Duration.between(record.startTime, record.endTime)
+                totalActiveMinutes += duration.toMinutes()
+            }
+        } catch (_: Exception) {}
+
+        try {
+            // Sleep - check last night (start from yesterday 6 PM)
+            val sleepStart = LocalDate.now().minusDays(1).atTime(18, 0).atZone(ZoneId.systemDefault()).toInstant()
+            val sleepRange = TimeRangeFilter.between(sleepStart, now)
+            val sleepResponse = client.readRecords(
+                ReadRecordsRequest(SleepSessionRecord::class, timeRangeFilter = sleepRange)
+            )
+            for (record in sleepResponse.records) {
+                val duration = java.time.Duration.between(record.startTime, record.endTime)
+                totalSleepMinutes += duration.toMinutes()
+            }
+        } catch (_: Exception) {}
+
+        return mapOf(
+            "steps" to totalSteps,
+            "sleepMinutes" to totalSleepMinutes,
+            "activeMinutes" to totalActiveMinutes,
+            "calories" to totalCalories.toInt(),
+            "distanceMeters" to totalDistance,
+            "available" to true
+        )
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        scope.cancel()
     }
 }

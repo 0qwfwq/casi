@@ -23,6 +23,8 @@ import '../widgets/notify_pill.dart';
 import '../morning_brief/morning_brief_panel.dart';
 import '../morning_brief/weather_brief_service.dart';
 import '../morning_brief/notification_brief_service.dart';
+import '../morning_brief/calendar_brief_service.dart';
+import '../morning_brief/health_brief_service.dart';
 import '../notification_history/notification_history_screen.dart';
 
 class AppTimer {
@@ -129,6 +131,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   int _morningBriefDismissDay = -1;
   WeatherBriefData? _weatherBriefData;
   NotificationBriefData? _notificationBriefData;
+  CalendarBriefData? _calendarBriefData;
+  HealthBriefData? _healthBriefData;
   bool _isForecastVisible = false;
 
   // --- Settings ---
@@ -160,8 +164,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
 
     _notifSlideController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 250),
-      reverseDuration: const Duration(milliseconds: 200),
+      duration: const Duration(milliseconds: 200),
+      reverseDuration: const Duration(milliseconds: 150),
     );
 
     if (_cachedFullApps != null) {
@@ -182,6 +186,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     _loadMorningBriefState();
     _refreshWeatherBrief();
     _refreshNotificationBrief();
+    _refreshCalendarBrief();
+    _refreshHealthBrief();
 
     final days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     _scrolledDay = days[DateTime.now().weekday - 1];
@@ -211,6 +217,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
       _syncTimersOnResume();
       _refreshWeatherBrief();
       _refreshNotificationBrief();
+      _refreshCalendarBrief();
+      _refreshHealthBrief();
       // Instantly close the drawer when returning to the launcher
       if (_drawerController.isAttached && _drawerController.size > 0.0) {
         _drawerController.jumpTo(0.0);
@@ -298,6 +306,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
         _showMorningBrief = true;
         _refreshWeatherBrief();
         _refreshNotificationBrief();
+        _refreshCalendarBrief();
+        _refreshHealthBrief();
       }
     }
 
@@ -640,6 +650,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     });
     _refreshWeatherBrief();
     _refreshNotificationBrief();
+    _refreshCalendarBrief();
+    _refreshHealthBrief();
   }
 
   Future<void> _refreshWeatherBrief() async {
@@ -667,6 +679,24 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     if (mounted) {
       setState(() {
         _notificationBriefData = data;
+      });
+    }
+  }
+
+  Future<void> _refreshCalendarBrief() async {
+    final data = await CalendarBriefService.getTodayEvents();
+    if (mounted) {
+      setState(() {
+        _calendarBriefData = data;
+      });
+    }
+  }
+
+  Future<void> _refreshHealthBrief() async {
+    final data = await HealthBriefService.getTodayData();
+    if (mounted) {
+      setState(() {
+        _healthBriefData = data;
       });
     }
   }
@@ -949,7 +979,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
       onPopInvoked: (didPop) {
         if (didPop) return;
         if (_drawerController.isAttached && _drawerController.size > 0.1) {
-          _drawerController.animateTo(0.0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+          _drawerController.animateTo(0.0, duration: const Duration(milliseconds: 250), curve: Curves.easeOutCubic);
         }
       },
       child: Scaffold(
@@ -984,9 +1014,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
               final double screenHeight = MediaQuery.of(context).size.height;
               if (_dragStartY < screenHeight - 60 && details.primaryVelocity! < -500) {
                 _drawerController.animateTo(
-                  1.0,
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeOut,
+                  0.75,
+                  duration: const Duration(milliseconds: 250),
+                  curve: Curves.easeOutCubic,
                 );
               }
             },
@@ -1083,6 +1113,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                                 child: MorningBriefPanel(
                                                   weatherData: _weatherBriefData,
                                                   notificationData: _notificationBriefData,
+                                                  calendarData: _calendarBriefData,
+                                                  healthData: _healthBriefData,
                                                   onDismiss: _dismissMorningBrief,
                                                 ),
                                               ),
@@ -1456,8 +1488,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                 }
                               },
                               onOpenSettings: () {
-                                Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsPage()))
-                                    .then((_) => _loadSettings());
+                                Navigator.push(context, PageRouteBuilder(
+                                      pageBuilder: (context, animation, secondaryAnimation) => const SettingsPage(),
+                                      transitionDuration: const Duration(milliseconds: 200),
+                                      reverseTransitionDuration: const Duration(milliseconds: 150),
+                                      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                                        return FadeTransition(
+                                          opacity: CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+                                          child: child,
+                                        );
+                                      },
+                                    )).then((_) => _loadSettings());
                               },
                             ),
                           ],

@@ -4,18 +4,24 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'weather_brief_service.dart';
 import 'notification_brief_service.dart';
+import 'calendar_brief_service.dart';
+import 'health_brief_service.dart';
 import '../utils/app_launcher.dart';
 
 class MorningBriefPanel extends StatefulWidget {
   final VoidCallback onDismiss;
   final WeatherBriefData? weatherData;
   final NotificationBriefData? notificationData;
+  final CalendarBriefData? calendarData;
+  final HealthBriefData? healthData;
 
   const MorningBriefPanel({
     super.key,
     required this.onDismiss,
     this.weatherData,
     this.notificationData,
+    this.calendarData,
+    this.healthData,
   });
 
   @override
@@ -25,7 +31,7 @@ class MorningBriefPanel extends StatefulWidget {
 class _MorningBriefPanelState extends State<MorningBriefPanel> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
-  static const int _totalPages = 3;
+  static const int _totalPages = 5;
 
   @override
   void dispose() {
@@ -160,6 +166,8 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
                           _buildGreetingPage(),
                           _buildWeatherPage(),
                           _buildNotificationsPage(),
+                          _buildCalendarPage(),
+                          _buildHealthPage(),
                         ],
                       ),
                     ),
@@ -592,6 +600,421 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
                   ),
                 );
               },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Panel 4: Calendar Events ────────────────────────────────────────────
+
+  Widget _buildCalendarPage() {
+    final calData = widget.calendarData;
+
+    // No permission
+    if (calData != null && !calData.hasPermission) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.calendar_month_outlined,
+              color: Colors.white.withValues(alpha: 0.4),
+              size: 32,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Allow calendar access to see\nyour events here',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.6),
+                fontSize: 13,
+                fontWeight: FontWeight.w400,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 12),
+            GestureDetector(
+              onTap: () => CalendarBriefService.requestPermission(),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.2),
+                  ),
+                ),
+                child: const Text(
+                  'Grant Permission',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Loading
+    if (calData == null) {
+      return const Padding(
+        padding: EdgeInsets.all(24),
+        child: Center(
+          child: Text(
+            'Loading calendar...',
+            style: TextStyle(color: Colors.white54, fontSize: 14),
+          ),
+        ),
+      );
+    }
+
+    // No events today
+    if (calData.events.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.event_available,
+              color: Colors.green.shade300,
+              size: 32,
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'No events today',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w300,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Your schedule is clear',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.5),
+                fontSize: 13,
+                fontWeight: FontWeight.w400,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Show events
+    final events = calData.events;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.calendar_today_rounded,
+                color: Colors.blue.shade300,
+                size: 16,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                "Today's Schedule",
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.8),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '${events.length} event${events.length == 1 ? '' : 's'}',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.4),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Expanded(
+            child: ListView.separated(
+              padding: EdgeInsets.zero,
+              physics: const BouncingScrollPhysics(),
+              itemCount: events.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 6),
+              itemBuilder: (context, index) {
+                final event = events[index];
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.06),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 3,
+                        height: 32,
+                        margin: const EdgeInsets.only(right: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade300,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              event.title,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 2),
+                            Row(
+                              children: [
+                                Text(
+                                  event.timeString,
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.5),
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w400,
+                                  ),
+                                ),
+                                if (event.location.isNotEmpty) ...[
+                                  const SizedBox(width: 8),
+                                  Icon(
+                                    Icons.location_on,
+                                    color: Colors.white.withValues(alpha: 0.35),
+                                    size: 10,
+                                  ),
+                                  const SizedBox(width: 2),
+                                  Expanded(
+                                    child: Text(
+                                      event.location,
+                                      style: TextStyle(
+                                        color: Colors.white.withValues(alpha: 0.4),
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w400,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Panel 5: Health & Fitness ───────────────────────────────────────────
+
+  Widget _buildHealthPage() {
+    final health = widget.healthData;
+
+    // Health Connect not available
+    if (health != null && !health.available) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.favorite_border,
+              color: Colors.white.withValues(alpha: 0.4),
+              size: 32,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Health Connect is required\nto view your fitness data',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.6),
+                fontSize: 13,
+                fontWeight: FontWeight.w400,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 12),
+            GestureDetector(
+              onTap: () => HealthBriefService.requestPermissions(),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.2),
+                  ),
+                ),
+                child: const Text(
+                  'Set Up Health',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Loading
+    if (health == null) {
+      return const Padding(
+        padding: EdgeInsets.all(24),
+        child: Center(
+          child: Text(
+            'Loading health data...',
+            style: TextStyle(color: Colors.white54, fontSize: 14),
+          ),
+        ),
+      );
+    }
+
+    // Show health data
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.favorite_rounded,
+                color: Colors.red.shade300,
+                size: 16,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                "Today's Activity",
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.8),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          // Row 1: Steps & Sleep
+          Row(
+            children: [
+              Expanded(
+                child: _buildHealthRow(
+                  icon: Icons.directions_walk,
+                  iconColor: Colors.green.shade300,
+                  label: 'Steps',
+                  value: health.stepsString,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildHealthRow(
+                  icon: Icons.bedtime_outlined,
+                  iconColor: Colors.indigo.shade300,
+                  label: 'Sleep',
+                  value: health.sleepString,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          // Row 2: Calories & Active
+          Row(
+            children: [
+              Expanded(
+                child: _buildHealthRow(
+                  icon: Icons.local_fire_department,
+                  iconColor: Colors.orange.shade300,
+                  label: 'Calories',
+                  value: health.caloriesString,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildHealthRow(
+                  icon: Icons.timer_outlined,
+                  iconColor: Colors.cyan.shade300,
+                  label: 'Active',
+                  value: health.activeTimeString,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          // Row 3: Distance (full width)
+          _buildHealthRow(
+            icon: Icons.straighten,
+            iconColor: Colors.teal.shade300,
+            label: 'Distance',
+            value: health.distanceString,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHealthRow({
+    required IconData icon,
+    required Color iconColor,
+    required String label,
+    required String value,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: iconColor, size: 16),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.45),
+              fontSize: 11,
+              fontWeight: FontWeight.w400,
+            ),
+          ),
+          const Spacer(),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ],
