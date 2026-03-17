@@ -8,32 +8,26 @@ class HealthBriefData {
   final int calories;
   final double distanceMeters;
 
-  HealthBriefData({
+  const HealthBriefData({
     required this.available,
-    required this.steps,
-    required this.sleepMinutes,
-    required this.activeMinutes,
-    required this.calories,
-    required this.distanceMeters,
+    this.steps = 0,
+    this.sleepMinutes = 0,
+    this.activeMinutes = 0,
+    this.calories = 0,
+    this.distanceMeters = 0,
   });
 
-  String get sleepString {
-    if (sleepMinutes <= 0) return '--';
-    final hours = sleepMinutes ~/ 60;
-    final mins = sleepMinutes % 60;
+  static String _formatDuration(int totalMinutes) {
+    if (totalMinutes <= 0) return '--';
+    final hours = totalMinutes ~/ 60;
+    final mins = totalMinutes % 60;
     if (hours > 0 && mins > 0) return '${hours}h ${mins}m';
     if (hours > 0) return '${hours}h';
     return '${mins}m';
   }
 
-  String get activeTimeString {
-    if (activeMinutes <= 0) return '--';
-    final hours = activeMinutes ~/ 60;
-    final mins = activeMinutes % 60;
-    if (hours > 0 && mins > 0) return '${hours}h ${mins}m';
-    if (hours > 0) return '${hours}h';
-    return '${mins}m';
-  }
+  String get sleepString => _formatDuration(sleepMinutes);
+  String get activeTimeString => _formatDuration(activeMinutes);
 
   String get distanceString {
     if (distanceMeters <= 0) return '--';
@@ -73,19 +67,12 @@ class HealthBriefService {
     } catch (_) {}
   }
 
+  static const _unavailable = HealthBriefData(available: false);
+
   static Future<HealthBriefData> getTodayData() async {
     try {
       final result = await _channel.invokeMethod<Map>('getTodayHealthData');
-      if (result == null) {
-        return HealthBriefData(
-          available: false,
-          steps: 0,
-          sleepMinutes: 0,
-          activeMinutes: 0,
-          calories: 0,
-          distanceMeters: 0,
-        );
-      }
+      if (result == null) return _unavailable;
 
       return HealthBriefData(
         available: result['available'] as bool? ?? false,
@@ -96,14 +83,7 @@ class HealthBriefService {
         distanceMeters: (result['distanceMeters'] as num?)?.toDouble() ?? 0,
       );
     } catch (_) {
-      return HealthBriefData(
-        available: false,
-        steps: 0,
-        sleepMinutes: 0,
-        activeMinutes: 0,
-        calories: 0,
-        distanceMeters: 0,
-      );
+      return _unavailable;
     }
   }
 }

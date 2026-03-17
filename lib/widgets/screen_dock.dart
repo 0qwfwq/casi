@@ -298,7 +298,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
         position = await Geolocator.getLastKnownPosition();
       } catch (_) {}
       
-      position ??= await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.low);
+      position ??= await Geolocator.getCurrentPosition(locationSettings: const LocationSettings(accuracy: LocationAccuracy.low));
 
       final url = Uri.parse(
           'https://api.open-meteo.com/v1/forecast?latitude=${position.latitude}&longitude=${position.longitude}'
@@ -474,7 +474,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
         return AnimatedContainer(
           duration: const Duration(milliseconds: 100),
           decoration: BoxDecoration(
-            color: isHovered ? Colors.red.withOpacity(0.6) : Colors.transparent,
+            color: isHovered ? Colors.red.withValues(alpha:0.6) : Colors.transparent,
             borderRadius: BorderRadius.circular(32),
           ),
           child: const Center(
@@ -494,7 +494,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
         return AnimatedContainer(
           duration: const Duration(milliseconds: 100),
           decoration: BoxDecoration(
-            color: isHovered ? Colors.orange.withOpacity(0.6) : Colors.transparent,
+            color: isHovered ? Colors.orange.withValues(alpha:0.6) : Colors.transparent,
             borderRadius: BorderRadius.circular(32),
           ),
           child: const Center(
@@ -597,10 +597,10 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
       height: 60,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(32.0),
-        border: Border.all(color: Colors.white.withOpacity(0.3), width: 1.2),
+        border: Border.all(color: Colors.white.withValues(alpha:0.3), width: 1.2),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha:0.1),
             blurRadius: 10,
             offset: const Offset(0, 4),
           )
@@ -611,7 +611,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 25.0, sigmaY: 25.0),
           child: Container(
-            color: Colors.white.withOpacity(0.2),
+            color: Colors.white.withValues(alpha:0.2),
             child: Material(
               color: Colors.transparent,
               child: AnimatedSwitcher(
@@ -630,12 +630,12 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(32.0),
         border: Border.all(
-          color: Colors.white.withOpacity(0.3),
+          color: Colors.white.withValues(alpha:0.3),
           width: 1.2,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha:0.1),
             blurRadius: 10,
             offset: const Offset(0, 4),
           )
@@ -646,7 +646,7 @@ class _ScreenDockState extends State<ScreenDock> with WidgetsBindingObserver {
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 25.0, sigmaY: 25.0),
           child: Container(
-            color: Colors.white.withOpacity(0.2), 
+            color: Colors.white.withValues(alpha:0.2), 
             child: AnimatedSize(
               duration: const Duration(milliseconds: 120),
               curve: Curves.easeOutCubic,

@@ -103,7 +103,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   final Stopwatch _stopwatch = Stopwatch();
   Timer? _stopwatchTimer;
   String _stopwatchTime = "00:00.00";
-  List<String> _stopwatchLaps = [];
+  final List<String> _stopwatchLaps = [];
 
   // --- Advanced Timer States ---
   bool _isTimerMode = false;
@@ -594,7 +594,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _bgType = prefs.getString('bg_type') ?? 'color';
-      final int colorValue = prefs.getInt('bg_color') ?? Colors.black.value;
+      final int colorValue = prefs.getInt('bg_color') ?? 0xFF000000;
       _bgColor = Color(colorValue);
       _bgImagePath = prefs.getString('bg_image_path');
       _immersiveMode = prefs.getBool('immersive_mode') ?? false;
@@ -869,11 +869,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
               child: Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.1),
+                  color: Colors.white.withValues(alpha:0.1),
                   borderRadius: BorderRadius.circular(32),
-                  border: Border.all(color: Colors.white.withOpacity(0.2), width: 1.5),
+                  border: Border.all(color: Colors.white.withValues(alpha:0.2), width: 1.5),
                   boxShadow: [
-                    BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 20, spreadRadius: 5)
+                    BoxShadow(color: Colors.black.withValues(alpha:0.2), blurRadius: 20, spreadRadius: 5)
                   ]
                 ),
                 child: Column(
@@ -891,9 +891,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                       textCapitalization: TextCapitalization.sentences,
                       decoration: InputDecoration(
                         hintText: 'Event Title',
-                        hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+                        hintStyle: TextStyle(color: Colors.white.withValues(alpha:0.5)),
                         filled: true,
-                        fillColor: Colors.black.withOpacity(0.3),
+                        fillColor: Colors.black.withValues(alpha:0.3),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(20),
@@ -909,9 +909,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                       textCapitalization: TextCapitalization.sentences,
                       decoration: InputDecoration(
                         hintText: 'Description (Optional)',
-                        hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+                        hintStyle: TextStyle(color: Colors.white.withValues(alpha:0.5)),
                         filled: true,
-                        fillColor: Colors.black.withOpacity(0.3),
+                        fillColor: Colors.black.withValues(alpha:0.3),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(20),
@@ -951,7 +951,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                               }
                             },
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.blueAccent.withOpacity(0.8),
+                              backgroundColor: Colors.blueAccent.withValues(alpha:0.8),
                               foregroundColor: Colors.white,
                               padding: const EdgeInsets.symmetric(vertical: 16),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
@@ -976,7 +976,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   Widget build(BuildContext context) {
     return PopScope(
       canPop: false,
-      onPopInvoked: (didPop) {
+      onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
         if (_drawerController.isAttached && _drawerController.size > 0.1) {
           _drawerController.animateTo(0.0, duration: const Duration(milliseconds: 120), curve: Curves.easeOutCubic);
@@ -1001,7 +1001,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
             behavior: HitTestBehavior.translucent,
             onDoubleTap: () {
               if (_drawerProgress.value > 0.05 || _showPill || _isAlarmRinging ||
-                  _isForecastVisible || _isNotifHistoryOpen) return;
+                  _isForecastVisible || _isNotifHistoryOpen) {
+                return;
+              }
               const MethodChannel('casi.launcher/apps').invokeMethod('lockScreen');
             },
             onLongPressStart: (details) {
@@ -1753,7 +1755,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     // Only show on bare wallpaper — not when drawer, pill, forecast, etc. are active
     if (_showMorningBrief || _showPill || _isAlarmRinging ||
         _isForecastVisible || _isNotifHistoryOpen ||
-        _drawerProgress.value > 0.05) return;
+        _drawerProgress.value > 0.05) {
+      return;
+    }
 
     final screenSize = MediaQuery.of(context).size;
     double left = (position.dx - 100).clamp(16.0, screenSize.width - 216.0);

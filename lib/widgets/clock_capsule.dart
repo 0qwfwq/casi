@@ -108,7 +108,7 @@ class _ClockCapsuleState extends State<ClockCapsule> {
             child: Text(
               _getFormattedDate(),
               style: TextStyle(
-                color: Colors.white.withOpacity(0.95),
+                color: Colors.white.withValues(alpha: 0.95),
                 fontSize: 20, // Slightly larger to match the new proportions
                 fontWeight: FontWeight.w400, // Regular weight
                 letterSpacing: 0.5,
@@ -117,7 +117,7 @@ class _ClockCapsuleState extends State<ClockCapsule> {
                   Shadow(
                     offset: const Offset(0, 2),
                     blurRadius: 4.0,
-                    color: Colors.black.withOpacity(0.4),
+                    color: Colors.black.withValues(alpha: 0.4),
                   ),
                 ],
               ),
@@ -152,13 +152,12 @@ class _ClockCapsuleState extends State<ClockCapsule> {
                       Shadow(
                         offset: const Offset(0, 8),
                         blurRadius: 16.0,
-                        color: Colors.black.withOpacity(0.35), // Soft, diffuse shadow
+                        color: Colors.black.withValues(alpha: 0.35),
                       ),
                       Shadow(
-                        // Inner tight shadow for crispness against bright clouds
                         offset: const Offset(0, 2),
                         blurRadius: 4.0,
-                        color: Colors.black.withOpacity(0.2), 
+                        color: Colors.black.withValues(alpha: 0.2),
                       ),
                     ],
                   ),

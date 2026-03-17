@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
@@ -178,10 +177,10 @@ class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.15),
+              color: Colors.white.withValues(alpha:0.15),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: Colors.white.withOpacity(0.4), 
+                color: Colors.white.withValues(alpha:0.4), 
                 width: 1,
               ),
             ),
@@ -385,10 +384,10 @@ class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
             child: Container(
               height: 50,
               decoration: BoxDecoration(
-                color: isToday ? Colors.white.withOpacity(0.2) : Colors.transparent,
+                color: isToday ? Colors.white.withValues(alpha:0.2) : Colors.transparent,
                 borderRadius: BorderRadius.circular(25),
                 border: Border.all(
-                  color: Colors.white.withOpacity(0.4), 
+                  color: Colors.white.withValues(alpha:0.4), 
                   width: 1.2,
                 ),
               ),
@@ -415,10 +414,10 @@ class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
             child: Container(
               height: 50,
               decoration: BoxDecoration(
-                color: isDaily ? Colors.white.withOpacity(0.2) : Colors.transparent,
+                color: isDaily ? Colors.white.withValues(alpha:0.2) : Colors.transparent,
                 borderRadius: BorderRadius.circular(25),
                 border: Border.all(
-                  color: Colors.white.withOpacity(0.4), 
+                  color: Colors.white.withValues(alpha:0.4), 
                   width: 1.2,
                 ),
               ),

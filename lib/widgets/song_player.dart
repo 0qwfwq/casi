@@ -1,8 +1,7 @@
 import 'dart:async';
-import 'dart:typed_data'; 
 import 'dart:ui';
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/foundation.dart'; // Added for listEquals to prevent unnecessary art refreshes
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:installed_apps/installed_apps.dart';
@@ -145,10 +144,10 @@ class _SongPlayerState extends State<SongPlayer> with WidgetsBindingObserver {
       margin: const EdgeInsets.symmetric(horizontal: 40), 
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(35),
-        border: Border.all(color: Colors.white.withOpacity(0.3), width: 1.2),
+        border: Border.all(color: Colors.white.withValues(alpha:0.3), width: 1.2),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha:0.1),
             blurRadius: 10,
             offset: const Offset(0, 4),
           )
@@ -162,7 +161,7 @@ class _SongPlayerState extends State<SongPlayer> with WidgetsBindingObserver {
             children: [
               // Main content container
               Container(
-                color: Colors.white.withOpacity(0.2), 
+                color: Colors.white.withValues(alpha:0.2), 
                 padding: const EdgeInsets.symmetric(horizontal: 16.0),
                 child: Row(
                   children: [
@@ -178,9 +177,9 @@ class _SongPlayerState extends State<SongPlayer> with WidgetsBindingObserver {
                               width: 42,
                               height: 42,
                               decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.15),
+                                color: Colors.white.withValues(alpha:0.15),
                                 borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: Colors.white.withOpacity(0.2)),
+                                border: Border.all(color: Colors.white.withValues(alpha:0.2)),
                               ),
                               child: _albumArt == null 
                                   ? const Icon(CupertinoIcons.music_note, color: Colors.white, size: 20)
@@ -215,7 +214,7 @@ class _SongPlayerState extends State<SongPlayer> with WidgetsBindingObserver {
                                   Text(
                                     _artist,
                                     style: TextStyle(
-                                      color: Colors.white.withOpacity(0.7),
+                                      color: Colors.white.withValues(alpha:0.7),
                                       fontSize: 12,
                                       fontWeight: FontWeight.w400,
                                     ),
@@ -246,7 +245,7 @@ class _SongPlayerState extends State<SongPlayer> with WidgetsBindingObserver {
                           child: Container(
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.2),
+                              color: Colors.white.withValues(alpha:0.2),
                               shape: BoxShape.circle,
                             ),
                             child: Icon(
@@ -280,7 +279,7 @@ class _SongPlayerState extends State<SongPlayer> with WidgetsBindingObserver {
                     value: progress,
                     minHeight: 2.5,
                     backgroundColor: Colors.transparent,
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white.withOpacity(0.6)),
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white.withValues(alpha:0.6)),
                   ),
                 ),
               ),

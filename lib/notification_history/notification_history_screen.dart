@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../morning_brief/notification_brief_service.dart';
 import '../utils/app_launcher.dart';
+import '../utils/notification_categories.dart';
 
 /// Notification history content panel — designed to be embedded in the home
 /// page Stack so it shares the same wallpaper background. Call [onDismiss]
@@ -48,36 +49,6 @@ class _NotificationHistoryPanelState extends State<NotificationHistoryPanel> {
     final hours = minutes ~/ 60;
     if (hours < 24) return '${hours}h ago';
     return '${hours ~/ 24}d ago';
-  }
-
-  Color _categoryColor(String category) {
-    switch (category) {
-      case 'email':
-        return Colors.red.shade300;
-      case 'work':
-        return Colors.blue.shade300;
-      case 'social':
-        return Colors.purple.shade300;
-      case 'ignore':
-        return Colors.grey.shade500;
-      default:
-        return Colors.teal.shade300;
-    }
-  }
-
-  IconData _categoryIcon(String category) {
-    switch (category) {
-      case 'email':
-        return Icons.email_outlined;
-      case 'work':
-        return Icons.work_outline;
-      case 'social':
-        return Icons.chat_bubble_outline;
-      case 'ignore':
-        return Icons.notifications_off_outlined;
-      default:
-        return Icons.notifications_outlined;
-    }
   }
 
   @override
@@ -140,8 +111,8 @@ class _NotificationHistoryPanelState extends State<NotificationHistoryPanel> {
   Widget _buildNotificationCard(CapturedNotification notif) {
     final category = NotificationBriefService.categorizeApp(notif.packageName);
     final label = NotificationBriefService.appLabel(notif.packageName);
-    final catColor = _categoryColor(category);
-    final catIcon = _categoryIcon(category);
+    final catColor = NotificationCategories.colorFor(category);
+    final catIcon = NotificationCategories.iconFor(category);
     final fullText = notif.fullText;
 
     return GestureDetector(

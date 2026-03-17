@@ -28,10 +28,10 @@ class DynamicPill extends StatelessWidget {
               // Reduced horizontal padding to prevent layout collisions
               padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 6.0),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.15),
+                color: Colors.white.withValues(alpha:0.15),
                 borderRadius: BorderRadius.circular(40.0),
                 border: Border.all(
-                  color: Colors.white.withOpacity(0.2),
+                  color: Colors.white.withValues(alpha:0.2),
                   width: 1.5,
                 ),
               ),

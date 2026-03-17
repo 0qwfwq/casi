@@ -223,7 +223,8 @@ class NotificationBriefService {
   ];
 
   /// Casual/low-substance patterns — reduce score for social chitchat.
-  static const _casualPatterns = [
+  /// Using a Set for O(1) lookups instead of O(n) list iteration.
+  static const _casualPatterns = {
     'hi', 'hey', 'yo', 'sup',
     'ok', 'okay', 'k', 'kk',
     'bet', 'aight',
@@ -238,7 +239,7 @@ class NotificationBriefService {
     'hbu', 'wbu', 'ikr',
     'nice', 'cool', 'fire', 'lit', 'slay',
     'true', 'facts', 'same', 'mood', 'real',
-  ];
+  };
 
   /// Collapses repeated characters: "betttt" → "bet", "hiiii" → "hi"
   static String _collapseRepeats(String s) {
@@ -248,22 +249,13 @@ class NotificationBriefService {
   static int _scoreNotification(CapturedNotification notif, String category) {
     if (category == 'ignore') return -100;
 
-    int score = 0;
-
     // Base score by category
-    switch (category) {
-      case 'email':
-        score += 3;
-        break;
-      case 'work':
-        score += 4;
-        break;
-      case 'social':
-        score += 2;
-        break;
-      default:
-        score += 1;
-    }
+    int score = switch (category) {
+      'email' => 3,
+      'work' => 4,
+      'social' => 2,
+      _ => 1,
+    };
 
     final combined = '${notif.title} ${notif.fullText}'.toLowerCase();
 
@@ -344,45 +336,53 @@ class NotificationBriefService {
     return score;
   }
 
+  // ─── Internal Helpers ─────────────────────────────────────────────────────
+
+  static Future<bool> _checkAccess() async {
+    try {
+      return await _channel.invokeMethod('isNotificationAccessGranted') as bool? ?? false;
+    } on PlatformException {
+      return false;
+    }
+  }
+
+  static Future<List<CapturedNotification>?> _fetchNotifications(String method) async {
+    String rawJson;
+    try {
+      rawJson = await _channel.invokeMethod(method) as String? ?? '[]';
+    } on PlatformException {
+      return null;
+    }
+
+    try {
+      final parsed = jsonDecode(rawJson) as List<dynamic>;
+      return parsed
+          .map((e) => CapturedNotification.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static const _dayInMs = 24 * 60 * 60 * 1000;
+
   // ─── Public API ───────────────────────────────────────────────────────────
 
   /// Fetches only currently active (non-dismissed) notifications from the
   /// system notification shade, scores and filters them, and returns a
   /// digest of the most important ones.
   static Future<NotificationBriefData> generateBrief() async {
-    // Check if notification access is granted
-    bool hasAccess = false;
-    try {
-      hasAccess = await _channel.invokeMethod('isNotificationAccessGranted') as bool? ?? false;
-    } on PlatformException {
-      hasAccess = false;
-    }
-
+    final hasAccess = await _checkAccess();
     if (!hasAccess) {
       return NotificationBriefData(items: [], hasNotificationAccess: false);
     }
 
-    // Fetch currently active notifications (non-dismissed)
-    String rawJson;
-    try {
-      rawJson = await _channel.invokeMethod('getActiveNotifications') as String? ?? '[]';
-    } on PlatformException {
+    final notifications = await _fetchNotifications('getActiveNotifications');
+    if (notifications == null) {
       return NotificationBriefData(items: [], hasNotificationAccess: true);
     }
 
-    List<dynamic> parsed;
-    try {
-      parsed = jsonDecode(rawJson) as List<dynamic>;
-    } catch (_) {
-      return NotificationBriefData(items: [], hasNotificationAccess: true);
-    }
-
-    final notifications = parsed
-        .map((e) => CapturedNotification.fromJson(e as Map<String, dynamic>))
-        .toList();
-
-    // Only consider notifications from the last 24 hours
-    final cutoff = DateTime.now().millisecondsSinceEpoch - (24 * 60 * 60 * 1000);
+    final cutoff = DateTime.now().millisecondsSinceEpoch - _dayInMs;
     final recent = notifications.where((n) => n.timestamp > cutoff).toList();
 
     // Score and categorize
@@ -433,40 +433,16 @@ class NotificationBriefService {
   /// Returns all notifications from the last 24 hours, sorted by timestamp
   /// descending (newest first). Used by the notification history screen.
   static Future<List<CapturedNotification>> getAllNotifications() async {
-    bool hasAccess = false;
-    try {
-      hasAccess = await _channel.invokeMethod('isNotificationAccessGranted') as bool? ?? false;
-    } on PlatformException {
-      hasAccess = false;
-    }
-
+    final hasAccess = await _checkAccess();
     if (!hasAccess) return [];
 
-    String rawJson;
-    try {
-      rawJson = await _channel.invokeMethod('getNotifications') as String? ?? '[]';
-    } on PlatformException {
-      return [];
-    }
+    final notifications = await _fetchNotifications('getNotifications');
+    if (notifications == null) return [];
 
-    List<dynamic> parsed;
-    try {
-      parsed = jsonDecode(rawJson) as List<dynamic>;
-    } catch (_) {
-      return [];
-    }
-
-    final notifications = parsed
-        .map((e) => CapturedNotification.fromJson(e as Map<String, dynamic>))
-        .toList();
-
-    // Only last 24 hours
-    final cutoff = DateTime.now().millisecondsSinceEpoch - (24 * 60 * 60 * 1000);
+    final cutoff = DateTime.now().millisecondsSinceEpoch - _dayInMs;
     final recent = notifications.where((n) => n.timestamp > cutoff).toList();
 
-    // Sort by timestamp descending (newest first)
     recent.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-
     return recent;
   }
 

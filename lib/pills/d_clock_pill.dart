@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 
 /// The specific content for the Clock version of the dynamic pill.
@@ -243,7 +242,7 @@ class DClockPill extends StatelessWidget {
         width: 44,
         height: 44,
         decoration: BoxDecoration(
-          color: isActive ? activeColor.withOpacity(0.2) : Colors.transparent,
+          color: isActive ? activeColor.withValues(alpha:0.2) : Colors.transparent,
           shape: BoxShape.circle, 
         ),
         child: Icon(icon, color: isActive ? activeColor : Colors.white54, size: 22),
@@ -313,9 +312,9 @@ class DClockPill extends StatelessWidget {
                     margin: const EdgeInsets.only(bottom: 6),
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     decoration: BoxDecoration(
-                      color: isSelected ? _cAlarm.withOpacity(0.15) : Colors.white12,
+                      color: isSelected ? _cAlarm.withValues(alpha:0.15) : Colors.white12,
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: isSelected ? _cAlarm.withOpacity(0.5) : Colors.transparent),
+                      border: Border.all(color: isSelected ? _cAlarm.withValues(alpha:0.5) : Colors.transparent),
                     ),
                     child: Row(
                       children: [
@@ -328,13 +327,13 @@ class DClockPill extends StatelessWidget {
                         const SizedBox(width: 8),
                         Text(time, style: TextStyle(color: isSelected ? _cAlarm : Colors.white, fontSize: 24, fontWeight: isSelected ? FontWeight.w500 : FontWeight.w300, fontFeatures: const [FontFeature.tabularFigures()])),
                         const SizedBox(width: 4),
-                        Text(ampm, style: TextStyle(color: isSelected ? _cAlarm.withOpacity(0.8) : Colors.white54, fontSize: 12, fontWeight: FontWeight.bold)),
+                        Text(ampm, style: TextStyle(color: isSelected ? _cAlarm.withValues(alpha:0.8) : Colors.white54, fontSize: 12, fontWeight: FontWeight.bold)),
                         const Spacer(),
                         GestureDetector(
                           onTap: () => onEditAlarmTapped?.call(index),
                           child: Padding(
                             padding: const EdgeInsets.all(8.0), 
-                            child: Icon(Icons.edit, color: isSelected ? _cAlarm.withOpacity(0.7) : Colors.white38, size: 18),
+                            child: Icon(Icons.edit, color: isSelected ? _cAlarm.withValues(alpha:0.7) : Colors.white38, size: 18),
                           ),
                         ),
                       ],
@@ -382,7 +381,7 @@ class DClockPill extends StatelessWidget {
                 Container(
                   height: 44, 
                   decoration: BoxDecoration(
-                    color: _cAlarm.withOpacity(0.15), 
+                    color: _cAlarm.withValues(alpha:0.15), 
                     borderRadius: BorderRadius.circular(12)
                   )
                 ),
@@ -442,7 +441,7 @@ class DClockPill extends StatelessWidget {
               ),
               Text(
                 stopwatchTime.substring(5), 
-                style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 20, fontWeight: FontWeight.w300, fontFeatures: const [FontFeature.tabularFigures()]),
+                style: TextStyle(color: Colors.white.withValues(alpha:0.6), fontSize: 20, fontWeight: FontWeight.w300, fontFeatures: const [FontFeature.tabularFigures()]),
               ),
             ],
           ),
@@ -539,9 +538,9 @@ class DClockPill extends StatelessWidget {
                     margin: const EdgeInsets.only(bottom: 6),
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     decoration: BoxDecoration(
-                      color: isSelected ? _cTimer.withOpacity(0.15) : Colors.white12,
+                      color: isSelected ? _cTimer.withValues(alpha:0.15) : Colors.white12,
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: isSelected ? _cTimer.withOpacity(0.5) : Colors.transparent),
+                      border: Border.all(color: isSelected ? _cTimer.withValues(alpha:0.5) : Colors.transparent),
                     ),
                     child: Row(
                       children: [
@@ -558,7 +557,7 @@ class DClockPill extends StatelessWidget {
                         ),
                         GestureDetector(
                           onTap: () => onEditTimer?.call(index),
-                          child: Icon(Icons.edit, color: isSelected ? _cTimer.withOpacity(0.7) : Colors.white38, size: 20),
+                          child: Icon(Icons.edit, color: isSelected ? _cTimer.withValues(alpha:0.7) : Colors.white38, size: 20),
                         ),
                       ],
                     ),
@@ -605,7 +604,7 @@ class DClockPill extends StatelessWidget {
                 Container(
                   height: 44, 
                   width: 200, 
-                  decoration: BoxDecoration(color: _cTimer.withOpacity(0.15), borderRadius: BorderRadius.circular(12))
+                  decoration: BoxDecoration(color: _cTimer.withValues(alpha:0.15), borderRadius: BorderRadius.circular(12))
                 ),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -680,8 +679,11 @@ class DClockPill extends StatelessWidget {
         onSelectedItemChanged: (index) {
           int actualIndex = index % count;
           int val = isHour ? actualIndex + 1 : actualIndex;
-          if (isHour) onHourChanged?.call(val);
-          else onMinuteChanged?.call(val);
+          if (isHour) {
+            onHourChanged?.call(val);
+          } else {
+            onMinuteChanged?.call(val);
+          }
         },
         childDelegate: ListWheelChildLoopingListDelegate(
           children: List.generate(count, (index) {
@@ -740,7 +742,7 @@ class DClockPill extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color: onTap != null ? color.withOpacity(0.2) : Colors.white12,
+          color: onTap != null ? color.withValues(alpha:0.2) : Colors.white12,
           borderRadius: BorderRadius.circular(20),
         ),
         child: Row(
@@ -763,11 +765,11 @@ class _RingingSlider extends StatefulWidget {
   final Color ringColor;
 
   const _RingingSlider({
-    Key? key,
+    super.key,
     this.onSnooze,
     this.onCancel,
     required this.ringColor,
-  }) : super(key: key);
+  });
 
   @override
   State<_RingingSlider> createState() => _RingingSliderState();
@@ -832,12 +834,12 @@ class _RingingSliderState extends State<_RingingSlider> with TickerProviderState
           width: DClockPill._fixedPillWidth, // 272
           height: 76.0,
           decoration: BoxDecoration(
-            color: widget.ringColor.withOpacity(0.1 + (pulse * 0.05)),
+            color: widget.ringColor.withValues(alpha:0.1 + (pulse * 0.05)),
             borderRadius: BorderRadius.circular(38),
-            border: Border.all(color: widget.ringColor.withOpacity(0.3 + (pulse * 0.2)), width: 1.5),
+            border: Border.all(color: widget.ringColor.withValues(alpha:0.3 + (pulse * 0.2)), width: 1.5),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.1 + (pulse * 0.1)),
+                color: Colors.black.withValues(alpha:0.1 + (pulse * 0.1)),
                 blurRadius: 10 + (pulse * 4),
                 spreadRadius: 1,
               )

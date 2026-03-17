@@ -165,10 +165,10 @@ class _DCalendarPillState extends State<DCalendarPill> {
                           padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 4.0),
                           alignment: Alignment.centerLeft,
                           decoration: BoxDecoration(
-                            color: isSelected ? Colors.redAccent.withOpacity(0.3) : Colors.redAccent.withOpacity(0.15),
+                            color: isSelected ? Colors.redAccent.withValues(alpha:0.3) : Colors.redAccent.withValues(alpha:0.15),
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
-                              color: isSelected ? Colors.redAccent : Colors.redAccent.withOpacity(0.4), 
+                              color: isSelected ? Colors.redAccent : Colors.redAccent.withValues(alpha:0.4), 
                               width: isSelected ? 2 : 1
                             ),
                           ),
@@ -186,7 +186,7 @@ class _DCalendarPillState extends State<DCalendarPill> {
                                 const SizedBox(height: 2),
                                 Text(
                                   event.description,
-                                  style: TextStyle(color: Colors.redAccent.withOpacity(0.7), fontSize: 10),
+                                  style: TextStyle(color: Colors.redAccent.withValues(alpha:0.7), fontSize: 10),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
@@ -223,7 +223,7 @@ class _DCalendarPillState extends State<DCalendarPill> {
                 borderRadius: BorderRadius.circular(20),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(color: Colors.greenAccent.withOpacity(0.2), borderRadius: BorderRadius.circular(20)),
+                  decoration: BoxDecoration(color: Colors.greenAccent.withValues(alpha:0.2), borderRadius: BorderRadius.circular(20)),
                   child: const Row(
                     children: [
                       Icon(Icons.add, color: Colors.greenAccent, size: 16),
@@ -239,7 +239,7 @@ class _DCalendarPillState extends State<DCalendarPill> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
-                    color: widget.selectedEventIndex != null ? Colors.redAccent.withOpacity(0.2) : Colors.white12, 
+                    color: widget.selectedEventIndex != null ? Colors.redAccent.withValues(alpha:0.2) : Colors.white12, 
                     borderRadius: BorderRadius.circular(20)
                   ),
                   child: Row(
@@ -352,10 +352,10 @@ class _DCalendarPillState extends State<DCalendarPill> {
                     color: isToday 
                         ? Colors.blueAccent 
                         : (isSelected 
-                            ? Colors.white.withOpacity(0.2) 
-                            : (hasEvents ? Colors.redAccent.withOpacity(0.15) : Colors.transparent)),
+                            ? Colors.white.withValues(alpha:0.2) 
+                            : (hasEvents ? Colors.redAccent.withValues(alpha:0.15) : Colors.transparent)),
                     borderRadius: BorderRadius.circular(8),
-                    border: hasEvents ? Border.all(color: Colors.redAccent.withOpacity(0.8), width: 1.5) : null,
+                    border: hasEvents ? Border.all(color: Colors.redAccent.withValues(alpha:0.8), width: 1.5) : null,
                   ),
                   child: Text(
                     '$day',
@@ -381,7 +381,7 @@ class _DCalendarPillState extends State<DCalendarPill> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   decoration: BoxDecoration(
-                    color: hasEventsForFocusedDay ? Colors.blueAccent.withOpacity(0.2) : Colors.white12,
+                    color: hasEventsForFocusedDay ? Colors.blueAccent.withValues(alpha:0.2) : Colors.white12,
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Row(
@@ -399,7 +399,7 @@ class _DCalendarPillState extends State<DCalendarPill> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   decoration: BoxDecoration(
-                    color: Colors.greenAccent.withOpacity(0.2),
+                    color: Colors.greenAccent.withValues(alpha:0.2),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: const Row(

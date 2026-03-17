@@ -125,10 +125,10 @@ class _BackgroundSettingsPageState extends State<BackgroundSettingsPage> {
     setState(() {
       _backgroundType = prefs.getString('bg_type') ?? 'color';
 
-      final int colorValue = prefs.getInt('bg_color') ?? Colors.black.value;
+      final int colorValue = prefs.getInt('bg_color') ?? 0xFF000000;
       _backgroundColor = Color(colorValue);
       // Format hex string for display (remove alpha if it's 0xFF...)
-      String hex = _backgroundColor.value.toRadixString(16).toUpperCase();
+      String hex = colorValue.toRadixString(16).toUpperCase();
       if (hex.length == 8 && hex.startsWith('FF')) {
         hex = hex.substring(2);
       }
@@ -141,7 +141,7 @@ class _BackgroundSettingsPageState extends State<BackgroundSettingsPage> {
   Future<void> _saveSettings() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('bg_type', _backgroundType);
-    await prefs.setInt('bg_color', _backgroundColor.value);
+    await prefs.setInt('bg_color', _backgroundColor.toARGB32());
     if (_backgroundImagePath != null) {
       await prefs.setString('bg_image_path', _backgroundImagePath!);
     }

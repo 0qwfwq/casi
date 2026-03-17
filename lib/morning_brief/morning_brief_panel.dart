@@ -7,6 +7,7 @@ import 'notification_brief_service.dart';
 import 'calendar_brief_service.dart';
 import 'health_brief_service.dart';
 import '../utils/app_launcher.dart';
+import '../utils/notification_categories.dart';
 
 class MorningBriefPanel extends StatefulWidget {
   final VoidCallback onDismiss;
@@ -58,69 +59,28 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
     return '${days[now.weekday - 1]}, ${months[now.month - 1]} ${now.day}';
   }
 
-  IconData _conditionIcon(String condition) {
-    switch (condition) {
-      case 'Clear':
-        return CupertinoIcons.sun_max_fill;
-      case 'Cloudy':
-        return CupertinoIcons.cloud_fill;
-      case 'Rainy':
-        return CupertinoIcons.cloud_rain_fill;
-      case 'Snowy':
-        return CupertinoIcons.snow;
-      case 'Stormy':
-        return CupertinoIcons.cloud_bolt_fill;
-      case 'Foggy':
-        return CupertinoIcons.cloud_fog_fill;
-      default:
-        return CupertinoIcons.sun_max_fill;
-    }
-  }
+  IconData _conditionIcon(String condition) => switch (condition) {
+    'Clear' => CupertinoIcons.sun_max_fill,
+    'Cloudy' => CupertinoIcons.cloud_fill,
+    'Rainy' => CupertinoIcons.cloud_rain_fill,
+    'Snowy' => CupertinoIcons.snow,
+    'Stormy' => CupertinoIcons.cloud_bolt_fill,
+    'Foggy' => CupertinoIcons.cloud_fog_fill,
+    _ => CupertinoIcons.sun_max_fill,
+  };
 
-  Color _conditionColor(String condition) {
-    switch (condition) {
-      case 'Clear':
-        return Colors.orange.shade300;
-      case 'Cloudy':
-        return Colors.blueGrey.shade200;
-      case 'Rainy':
-        return Colors.blue.shade300;
-      case 'Snowy':
-        return Colors.lightBlue.shade100;
-      case 'Stormy':
-        return Colors.deepPurple.shade300;
-      case 'Foggy':
-        return Colors.grey.shade400;
-      default:
-        return Colors.orange.shade300;
-    }
-  }
+  Color _conditionColor(String condition) => switch (condition) {
+    'Clear' => Colors.orange.shade300,
+    'Cloudy' => Colors.blueGrey.shade200,
+    'Rainy' => Colors.blue.shade300,
+    'Snowy' => Colors.lightBlue.shade100,
+    'Stormy' => Colors.deepPurple.shade300,
+    'Foggy' => Colors.grey.shade400,
+    _ => Colors.orange.shade300,
+  };
 
-  IconData _categoryIcon(String category) {
-    switch (category) {
-      case 'email':
-        return Icons.email_outlined;
-      case 'work':
-        return Icons.work_outline;
-      case 'social':
-        return Icons.chat_bubble_outline;
-      default:
-        return Icons.notifications_outlined;
-    }
-  }
-
-  Color _categoryColor(String category) {
-    switch (category) {
-      case 'email':
-        return Colors.red.shade300;
-      case 'work':
-        return Colors.blue.shade300;
-      case 'social':
-        return Colors.purple.shade300;
-      default:
-        return Colors.teal.shade300;
-    }
-  }
+  IconData _categoryIcon(String category) => NotificationCategories.iconFor(category);
+  Color _categoryColor(String category) => NotificationCategories.colorFor(category);
 
   @override
   Widget build(BuildContext context) {
@@ -530,7 +490,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
               padding: EdgeInsets.zero,
               physics: const BouncingScrollPhysics(),
               itemCount: items.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 6),
+              separatorBuilder: (_, _) => const SizedBox(height: 6),
               itemBuilder: (context, index) {
                 final item = items[index];
                 final catIcon = _categoryIcon(item.appCategory);
@@ -750,7 +710,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
               padding: EdgeInsets.zero,
               physics: const BouncingScrollPhysics(),
               itemCount: events.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 6),
+              separatorBuilder: (_, _) => const SizedBox(height: 6),
               itemBuilder: (context, index) {
                 final event = events[index];
                 return Container(
