@@ -1,56 +1,69 @@
 import 'package:flutter/material.dart';
 
 /// The specific content for the Clock version of the dynamic pill.
-/// Redesigned with a spacious Glassmorphic aesthetic, internal tabs,
-/// and self-contained controls to match the Calendar pill.
+/// Features a focal-display pattern (big time at top) across all tabs,
+/// swipe-to-delete rows, and multi-day chip selection for alarms.
 class DClockPill extends StatelessWidget {
+  // --- Alarm State ---
   final bool isAlarmMode;
-  final bool isViewingAlarms;
   final bool isAlarmRinging;
-  
-  final bool isStopwatchMode; 
-  final bool isStopwatchRunning;
-  final String stopwatchTime; 
-  final List<String> stopwatchLaps; 
-  
-  final bool isTimerMode; 
-  final bool isCreatingTimer;
-  final bool isEditingTimer;
-  final String timerTime;
-  
-  final List<String> savedTimersTimes;
-  final List<bool> savedTimersRunning;
-  final int? selectedTimerIndex;
-  
   final List<String> activeAlarms;
   final int? selectedIndex;
-  
-  final int? initialHour; 
-  final int? initialMinute; 
+  final List<String> selectedDays;
+
+  // --- Stopwatch State (unchanged) ---
+  final bool isStopwatchMode;
+  final bool isStopwatchRunning;
+  final String stopwatchTime;
+  final List<String> stopwatchLaps;
+
+  // --- Timer State ---
+  final bool isTimerMode;
+  final bool isCreatingTimer;
+  final bool isEditingTimer;
+  final List<String> savedTimersTimes;
+  final List<bool> savedTimersRunning;
+  final List<bool> savedTimersAtStart;
+  final int? selectedTimerIndex;
+
+  // --- Scroller Initial Values ---
+  final int? initialHour;
+  final int? initialMinute;
   final String initialAmPm;
-  final String initialDay;
-  final int? initialTimerHour; 
-  final int? initialTimerMinute; 
-  final int? initialTimerSecond; 
+  final int? initialTimerHour;
+  final int? initialTimerMinute;
+  final int? initialTimerSecond;
 
+  // --- Tab Callbacks ---
   final VoidCallback onAlarmTapped;
-  final VoidCallback? onStopwatchTapped; 
-  final VoidCallback? onTimerTapped; 
+  final VoidCallback? onStopwatchTapped;
+  final VoidCallback? onTimerTapped;
 
-  // --- Clock Actions ---
+  // --- Alarm Callbacks ---
+  final ValueChanged<int>? onAlarmRowTapped;
+  final VoidCallback? onAddNewAlarmTapped;
+  final VoidCallback? onEditSelectedAlarm;
+  final VoidCallback? onSaveAlarmTapped;
+  final VoidCallback? onCancelAlarmTapped;
+  final ValueChanged<int>? onDeleteAlarm;
+  final ValueChanged<List<String>>? onDaysChanged;
+
+  // --- Stopwatch Callbacks (unchanged) ---
   final VoidCallback? onStopwatchToggle;
   final VoidCallback? onStopwatchLap;
   final VoidCallback? onStopwatchReset;
-  final VoidCallback? onTimerStop;
 
-  final ValueChanged<int>? onSelectAlarm;
-  final ValueChanged<int>? onSelectTimer;
-  final ValueChanged<int>? onToggleTimer; 
-  final ValueChanged<int>? onEditTimer;   
-  final ValueChanged<int>? onEditAlarmTapped;
-  final VoidCallback? onCancelAlarmTapped; 
+  // --- Timer Callbacks ---
+  final ValueChanged<int>? onTimerRowTapped;
+  final ValueChanged<int>? onLongPressTimer;
+  final VoidCallback? onAddNewTimerTapped;
+  final VoidCallback? onSaveTimerTapped;
+  final VoidCallback? onCancelTimerTapped;
+  final ValueChanged<int>? onDeleteTimer;
+  final ValueChanged<int>? onToggleTimer;
+  final VoidCallback? onTimerReset;
 
-  // --- Ringing Actions ---
+  // --- Ringing Callbacks (unchanged) ---
   final VoidCallback? onSnoozeRinging;
   final VoidCallback? onCancelRinging;
 
@@ -58,36 +71,23 @@ class DClockPill extends StatelessWidget {
   final ValueChanged<int>? onHourChanged;
   final ValueChanged<int>? onMinuteChanged;
   final ValueChanged<String>? onAmPmChanged;
-  final ValueChanged<String>? onDayChanged;
   final ValueChanged<int>? onTimerHourChanged;
   final ValueChanged<int>? onTimerMinuteChanged;
   final ValueChanged<int>? onTimerSecondChanged;
 
-  // --- View Actions ---
-  final VoidCallback? onViewAlarmsTapped;
-  final VoidCallback? onAddNewAlarmTapped;
-  final VoidCallback? onSaveAlarmTapped;
-  final ValueChanged<int>? onDeleteAlarm;
-
-  final VoidCallback? onViewTimersTapped;
-  final VoidCallback? onAddNewTimerTapped;
-  final VoidCallback? onCancelTimerTapped;
-  final VoidCallback? onSaveTimerTapped;
-  final ValueChanged<int>? onDeleteTimer;
-
-  // --- STRICT UNIFORM WIDTH ---
-  static const double _fixedPillWidth = 272.0; 
-
-  // Premium Color Palette
-  static const Color _cAlarm = Color(0xFF00E676); 
-  static const Color _cTimer = Color(0xFFFFAB00); 
-  static const Color _cStopwatch = Color(0xFF40C4FF); 
+  // --- Constants ---
+  static const double _fixedPillWidth = 272.0;
+  static const Color _cAlarm = Color(0xFF00E676);
+  static const Color _cTimer = Color(0xFFFFAB00);
+  static const Color _cStopwatch = Color(0xFF40C4FF);
 
   const DClockPill({
     super.key,
     this.isAlarmMode = false,
-    this.isViewingAlarms = false,
     this.isAlarmRinging = false,
+    this.activeAlarms = const [],
+    this.selectedIndex,
+    this.selectedDays = const [],
     this.isStopwatchMode = false,
     this.isStopwatchRunning = false,
     this.stopwatchTime = "00:00.00",
@@ -95,77 +95,67 @@ class DClockPill extends StatelessWidget {
     this.isTimerMode = false,
     this.isCreatingTimer = false,
     this.isEditingTimer = false,
-    this.timerTime = "00:00",
     this.savedTimersTimes = const [],
     this.savedTimersRunning = const [],
+    this.savedTimersAtStart = const [],
     this.selectedTimerIndex,
-    this.activeAlarms = const [],
-    this.selectedIndex,
     this.initialHour,
     this.initialMinute,
     this.initialAmPm = 'AM',
-    this.initialDay = 'Mon',
     this.initialTimerHour,
     this.initialTimerMinute,
     this.initialTimerSecond,
     required this.onAlarmTapped,
     this.onStopwatchTapped,
     this.onTimerTapped,
+    this.onAlarmRowTapped,
+    this.onAddNewAlarmTapped,
+    this.onEditSelectedAlarm,
+    this.onSaveAlarmTapped,
+    this.onCancelAlarmTapped,
+    this.onDeleteAlarm,
+    this.onDaysChanged,
     this.onStopwatchToggle,
     this.onStopwatchLap,
     this.onStopwatchReset,
-    this.onTimerStop,
-    this.onSelectAlarm,
-    this.onSelectTimer,
+    this.onTimerRowTapped,
+    this.onLongPressTimer,
+    this.onAddNewTimerTapped,
+    this.onSaveTimerTapped,
+    this.onCancelTimerTapped,
+    this.onDeleteTimer,
     this.onToggleTimer,
-    this.onEditTimer,
-    this.onEditAlarmTapped,
-    this.onCancelAlarmTapped,
+    this.onTimerReset,
     this.onSnoozeRinging,
     this.onCancelRinging,
     this.onHourChanged,
     this.onMinuteChanged,
     this.onAmPmChanged,
-    this.onDayChanged,
     this.onTimerHourChanged,
     this.onTimerMinuteChanged,
     this.onTimerSecondChanged,
-    this.onViewAlarmsTapped,
-    this.onAddNewAlarmTapped,
-    this.onSaveAlarmTapped,
-    this.onDeleteAlarm,
-    this.onViewTimersTapped,
-    this.onAddNewTimerTapped,
-    this.onCancelTimerTapped,
-    this.onSaveTimerTapped,
-    this.onDeleteTimer,
   });
 
   double _getDesiredHeight() {
-    if (isAlarmRinging) return 76.0; // Shrinks down perfectly for the swipe slider
-    
-    double baseHeight = 130.0; 
-    double selectionPadding = 0.0; 
-    
+    if (isAlarmRinging) return 76.0;
+
     if (isStopwatchMode) {
       double lapsHeight = stopwatchLaps.isEmpty ? 0 : stopwatchLaps.length * 40.0;
-      return (baseHeight + 110.0 + lapsHeight).clamp(260.0, 420.0);
+      return (240.0 + lapsHeight).clamp(260.0, 420.0);
     } else if (isTimerMode) {
-      if (isCreatingTimer) return 320.0; 
-      if (selectedTimerIndex != null) selectionPadding = 50.0; 
-      double listHeight = savedTimersTimes.isEmpty ? 60 : savedTimersTimes.length * 62.0;
-      return (baseHeight + 40.0 + listHeight + selectionPadding).clamp(220.0, 420.0);
+      if (isCreatingTimer) return 310.0;
+      if (savedTimersTimes.isEmpty) return 220.0;
+      double focalHeight = selectedTimerIndex != null ? 100.0 : 0.0;
+      double listHeight = savedTimersTimes.length * 48.0;
+      return (160.0 + focalHeight + listHeight).clamp(280.0, 420.0);
     } else {
-      // Alarm Mode
-      if (isAlarmMode) return 320.0; 
-      if (selectedIndex != null) selectionPadding = 50.0; 
-      double listHeight = activeAlarms.isEmpty ? 60 : activeAlarms.length * 58.0;
-      return (baseHeight + 40.0 + listHeight + selectionPadding).clamp(220.0, 420.0);
+      // Alarm
+      if (isAlarmMode) return 340.0;
+      if (activeAlarms.isEmpty) return 220.0;
+      double focalHeight = selectedIndex != null ? 110.0 : 24.0;
+      double listHeight = activeAlarms.length * 48.0;
+      return (150.0 + focalHeight + listHeight).clamp(260.0, 420.0);
     }
-  }
-
-  double _getDesiredWidth() {
-    return _fixedPillWidth; // Slider needs full pill width
   }
 
   @override
@@ -173,7 +163,7 @@ class DClockPill extends StatelessWidget {
     if (isAlarmRinging) {
       return _RingingSlider(
         key: const ValueKey('ringing_slider'),
-        ringColor: Colors.white, // Changed to a clean, simple white glow
+        ringColor: Colors.white,
         onSnooze: onSnoozeRinging,
         onCancel: onCancelRinging,
       );
@@ -186,22 +176,22 @@ class DClockPill extends StatelessWidget {
       if (isCreatingTimer) {
         content = _buildTimerScrollers(key: const ValueKey('timer_scrollers'));
       } else {
-        content = _buildTimersList(key: const ValueKey('timers_list'));
+        content = _buildTimerView(key: const ValueKey('timer_view'));
       }
     } else {
       if (isAlarmMode) {
         content = _buildAlarmScrollers(key: const ValueKey('alarm_scrollers'));
       } else {
-        content = _buildAlarmsList(key: const ValueKey('alarms_list'));
+        content = _buildAlarmView(key: const ValueKey('alarm_view'));
       }
     }
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 120),
       curve: Curves.easeOutCubic,
-      width: _getDesiredWidth(),
+      width: _fixedPillWidth,
       height: _getDesiredHeight(),
-      padding: const EdgeInsets.fromLTRB(12.0, 12.0, 12.0, 8.0), 
+      padding: const EdgeInsets.fromLTRB(12.0, 12.0, 12.0, 8.0),
       child: Column(
         children: [
           Expanded(
@@ -216,17 +206,20 @@ class DClockPill extends StatelessWidget {
     );
   }
 
-  // --- Bottom Tab Bar ---
+  // =====================================================================
+  // TAB BAR (unchanged)
+  // =====================================================================
+
   Widget _buildTabBar() {
     return Padding(
-      padding: const EdgeInsets.only(top: 16.0, bottom: 0.0), 
+      padding: const EdgeInsets.only(top: 16.0, bottom: 0.0),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.center, 
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           _buildTabItem(Icons.alarm, (!isStopwatchMode && !isTimerMode), _cAlarm, onAlarmTapped),
-          const SizedBox(width: 20), 
+          const SizedBox(width: 20),
           _buildTabItem(Icons.timer_outlined, isStopwatchMode, _cStopwatch, onStopwatchTapped ?? () {}),
-          const SizedBox(width: 20), 
+          const SizedBox(width: 20),
           _buildTabItem(Icons.hourglass_bottom, isTimerMode, _cTimer, onTimerTapped ?? () {}),
         ],
       ),
@@ -243,25 +236,42 @@ class DClockPill extends StatelessWidget {
         height: 44,
         decoration: BoxDecoration(
           color: isActive ? activeColor.withValues(alpha:0.2) : Colors.transparent,
-          shape: BoxShape.circle, 
+          shape: BoxShape.circle,
         ),
         child: Icon(icon, color: isActive ? activeColor : Colors.white54, size: 22),
       ),
     );
   }
 
-  // --- Alarms List View ---
-  Widget _buildAlarmsList({Key? key}) {
+  // =====================================================================
+  // ALARM VIEW — Focal Display + Compact Swipeable List
+  // =====================================================================
+
+  Widget _buildAlarmView({Key? key}) {
+    String? focalTime;
+    String? focalDay;
+    if (selectedIndex != null && selectedIndex! < activeAlarms.length) {
+      final parts = activeAlarms[selectedIndex!].split(' ');
+      if (parts.length == 3) {
+        focalDay = parts[0];
+        focalTime = "${parts[1]} ${parts[2]}";
+      } else if (parts.length == 2) {
+        focalDay = 'Daily';
+        focalTime = "${parts[0]} ${parts[1]}";
+      }
+    }
+
     return SingleChildScrollView(
       key: key,
-      physics: const BouncingScrollPhysics(), 
+      physics: const BouncingScrollPhysics(),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // Header
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const SizedBox(width: 32), 
+              const SizedBox(width: 32),
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -281,86 +291,106 @@ class DClockPill extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
+
+          // Focal Display Area
           if (activeAlarms.isEmpty)
-            const SizedBox(
-              height: 80, 
-              child: Center(child: Text("No active alarms", style: TextStyle(color: Colors.white54, fontSize: 13)))
-            )
-          else
+            _buildFocalTimeDisplay("No Alarms", isEmpty: true)
+          else if (focalTime != null) ...[
+            _buildFocalTimeDisplay(focalTime, subtitle: focalDay, color: _cAlarm),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _buildActionButton("Delete", Icons.delete, Colors.redAccent, () => onDeleteAlarm?.call(selectedIndex!)),
+                _buildActionButton("Edit", Icons.edit, _cAlarm, onEditSelectedAlarm),
+              ],
+            ),
+          ] else
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Text("Tap an alarm to manage", style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 13)),
+            ),
+
+          if (activeAlarms.isNotEmpty) ...[
+            const SizedBox(height: 10),
             ListView.builder(
               shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(), 
+              physics: const NeverScrollableScrollPhysics(),
               padding: EdgeInsets.zero,
               itemCount: activeAlarms.length,
               itemBuilder: (context, index) {
                 final isSelected = selectedIndex == index;
                 final parts = activeAlarms[index].split(' ');
-                String day = parts.isNotEmpty ? parts[0] : '';
-                String time = parts.length > 1 ? parts[1] : '';
-                String ampm = parts.length > 2 ? parts[2] : '';
-                if (parts.length == 2) {
-                   day = 'Daily';
-                   time = parts[0];
-                   ampm = parts[1];
+                String day, time, ampm;
+                if (parts.length == 3) {
+                  day = parts[0];
+                  time = parts[1];
+                  ampm = parts[2];
+                } else {
+                  day = 'Daily';
+                  time = parts.isNotEmpty ? parts[0] : '';
+                  ampm = parts.length > 1 ? parts[1] : '';
                 }
 
-                return GestureDetector(
-                  onTap: () => onSelectAlarm?.call(index),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 100),
-                    height: 52,
-                    margin: const EdgeInsets.only(bottom: 6),
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                return Dismissible(
+                  key: ValueKey('alarm_${activeAlarms[index]}_$index'),
+                  direction: DismissDirection.endToStart,
+                  onDismissed: (_) => onDeleteAlarm?.call(index),
+                  background: Container(
+                    alignment: Alignment.centerRight,
+                    padding: const EdgeInsets.only(right: 16),
+                    margin: const EdgeInsets.only(bottom: 4),
                     decoration: BoxDecoration(
-                      color: isSelected ? _cAlarm.withValues(alpha:0.15) : Colors.white12,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: isSelected ? _cAlarm.withValues(alpha:0.5) : Colors.transparent),
+                      color: Colors.redAccent.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 44, 
-                          alignment: Alignment.centerLeft,
-                          padding: const EdgeInsets.symmetric(vertical: 4),
-                          child: Text(day, style: TextStyle(color: isSelected ? _cAlarm : Colors.white54, fontSize: 13, fontWeight: FontWeight.bold)),
+                    child: const Icon(Icons.delete, color: Colors.redAccent, size: 20),
+                  ),
+                  child: GestureDetector(
+                    onTap: () => onAlarmRowTapped?.call(index),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 100),
+                      height: 44,
+                      margin: const EdgeInsets.only(bottom: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        color: isSelected ? _cAlarm.withValues(alpha: 0.15) : Colors.white12,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isSelected ? _cAlarm.withValues(alpha: 0.5) : Colors.transparent,
                         ),
-                        const SizedBox(width: 8),
-                        Text(time, style: TextStyle(color: isSelected ? _cAlarm : Colors.white, fontSize: 24, fontWeight: isSelected ? FontWeight.w500 : FontWeight.w300, fontFeatures: const [FontFeature.tabularFigures()])),
-                        const SizedBox(width: 4),
-                        Text(ampm, style: TextStyle(color: isSelected ? _cAlarm.withValues(alpha:0.8) : Colors.white54, fontSize: 12, fontWeight: FontWeight.bold)),
-                        const Spacer(),
-                        GestureDetector(
-                          onTap: () => onEditAlarmTapped?.call(index),
-                          child: Padding(
-                            padding: const EdgeInsets.all(8.0), 
-                            child: Icon(Icons.edit, color: isSelected ? _cAlarm.withValues(alpha:0.7) : Colors.white38, size: 18),
+                      ),
+                      child: Row(
+                        children: [
+                          SizedBox(
+                            width: 40,
+                            child: Text(day, style: TextStyle(color: isSelected ? _cAlarm : Colors.white54, fontSize: 13, fontWeight: FontWeight.bold)),
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 8),
+                          Text(time, style: TextStyle(color: isSelected ? _cAlarm : Colors.white, fontSize: 20, fontWeight: FontWeight.w400, fontFeatures: const [FontFeature.tabularFigures()])),
+                          const SizedBox(width: 4),
+                          Text(ampm, style: TextStyle(color: isSelected ? _cAlarm.withValues(alpha: 0.8) : Colors.white54, fontSize: 12, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
                     ),
                   ),
                 );
               },
             ),
-          if (selectedIndex != null) ...[
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _buildActionButton("Delete Selected", Icons.delete, Colors.redAccent, () => onDeleteAlarm?.call(selectedIndex!)),
-              ],
-            ),
-          ]
+          ],
         ],
       ),
     );
   }
 
-  // --- Alarm Scrollers View ---
+  // =====================================================================
+  // ALARM SCROLLERS — Day Chips + Time Wheels
+  // =====================================================================
+
   Widget _buildAlarmScrollers({Key? key}) {
     return SingleChildScrollView(
       key: key,
-      physics: const NeverScrollableScrollPhysics(), 
+      physics: const NeverScrollableScrollPhysics(),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -369,27 +399,30 @@ class DClockPill extends StatelessWidget {
             children: [
               const Icon(Icons.add_alarm, color: _cAlarm, size: 16),
               const SizedBox(width: 6),
-              const Text("Edit Alarm", style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+              Text(
+                selectedIndex != null ? "Edit Alarm" : "New Alarm",
+                style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+              ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
+          _buildDayChips(),
+          const SizedBox(height: 12),
           SizedBox(
             height: 120,
             child: Stack(
               alignment: Alignment.center,
               children: [
                 Container(
-                  height: 44, 
+                  height: 44,
                   decoration: BoxDecoration(
-                    color: _cAlarm.withValues(alpha:0.15), 
-                    borderRadius: BorderRadius.circular(12)
-                  )
+                    color: _cAlarm.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    _buildStringScroller(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun', 'Daily'], initialDay, onDayChanged, 55),
-                    const SizedBox(width: 8),
                     _buildNumberScroller(12, true, 40),
                     const Text(":", style: TextStyle(color: Colors.white54, fontSize: 24, fontWeight: FontWeight.bold)),
                     _buildNumberScroller(60, false, 40),
@@ -400,11 +433,11 @@ class DClockPill extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              _buildActionButton("Cancel", Icons.close, Colors.white54, onCancelAlarmTapped ?? onViewAlarmsTapped),
+              _buildActionButton("Cancel", Icons.close, Colors.white54, onCancelAlarmTapped),
               _buildActionButton("Save", Icons.check, _cAlarm, onSaveAlarmTapped),
             ],
           ),
@@ -413,11 +446,14 @@ class DClockPill extends StatelessWidget {
     );
   }
 
-  // --- Stopwatch View ---
+  // =====================================================================
+  // STOPWATCH VIEW (unchanged)
+  // =====================================================================
+
   Widget _buildStopwatchState({Key? key}) {
     return SingleChildScrollView(
       key: key,
-      physics: const BouncingScrollPhysics(), 
+      physics: const BouncingScrollPhysics(),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -436,11 +472,11 @@ class DClockPill extends StatelessWidget {
             textBaseline: TextBaseline.alphabetic,
             children: [
               Text(
-                stopwatchTime.substring(0, 5), 
+                stopwatchTime.substring(0, 5),
                 style: const TextStyle(color: Colors.white, fontSize: 44, fontWeight: FontWeight.w200, fontFeatures: [FontFeature.tabularFigures()]),
               ),
               Text(
-                stopwatchTime.substring(5), 
+                stopwatchTime.substring(5),
                 style: TextStyle(color: Colors.white.withValues(alpha:0.6), fontSize: 20, fontWeight: FontWeight.w300, fontFeatures: const [FontFeature.tabularFigures()]),
               ),
             ],
@@ -460,7 +496,7 @@ class DClockPill extends StatelessWidget {
             const SizedBox(height: 16),
             ListView.builder(
               shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(), 
+              physics: const NeverScrollableScrollPhysics(),
               padding: EdgeInsets.zero,
               itemCount: stopwatchLaps.length,
               itemBuilder: (context, index) {
@@ -484,14 +520,28 @@ class DClockPill extends StatelessWidget {
     );
   }
 
-  // --- Timers List View ---
-  Widget _buildTimersList({Key? key}) {
+  // =====================================================================
+  // TIMER VIEW — Focal Display + Compact Swipeable List
+  // =====================================================================
+
+  Widget _buildTimerView({Key? key}) {
+    String? focusedTime;
+    bool focusedRunning = false;
+    bool focusedAtStart = true;
+
+    if (selectedTimerIndex != null && selectedTimerIndex! < savedTimersTimes.length) {
+      focusedTime = savedTimersTimes[selectedTimerIndex!];
+      focusedRunning = savedTimersRunning[selectedTimerIndex!];
+      focusedAtStart = savedTimersAtStart[selectedTimerIndex!];
+    }
+
     return SingleChildScrollView(
       key: key,
-      physics: const BouncingScrollPhysics(), 
+      physics: const BouncingScrollPhysics(),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // Header
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -501,7 +551,7 @@ class DClockPill extends StatelessWidget {
                 children: [
                   const Icon(Icons.hourglass_bottom, color: _cTimer, size: 16),
                   const SizedBox(width: 6),
-                  const Text("Timers", style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+                  const Text("Timer", style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
                 ],
               ),
               GestureDetector(
@@ -515,75 +565,113 @@ class DClockPill extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
+
+          // Focal Display
           if (savedTimersTimes.isEmpty)
-            const SizedBox(
-              height: 80, 
-              child: Center(child: Text("No saved timers", style: TextStyle(color: Colors.white54, fontSize: 13)))
-            )
-          else
+            _buildFocalTimeDisplay("No Timers", isEmpty: true)
+          else if (focusedTime != null) ...[
+            _buildFocalTimeDisplay(focusedTime, color: _cTimer),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _buildActionButton(
+                  focusedRunning ? "Pause" : (focusedAtStart ? "Start" : "Resume"),
+                  focusedRunning ? Icons.pause : Icons.play_arrow,
+                  _cTimer,
+                  () => onToggleTimer?.call(selectedTimerIndex!),
+                ),
+                if (!focusedRunning && !focusedAtStart)
+                  _buildActionButton("Reset", Icons.refresh, Colors.redAccent, onTimerReset),
+              ],
+            ),
+          ],
+
+          if (savedTimersTimes.isNotEmpty) ...[
+            const SizedBox(height: 10),
             ListView.builder(
               shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(), 
+              physics: const NeverScrollableScrollPhysics(),
               padding: EdgeInsets.zero,
               itemCount: savedTimersTimes.length,
               itemBuilder: (context, index) {
                 final isSelected = selectedTimerIndex == index;
                 final isRunning = savedTimersRunning[index];
-                
-                return GestureDetector(
-                  onTap: () => onSelectTimer?.call(index),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 100),
-                    height: 56,
-                    margin: const EdgeInsets.only(bottom: 6),
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
+
+                return Dismissible(
+                  key: ValueKey('timer_${index}_${savedTimersTimes[index]}'),
+                  direction: DismissDirection.endToStart,
+                  onDismissed: (_) => onDeleteTimer?.call(index),
+                  background: Container(
+                    alignment: Alignment.centerRight,
+                    padding: const EdgeInsets.only(right: 16),
+                    margin: const EdgeInsets.only(bottom: 4),
                     decoration: BoxDecoration(
-                      color: isSelected ? _cTimer.withValues(alpha:0.15) : Colors.white12,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: isSelected ? _cTimer.withValues(alpha:0.5) : Colors.transparent),
+                      color: Colors.redAccent.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Row(
-                      children: [
-                        GestureDetector(
-                          onTap: () => onToggleTimer?.call(index),
-                          child: Icon(isRunning ? Icons.pause_circle_filled : Icons.play_circle_fill, color: isSelected ? _cTimer : Colors.white70, size: 32),
+                    child: const Icon(Icons.delete, color: Colors.redAccent, size: 20),
+                  ),
+                  child: GestureDetector(
+                    onTap: () => onTimerRowTapped?.call(index),
+                    onLongPress: () => onLongPressTimer?.call(index),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 100),
+                      height: 44,
+                      margin: const EdgeInsets.only(bottom: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        color: isSelected ? _cTimer.withValues(alpha: 0.15) : Colors.white12,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isSelected ? _cTimer.withValues(alpha: 0.5) : Colors.transparent,
                         ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Text(
-                            savedTimersTimes[index], 
-                            style: TextStyle(color: isSelected ? _cTimer : Colors.white, fontSize: 24, fontWeight: isSelected ? FontWeight.w600 : FontWeight.w300, fontFeatures: const [FontFeature.tabularFigures()]),
+                      ),
+                      child: Row(
+                        children: [
+                          GestureDetector(
+                            onTap: () => onToggleTimer?.call(index),
+                            behavior: HitTestBehavior.opaque,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                              child: Icon(
+                                isRunning ? Icons.pause_circle_filled : Icons.play_circle_fill,
+                                color: isSelected ? _cTimer : Colors.white70,
+                                size: 24,
+                              ),
+                            ),
                           ),
-                        ),
-                        GestureDetector(
-                          onTap: () => onEditTimer?.call(index),
-                          child: Icon(Icons.edit, color: isSelected ? _cTimer.withValues(alpha:0.7) : Colors.white38, size: 20),
-                        ),
-                      ],
+                          const SizedBox(width: 10),
+                          Text(
+                            savedTimersTimes[index],
+                            style: TextStyle(
+                              color: isSelected ? _cTimer : Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w400,
+                              fontFeatures: const [FontFeature.tabularFigures()],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 );
               },
             ),
-          if (selectedTimerIndex != null) ...[
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _buildActionButton("Delete Selected", Icons.delete, Colors.redAccent, () => onDeleteTimer?.call(selectedTimerIndex!)),
-              ],
-            ),
-          ]
+          ],
         ],
       ),
     );
   }
 
-  // --- Timer Scrollers View ---
+  // =====================================================================
+  // TIMER SCROLLERS — H:M:S Wheels
+  // =====================================================================
+
   Widget _buildTimerScrollers({Key? key}) {
     return SingleChildScrollView(
       key: key,
-      physics: const NeverScrollableScrollPhysics(), 
+      physics: const NeverScrollableScrollPhysics(),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -602,9 +690,9 @@ class DClockPill extends StatelessWidget {
               alignment: Alignment.center,
               children: [
                 Container(
-                  height: 44, 
-                  width: 200, 
-                  decoration: BoxDecoration(color: _cTimer.withValues(alpha:0.15), borderRadius: BorderRadius.circular(12))
+                  height: 44,
+                  width: 200,
+                  decoration: BoxDecoration(color: _cTimer.withValues(alpha:0.15), borderRadius: BorderRadius.circular(12)),
                 ),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -624,7 +712,12 @@ class DClockPill extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
               _buildActionButton("Cancel", Icons.close, Colors.white54, onCancelTimerTapped),
-              _buildActionButton("Save", Icons.check, _cTimer, onSaveTimerTapped),
+              _buildActionButton(
+                isEditingTimer ? "Save" : "Start",
+                isEditingTimer ? Icons.check : Icons.play_arrow,
+                _cTimer,
+                onSaveTimerTapped,
+              ),
             ],
           ),
         ],
@@ -632,15 +725,155 @@ class DClockPill extends StatelessWidget {
     );
   }
 
-  // --- Helper Widgets ---
+  // =====================================================================
+  // SHARED HELPERS
+  // =====================================================================
+
+  Widget _buildFocalTimeDisplay(String time, {String? subtitle, Color color = Colors.white, bool isEmpty = false}) {
+    if (isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        child: Text(time, style: TextStyle(color: Colors.white54, fontSize: 16, fontWeight: FontWeight.w400)),
+      );
+    }
+    return Column(
+      children: [
+        Text(
+          time,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 44,
+            fontWeight: FontWeight.w200,
+            fontFeatures: [FontFeature.tabularFigures()],
+          ),
+        ),
+        if (subtitle != null)
+          Text(
+            subtitle,
+            style: TextStyle(
+              color: color.withValues(alpha: 0.7),
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildDayChips() {
+    const allDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const dayLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+    final bool allSelected = allDays.every((d) => selectedDays.contains(d));
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        GestureDetector(
+          onTap: () {
+            if (allSelected) {
+              onDaysChanged?.call([]);
+            } else {
+              onDaysChanged?.call(List.from(allDays));
+            }
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 100),
+            width: 36,
+            height: 28,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: allSelected ? _cAlarm.withValues(alpha: 0.25) : Colors.transparent,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: allSelected ? _cAlarm.withValues(alpha: 0.6) : Colors.white24,
+              ),
+            ),
+            child: Text(
+              "All",
+              style: TextStyle(
+                color: allSelected ? Colors.white : Colors.white38,
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 4),
+        ...List.generate(7, (i) {
+          final isSelected = selectedDays.contains(allDays[i]);
+          return Padding(
+            padding: EdgeInsets.only(left: i > 0 ? 3 : 0),
+            child: GestureDetector(
+              onTap: () {
+                final newDays = List<String>.from(selectedDays);
+                if (isSelected) {
+                  newDays.remove(allDays[i]);
+                } else {
+                  newDays.add(allDays[i]);
+                }
+                onDaysChanged?.call(newDays);
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 100),
+                width: 26,
+                height: 26,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: isSelected ? _cAlarm.withValues(alpha: 0.25) : Colors.transparent,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: isSelected ? _cAlarm.withValues(alpha: 0.6) : Colors.white24,
+                  ),
+                ),
+                child: Text(
+                  dayLabels[i],
+                  style: TextStyle(
+                    color: isSelected ? Colors.white : Colors.white38,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
+  Widget _buildActionButton(String label, IconData icon, Color color, VoidCallback? onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: onTap != null ? color.withValues(alpha:0.2) : Colors.white12,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: onTap != null ? color : Colors.white30, size: 16),
+            const SizedBox(width: 6),
+            Text(label, style: TextStyle(color: onTap != null ? color : Colors.white30, fontSize: 13, fontWeight: FontWeight.bold)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // =====================================================================
+  // SCROLLER HELPERS (unchanged)
+  // =====================================================================
 
   Widget _buildStringScroller(List<String> items, String initialItem, ValueChanged<String>? onChanged, double width) {
     int initialIndex = items.indexOf(initialItem);
     if (initialIndex < 0) initialIndex = 0;
-    
+
     return SizedBox(
       width: width,
-      height: 120, 
+      height: 120,
       child: ListWheelScrollView.useDelegate(
         controller: FixedExtentScrollController(initialItem: initialIndex),
         itemExtent: 36,
@@ -734,31 +967,12 @@ class DClockPill extends StatelessWidget {
       ],
     );
   }
-
-  Widget _buildActionButton(String label, IconData icon, Color color, VoidCallback? onTap) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: onTap != null ? color.withValues(alpha:0.2) : Colors.white12,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: onTap != null ? color : Colors.white30, size: 16),
-            const SizedBox(width: 6),
-            Text(label, style: TextStyle(color: onTap != null ? color : Colors.white30, fontSize: 13, fontWeight: FontWeight.bold)),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
-// --- Interactive Ringing Slider ---
+// =====================================================================
+// RINGING SLIDER (unchanged)
+// =====================================================================
+
 class _RingingSlider extends StatefulWidget {
   final VoidCallback? onSnooze;
   final VoidCallback? onCancel;
@@ -831,7 +1045,7 @@ class _RingingSliderState extends State<_RingingSlider> with TickerProviderState
       builder: (context, child) {
         final pulse = _pulseController.value;
         return Container(
-          width: DClockPill._fixedPillWidth, // 272
+          width: DClockPill._fixedPillWidth,
           height: 76.0,
           decoration: BoxDecoration(
             color: widget.ringColor.withValues(alpha:0.1 + (pulse * 0.05)),
@@ -848,7 +1062,6 @@ class _RingingSliderState extends State<_RingingSlider> with TickerProviderState
           child: Stack(
             alignment: Alignment.center,
             children: [
-              // Left side (Snooze text fades as you swipe)
               Positioned(
                 left: 20,
                 child: Opacity(
@@ -862,7 +1075,6 @@ class _RingingSliderState extends State<_RingingSlider> with TickerProviderState
                   ),
                 ),
               ),
-              // Right side (Stop text fades as you swipe)
               Positioned(
                 right: 20,
                 child: Opacity(
@@ -876,7 +1088,6 @@ class _RingingSliderState extends State<_RingingSlider> with TickerProviderState
                   ),
                 ),
               ),
-              // Draggable Thumb
               Positioned(
                 left: DClockPill._fixedPillWidth / 2 - 28 + _dragOffset,
                 child: GestureDetector(
