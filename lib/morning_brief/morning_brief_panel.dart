@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'weather_brief_service.dart';
 import 'calendar_brief_service.dart';
 import 'health_brief_service.dart';
+import '../pills/d_calendar_pill.dart';
 
 class MorningBriefPanel extends StatefulWidget {
   final VoidCallback onDismiss;
@@ -11,6 +12,7 @@ class MorningBriefPanel extends StatefulWidget {
   final WeatherBriefData? weatherData;
   final CalendarBriefData? calendarData;
   final HealthBriefData? healthData;
+  final Map<DateTime, List<CalendarEvent>> launcherEvents;
 
   const MorningBriefPanel({
     super.key,
@@ -19,6 +21,7 @@ class MorningBriefPanel extends StatefulWidget {
     this.weatherData,
     this.calendarData,
     this.healthData,
+    this.launcherEvents = const {},
   });
 
   @override
@@ -349,11 +352,26 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
 
   // ── Panel 3: Calendar Events ────────────────────────────────────────────
 
+  /// Collects today's launcher-created events as DeviceCalendarEvent objects.
+  List<DeviceCalendarEvent> _todayLauncherEvents() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final launcherEvts = widget.launcherEvents[today] ?? [];
+    return launcherEvts.map((e) => DeviceCalendarEvent(
+      title: e.title,
+      begin: 0,
+      end: 0,
+      allDay: true,
+      description: e.description,
+    )).toList();
+  }
+
   Widget _buildCalendarPage() {
     final calData = widget.calendarData;
+    final launcherEvts = _todayLauncherEvents();
 
-    // No permission
-    if (calData != null && !calData.hasPermission) {
+    // No permission and no launcher events
+    if (calData != null && !calData.hasPermission && launcherEvts.isEmpty) {
       return Padding(
         padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
         child: Column(
@@ -402,8 +420,8 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
       );
     }
 
-    // Loading
-    if (calData == null) {
+    // Loading (but still show launcher events if available)
+    if (calData == null && launcherEvts.isEmpty) {
       return const Padding(
         padding: EdgeInsets.all(24),
         child: Center(
@@ -415,8 +433,12 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
       );
     }
 
-    // No events today
-    if (calData.events.isEmpty) {
+    // Combine device calendar events with launcher events
+    final deviceEvents = calData?.events ?? [];
+    final events = [...deviceEvents, ...launcherEvts];
+
+    // No events today from either source
+    if (events.isEmpty) {
       return Padding(
         padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
         child: Column(
@@ -449,9 +471,6 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
         ),
       );
     }
-
-    // Show events
-    final events = calData.events;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 4),
       child: Column(
