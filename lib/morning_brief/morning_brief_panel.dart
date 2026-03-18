@@ -11,6 +11,7 @@ import '../utils/notification_categories.dart';
 
 class MorningBriefPanel extends StatefulWidget {
   final VoidCallback onDismiss;
+  final VoidCallback? onRefreshHealth;
   final WeatherBriefData? weatherData;
   final NotificationBriefData? notificationData;
   final CalendarBriefData? calendarData;
@@ -19,6 +20,7 @@ class MorningBriefPanel extends StatefulWidget {
   const MorningBriefPanel({
     super.key,
     required this.onDismiss,
+    this.onRefreshHealth,
     this.weatherData,
     this.notificationData,
     this.calendarData,
@@ -823,7 +825,10 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
             ),
             const SizedBox(height: 12),
             GestureDetector(
-              onTap: () => HealthBriefService.requestPermissions(),
+              onTap: () async {
+                await HealthBriefService.requestPermissions();
+                widget.onRefreshHealth?.call();
+              },
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(
@@ -932,12 +937,34 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
             ],
           ),
           const SizedBox(height: 6),
-          // Row 3: Distance (full width)
-          _buildHealthRow(
-            icon: Icons.straighten,
-            iconColor: Colors.teal.shade300,
-            label: 'Distance',
-            value: health.distanceString,
+          // Row 3: Distance + Refresh
+          Row(
+            children: [
+              Expanded(
+                child: _buildHealthRow(
+                  icon: Icons.straighten,
+                  iconColor: Colors.teal.shade300,
+                  label: 'Distance',
+                  value: health.distanceString,
+                ),
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: widget.onRefreshHealth,
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.06),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    Icons.refresh_rounded,
+                    color: Colors.white.withValues(alpha: 0.4),
+                    size: 16,
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),

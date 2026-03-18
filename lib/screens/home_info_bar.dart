@@ -1118,6 +1118,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                                   calendarData: _calendarBriefData,
                                                   healthData: _healthBriefData,
                                                   onDismiss: _dismissMorningBrief,
+                                                  onRefreshHealth: _refreshHealthBrief,
                                                 ),
                                               ),
                                               secondChild: const SizedBox(width: double.infinity),
