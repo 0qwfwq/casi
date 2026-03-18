@@ -20,10 +20,12 @@ import androidx.annotation.NonNull
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.health.connect.client.HealthConnectClient
+import androidx.health.connect.client.PermissionController
+import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.*
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import kotlinx.coroutines.*
@@ -33,7 +35,7 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.Instant
 
-class MainActivity: FlutterActivity() {
+class MainActivity: FlutterFragmentActivity() {
     private val CHANNEL = "casi.launcher/media"
     private val APP_CHANNEL = "casi.launcher/apps"
     private val NOTIF_CHANNEL = "casi.launcher/notifications"
@@ -41,6 +43,23 @@ class MainActivity: FlutterActivity() {
     private val HEALTH_CHANNEL = "casi.launcher/health"
     private val CALENDAR_PERMISSION_REQUEST = 100
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+
+    private val healthPermissions = setOf(
+        HealthPermission.getReadPermission(StepsRecord::class),
+        HealthPermission.getReadPermission(ActiveCaloriesBurnedRecord::class),
+        HealthPermission.getReadPermission(DistanceRecord::class),
+        HealthPermission.getReadPermission(ExerciseSessionRecord::class),
+        HealthPermission.getReadPermission(SleepSessionRecord::class),
+    )
+
+    private var pendingHealthPermissionResult: MethodChannel.Result? = null
+
+    private val requestHealthPermissionsLauncher = registerForActivityResult(
+        PermissionController.createRequestPermissionResultContract()
+    ) { granted ->
+        pendingHealthPermissionResult?.success(granted.isNotEmpty())
+        pendingHealthPermissionResult = null
+    }
 
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -112,10 +131,10 @@ class MainActivity: FlutterActivity() {
                 }
                 "requestHealthPermissions" -> {
                     try {
-                        val intent = Intent("androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE")
-                        startActivity(intent)
-                        result.success(true)
+                        pendingHealthPermissionResult = result
+                        requestHealthPermissionsLauncher.launch(healthPermissions)
                     } catch (e: Exception) {
+                        pendingHealthPermissionResult = null
                         result.success(false)
                     }
                 }
@@ -373,7 +392,21 @@ class MainActivity: FlutterActivity() {
             )
         }
 
-        val client = HealthConnectClient.getOrCreate(this)
+        val client = HealthConnectClient.getOrCreate(this@MainActivity)
+
+        // Check if any health permissions are granted
+        val grantedPermissions = client.permissionController.getGrantedPermissions()
+        if (grantedPermissions.intersect(healthPermissions).isEmpty()) {
+            return mapOf(
+                "steps" to 0,
+                "sleepMinutes" to 0,
+                "activeMinutes" to 0,
+                "calories" to 0,
+                "distanceMeters" to 0.0,
+                "available" to false
+            )
+        }
+
         val now = Instant.now()
         val startOfDay = LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant()
         val timeRange = TimeRangeFilter.between(startOfDay, now)
