@@ -1,0 +1,495 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:ui';
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:casi/widgets/weather_forecast_widget.dart';
+
+class WeatherPill extends StatefulWidget {
+  final ValueChanged<bool>? onExpandedChanged;
+
+  const WeatherPill({super.key, this.onExpandedChanged});
+
+  @override
+  State<WeatherPill> createState() => _WeatherPillState();
+}
+
+class _WeatherPillState extends State<WeatherPill> with WidgetsBindingObserver {
+  int? _temperature;
+  int? _weatherCode;
+
+  List<DailyForecastData> _forecastData = [];
+  List<HourlyForecastData> _hourlyData = [];
+
+  String _currentDescription = "Unknown";
+  IconData _currentIcon = CupertinoIcons.question;
+  Color _currentIconColor = Colors.white;
+
+  String _feelsLike = "--°C";
+  String _wind = "-- mph";
+  String _precipitation = "--%";
+  String _humidity = "--%";
+  String _uvIndex = "--";
+  String _sunrise = "--:-- AM";
+
+  bool _isLoadingWeather = false;
+  bool _isExpanded = false;
+
+  Timer? _hourlySyncTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _initWeather();
+    _scheduleTopOfHourWeatherSync();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _hourlySyncTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkAndFetchWeather();
+    }
+  }
+
+  // --- Weather Logic ---
+
+  Future<void> _initWeather() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final String? cachedWeatherJson = prefs.getString('weather_json_cache');
+    if (cachedWeatherJson != null) {
+      try {
+        final data = jsonDecode(cachedWeatherJson);
+        _parseWeatherData(data);
+      } catch (e) {
+        debugPrint("Cache parse error: $e");
+      }
+    } else {
+      if (mounted) {
+        setState(() {
+          _temperature = prefs.getInt('last_temperature');
+          _weatherCode = prefs.getInt('last_weather_code');
+          _currentDescription = _getWeatherDescription(_weatherCode);
+          _currentIcon = _getWeatherIcon(_weatherCode, true);
+          _currentIconColor = _getWeatherIconColor(_weatherCode, true);
+        });
+      }
+    }
+
+    _checkAndFetchWeather();
+  }
+
+  void _scheduleTopOfHourWeatherSync() {
+    final now = DateTime.now();
+    DateTime nextHour = DateTime(now.year, now.month, now.day, now.hour + 1, 0, 2);
+    Duration durationUntilNextHour = nextHour.difference(now);
+
+    _hourlySyncTimer?.cancel();
+    _hourlySyncTimer = Timer(durationUntilNextHour, () {
+      _fetchWeather();
+      _scheduleTopOfHourWeatherSync();
+    });
+  }
+
+  Future<void> _checkAndFetchWeather() async {
+    final prefs = await SharedPreferences.getInstance();
+    final lastFetchMs = prefs.getInt('last_fetch_time_ms') ?? 0;
+    final lastFetch = DateTime.fromMillisecondsSinceEpoch(lastFetchMs);
+    final now = DateTime.now();
+
+    bool crossedHour = now.hour != lastFetch.hour ||
+        now.day != lastFetch.day ||
+        now.month != lastFetch.month ||
+        now.year != lastFetch.year;
+
+    if (now.difference(lastFetch).inMinutes > 30 || _temperature == null || crossedHour) {
+      _fetchWeather();
+    }
+
+    _scheduleTopOfHourWeatherSync();
+  }
+
+  void _parseWeatherData(Map<String, dynamic> data) {
+    final current = data['current'];
+    final temp = (current['temperature_2m'] as num).round();
+    final code = (current['weathercode'] as num).toInt();
+    final currentIsDay = (current['is_day'] as num).toInt() == 1;
+
+    final String currentDesc = _getWeatherDescription(code);
+    final IconData curIcon = _getWeatherIcon(code, currentIsDay);
+    final Color curIconColor = _getWeatherIconColor(code, currentIsDay);
+
+    final feelsLikeNum = (current['apparent_temperature'] as num).round();
+    final humidityNum = (current['relative_humidity_2m'] as num).round();
+    final windSpeedNum = (current['wind_speed_10m'] as num).round();
+    final windDirDegrees = (current['wind_direction_10m'] as num).toInt();
+    final String windDir = _getWindDirection(windDirDegrees);
+
+    final double uvIndexRaw = (data['daily']['uv_index_max'][0] as num).toDouble();
+    final String uvIndexStr = "${uvIndexRaw.round()} (${_getUvDescription(uvIndexRaw)})";
+
+    final String sunriseIso = data['daily']['sunrise'][0] as String;
+    final String sunriseTime = _formatTime(sunriseIso);
+
+    List<DailyForecastData> dailyList = [];
+    if (data['daily'] != null) {
+      final daily = data['daily'];
+      final times = daily['time'] as List;
+      final codes = daily['weathercode'] as List;
+      final maxs = daily['temperature_2m_max'] as List;
+      final mins = daily['temperature_2m_min'] as List;
+
+      for (int i = 0; i < times.length && i < 5; i++) {
+        DateTime date = DateTime.parse(times[i]);
+        int dCode = (codes[i] as num).toInt();
+        int dMax = (maxs[i] as num).round();
+        int dMin = (mins[i] as num).round();
+
+        dailyList.add(DailyForecastData(
+          day: _getDayName(date.weekday),
+          icon: _getWeatherIcon(dCode, true),
+          iconColor: _getWeatherIconColor(dCode, true),
+          temp: "$dMax°/$dMin°",
+          description: _getWeatherDescription(dCode),
+        ));
+      }
+    }
+
+    List<HourlyForecastData> hourlyList = [];
+    int precipProbNum = 0;
+
+    if (data['hourly'] != null) {
+      final hourly = data['hourly'];
+      final times = hourly['time'] as List;
+      final codes = hourly['weathercode'] as List;
+      final temps = hourly['temperature_2m'] as List;
+      final isDays = hourly['is_day'] as List;
+      final precipProbs = hourly['precipitation_probability'] as List;
+
+      DateTime now = DateTime.now();
+      int currentIndex = 0;
+      for (int i = 0; i < times.length; i++) {
+        DateTime t = DateTime.parse(times[i]);
+        if (t.isAfter(now) || (t.hour == now.hour && t.day == now.day)) {
+          currentIndex = i;
+          break;
+        }
+      }
+
+      precipProbNum = (precipProbs[currentIndex] as num).round();
+
+      for (int i = currentIndex; i < currentIndex + 6 && i < times.length; i++) {
+        DateTime t = DateTime.parse(times[i]);
+        int hCode = (codes[i] as num).toInt();
+        int hTemp = (temps[i] as num).round();
+        bool hIsDay = (isDays[i] as num).toInt() == 1;
+
+        hourlyList.add(HourlyForecastData(
+          time: _getFormattedHour(t),
+          icon: _getWeatherIcon(hCode, hIsDay),
+          iconColor: _getWeatherIconColor(hCode, hIsDay),
+          temp: "$hTemp°C",
+        ));
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        _temperature = temp;
+        _weatherCode = code;
+        _currentDescription = currentDesc;
+        _currentIcon = curIcon;
+        _currentIconColor = curIconColor;
+
+        _feelsLike = "$feelsLikeNum°C";
+        _humidity = "$humidityNum%";
+        _wind = "$windSpeedNum mph $windDir";
+        _precipitation = "$precipProbNum%";
+        _uvIndex = uvIndexStr;
+        _sunrise = sunriseTime;
+
+        _forecastData = dailyList;
+        _hourlyData = hourlyList;
+      });
+    }
+  }
+
+  Future<void> _fetchWeather() async {
+    if (_isLoadingWeather) return;
+    if (mounted) setState(() => _isLoadingWeather = true);
+
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return;
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) return;
+      }
+      if (permission == LocationPermission.deniedForever) return;
+
+      Position? position;
+      try {
+        position = await Geolocator.getLastKnownPosition();
+      } catch (_) {}
+
+      position ??= await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(accuracy: LocationAccuracy.low));
+
+      final url = Uri.parse(
+          'https://api.open-meteo.com/v1/forecast?latitude=${position.latitude}&longitude=${position.longitude}'
+          '&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weathercode,wind_speed_10m,wind_direction_10m'
+          '&hourly=temperature_2m,weathercode,is_day,precipitation_probability'
+          '&daily=weathercode,temperature_2m_max,temperature_2m_min,sunrise,uv_index_max'
+          '&wind_speed_unit=mph&timezone=auto');
+
+      final response = await http.get(url);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('weather_json_cache', response.body);
+        await prefs.setInt('last_fetch_time_ms', DateTime.now().millisecondsSinceEpoch);
+        await prefs.setInt('last_temperature', (data['current']['temperature_2m'] as num).round());
+        await prefs.setInt('last_weather_code', (data['current']['weathercode'] as num).toInt());
+
+        _parseWeatherData(data);
+      }
+    } catch (e) {
+      debugPrint("Error fetching weather: $e");
+    } finally {
+      if (mounted) setState(() => _isLoadingWeather = false);
+    }
+  }
+
+  // --- Helpers ---
+
+  String _getDayName(int weekday) {
+    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    return days[weekday - 1];
+  }
+
+  String _getFormattedHour(DateTime time) {
+    int hour = time.hour;
+    if (hour == 0) return "12 AM";
+    if (hour < 12) return "$hour AM";
+    if (hour == 12) return "12 PM";
+    return "${hour - 12} PM";
+  }
+
+  String _formatTime(String isoTime) {
+    DateTime time = DateTime.parse(isoTime);
+    int hour = time.hour;
+    int minute = time.minute;
+    String ampm = hour >= 12 ? "PM" : "AM";
+    hour = hour % 12;
+    if (hour == 0) hour = 12;
+    String minuteStr = minute.toString().padLeft(2, '0');
+    return "$hour:$minuteStr $ampm";
+  }
+
+  String _getWindDirection(int degrees) {
+    const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+    int index = ((degrees + 22.5) % 360 / 45).floor();
+    return directions[index];
+  }
+
+  String _getUvDescription(double uv) {
+    if (uv < 3) return "Low";
+    if (uv < 6) return "Moderate";
+    if (uv < 8) return "High";
+    if (uv < 11) return "Very High";
+    return "Extreme";
+  }
+
+  String _getWeatherDescription(int? code) {
+    if (code == null) return "Unknown";
+    if (code == 0) return "Clear";
+    if (code >= 1 && code <= 3) return "Cloudy";
+    if (code >= 45 && code <= 48) return "Fog";
+    if (code >= 51 && code <= 67) return "Rain";
+    if (code >= 71 && code <= 77) return "Snow";
+    if (code >= 80 && code <= 82) return "Showers";
+    if (code >= 95 && code <= 99) return "Storm";
+    return "Clear";
+  }
+
+  IconData _getWeatherIcon(int? code, [bool isDay = true]) {
+    if (code == null) return CupertinoIcons.question;
+    if (code == 0) return isDay ? CupertinoIcons.sun_max_fill : CupertinoIcons.moon_stars_fill;
+    if (code >= 1 && code <= 3) return isDay ? CupertinoIcons.cloud_sun_fill : CupertinoIcons.cloud_moon_fill;
+    if (code >= 45 && code <= 48) return CupertinoIcons.cloud_fog_fill;
+    if (code >= 51 && code <= 67) return CupertinoIcons.cloud_rain_fill;
+    if (code >= 71 && code <= 77) return CupertinoIcons.snow;
+    if (code >= 80 && code <= 82) return CupertinoIcons.cloud_heavyrain_fill;
+    if (code >= 95 && code <= 99) return CupertinoIcons.cloud_bolt_fill;
+    return isDay ? CupertinoIcons.sun_max_fill : CupertinoIcons.moon_stars_fill;
+  }
+
+  Color _getWeatherIconColor(int? code, [bool isDay = true]) {
+    if (code == 0) return isDay ? Colors.orange.shade300 : Colors.indigo.shade300;
+    if (code != null && code >= 1 && code <= 3) return isDay ? Colors.white : Colors.indigo.shade200;
+    return Colors.white;
+  }
+
+  // --- Expand / Collapse ---
+
+  void _collapse() {
+    setState(() => _isExpanded = false);
+    widget.onExpandedChanged?.call(false);
+  }
+
+  void _expand() {
+    _checkAndFetchWeather();
+    setState(() => _isExpanded = true);
+    widget.onExpandedChanged?.call(true);
+  }
+
+  // --- UI ---
+
+  @override
+  Widget build(BuildContext context) {
+    if (_temperature == null) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 40),
+      child: AnimatedSize(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOutCubic,
+        alignment: Alignment.topCenter,
+        clipBehavior: Clip.antiAlias,
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 150),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          transitionBuilder: (Widget child, Animation<double> animation) {
+            return FadeTransition(opacity: animation, child: child);
+          },
+          layoutBuilder: (Widget? currentChild, List<Widget> previousChildren) {
+            return Stack(
+              alignment: Alignment.topCenter,
+              clipBehavior: Clip.none,
+              children: <Widget>[
+                ...previousChildren.map((Widget child) {
+                  return Positioned(top: 0, left: 0, right: 0, child: child);
+                }),
+                if (currentChild != null) currentChild,
+              ],
+            );
+          },
+          child: _isExpanded
+              ? _buildExpanded(key: const ValueKey('weather_expanded'))
+              : _buildPill(key: const ValueKey('weather_pill')),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPill({Key? key}) {
+    return GestureDetector(
+      key: key,
+      onTap: _expand,
+      child: Center(
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(_currentIcon, color: _currentIconColor, size: 16),
+                  const SizedBox(width: 6),
+                  Text(
+                    "${_temperature ?? '--'}°C",
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    _currentDescription,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.7),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w400,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildExpanded({Key? key}) {
+    return GestureDetector(
+      key: key,
+      onVerticalDragEnd: (_) => _collapse(),
+      child: Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.3),
+            width: 1.2,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.1),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(27),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+            child: Container(
+              color: Colors.white.withValues(alpha: 0.2),
+              child: WeatherForecastWidget(
+                initialViewMode: ForecastViewMode.details,
+                forecastData: _forecastData,
+                hourlyData: _hourlyData,
+                currentTemp: "${_temperature ?? '--'}°C",
+                currentDescription: _currentDescription,
+                currentIcon: _currentIcon,
+                currentIconColor: _currentIconColor,
+                feelsLike: _feelsLike,
+                wind: _wind,
+                precipitation: _precipitation,
+                humidity: _humidity,
+                uvIndex: _uvIndex,
+                sunrise: _sunrise,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

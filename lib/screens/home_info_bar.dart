@@ -15,6 +15,7 @@ import '../widgets/app_drawer.dart';
 import '../widgets/screen_dock.dart';
 import '../widgets/song_player.dart';
 import '../widgets/clock_capsule.dart';
+import '../widgets/weather_pill.dart';
 import '../pills/dynamic_pill.dart';
 import '../pills/d_clock_pill.dart';
 import '../pills/d_calendar_pill.dart';
@@ -138,13 +139,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   Color _bgColor = Colors.black;
   String? _bgImagePath;
   bool _immersiveMode = false;
-  String _webLongPressAction = 'assistant';
-  String? _webLongPressCustomApp;
 
   int _lastCheckedDay = DateTime.now().day;
 
   // --- Layout Constants ---
-  static const int _maxHomeApps = 4;
+  static const int _maxHomeApps = 7;
 
   // --- Drawer Control ---
   final ValueNotifier<double> _drawerProgress = ValueNotifier(0.0);
@@ -593,8 +592,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
       _bgColor = Color(colorValue);
       _bgImagePath = prefs.getString('bg_image_path');
       _immersiveMode = prefs.getBool('immersive_mode') ?? false;
-      _webLongPressAction = prefs.getString('web_long_press_action') ?? 'assistant';
-      _webLongPressCustomApp = prefs.getString('web_long_press_custom_app');
     });
     _applyImmersiveMode();
   }
@@ -1057,14 +1054,62 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                 return Stack(
                                   children: [
                                     const SizedBox.expand(),
+                                    // TOP: Clock + Weather Pill + Brief + Music
                                     Positioned(
                                       top: 0,
                                       left: 0,
                                       right: 0,
-                                      child: GlassStatusBar(
-                                        opacity: 1.0,
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          GlassStatusBar(opacity: 1.0),
+                                          const SizedBox(height: 4),
+                                          WeatherPill(
+                                            onExpandedChanged: (expanded) {
+                                              setState(() => _isForecastVisible = expanded);
+                                            },
+                                          ),
+                                          // Morning Brief panel — animated show/hide
+                                          AnimatedCrossFade(
+                                            duration: const Duration(milliseconds: 120),
+                                            sizeCurve: Curves.easeOutCubic,
+                                            firstCurve: Curves.easeOutCubic,
+                                            secondCurve: Curves.easeInCubic,
+                                            crossFadeState: (_showMorningBrief && !_showPill && !_isAlarmRinging)
+                                                ? CrossFadeState.showFirst
+                                                : CrossFadeState.showSecond,
+                                            firstChild: Padding(
+                                              padding: const EdgeInsets.only(top: 12),
+                                              child: MorningBriefPanel(
+                                                weatherData: _weatherBriefData,
+                                                calendarData: _calendarBriefData,
+                                                healthData: _healthBriefData,
+                                                onDismiss: _dismissMorningBrief,
+                                                onRefreshHealth: _refreshHealthBrief,
+                                              ),
+                                            ),
+                                            secondChild: const SizedBox(width: double.infinity),
+                                          ),
+                                          // Music Player
+                                          Offstage(
+                                            offstage: !_isPlayerVisible || _isAlarmRinging,
+                                            child: Padding(
+                                              padding: const EdgeInsets.only(top: 12),
+                                              child: SongPlayer(
+                                                onVisibilityChanged: (visible) {
+                                                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                                                    if (mounted && _isPlayerVisible != visible) {
+                                                      setState(() => _isPlayerVisible = visible);
+                                                    }
+                                                  });
+                                                },
+                                              ),
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ),
+                                    // BOTTOM: Status Pills + Dock
                                     Positioned(
                                       bottom: 0,
                                       left: 0,
@@ -1073,7 +1118,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                         groupId: 'dock_region',
                                         onTapOutside: (event) {
                                           if (_isAlarmRinging) {
-                                            return; 
+                                            return;
                                           } else if (_showPill && _isCalendarMode && _isViewingEvents) {
                                             setState(() {
                                               _isViewingEvents = false;
@@ -1086,59 +1131,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                         child: Column(
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
-                                            // Morning Brief panel — animated show/hide
-                                            AnimatedCrossFade(
-                                              duration: const Duration(milliseconds: 120),
-                                              sizeCurve: Curves.easeOutCubic,
-                                              firstCurve: Curves.easeOutCubic,
-                                              secondCurve: Curves.easeInCubic,
-                                              crossFadeState: (_showMorningBrief && !_showPill && !_isAlarmRinging && !_isForecastVisible)
-                                                  ? CrossFadeState.showFirst
-                                                  : CrossFadeState.showSecond,
-                                              firstChild: Padding(
-                                                padding: const EdgeInsets.only(bottom: 16),
-                                                child: MorningBriefPanel(
-                                                  weatherData: _weatherBriefData,
-                                                  calendarData: _calendarBriefData,
-                                                  healthData: _healthBriefData,
-                                                  onDismiss: _dismissMorningBrief,
-                                                  onRefreshHealth: _refreshHealthBrief,
-                                                ),
-                                              ),
-                                              secondChild: const SizedBox(width: double.infinity),
-                                            ),
                                             // Active alarm/timer status pills
                                             if (!_showPill && !_isAlarmRinging)
                                               _buildStatusPills(),
-                                            Offstage(
-                                              offstage: !_isPlayerVisible || _isAlarmRinging,
-                                              child: Padding(
-                                                padding: const EdgeInsets.only(bottom: 16),
-                                                child: SongPlayer(
-                                                  onVisibilityChanged: (visible) {
-                                                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                                                      if (mounted && _isPlayerVisible != visible) {
-                                                        setState(() => _isPlayerVisible = visible);
-                                                      }
-                                                    });
-                                                  },
-                                                ),
-                                              ),
-                                            ),
                                             
                                             ScreenDock(
                                               isDragging: _isDragging,
-                                              isAlarmMode: _isAlarmMode,
-                                              isAlarmRinging: _isAlarmRinging,
-                                              isViewingAlarms: _isViewingAlarms,
-                                              isStopwatchMode: _isStopwatchMode,
-                                              isTimerMode: _isTimerMode,
-                                              isCalendarMode: _isCalendarMode,
-                                              webLongPressAction: _webLongPressAction,
-                                              webLongPressCustomApp: _webLongPressCustomApp,
-                                              onForecastVisibilityChanged: (visible) {
-                                                setState(() => _isForecastVisible = visible);
-                                              },
+                                              showApps: !_showPill && !_isAlarmRinging,
                                               onRemove: (app) {
                                                 setState(() {
                                                   _homeApps.removeWhere((key, value) => value.packageName == app.packageName);
