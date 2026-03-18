@@ -1,19 +1,14 @@
 import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'weather_brief_service.dart';
-import 'notification_brief_service.dart';
 import 'calendar_brief_service.dart';
 import 'health_brief_service.dart';
-import '../utils/app_launcher.dart';
-import '../utils/notification_categories.dart';
 
 class MorningBriefPanel extends StatefulWidget {
   final VoidCallback onDismiss;
   final VoidCallback? onRefreshHealth;
   final WeatherBriefData? weatherData;
-  final NotificationBriefData? notificationData;
   final CalendarBriefData? calendarData;
   final HealthBriefData? healthData;
 
@@ -22,7 +17,6 @@ class MorningBriefPanel extends StatefulWidget {
     required this.onDismiss,
     this.onRefreshHealth,
     this.weatherData,
-    this.notificationData,
     this.calendarData,
     this.healthData,
   });
@@ -34,7 +28,7 @@ class MorningBriefPanel extends StatefulWidget {
 class _MorningBriefPanelState extends State<MorningBriefPanel> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
-  static const int _totalPages = 5;
+  static const int _totalPages = 4;
 
   @override
   void dispose() {
@@ -81,9 +75,6 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
     _ => Colors.orange.shade300,
   };
 
-  IconData _categoryIcon(String category) => NotificationCategories.iconFor(category);
-  Color _categoryColor(String category) => NotificationCategories.colorFor(category);
-
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
@@ -127,7 +118,6 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
                         children: [
                           _buildGreetingPage(),
                           _buildWeatherPage(),
-                          _buildNotificationsPage(),
                           _buildCalendarPage(),
                           _buildHealthPage(),
                         ],
@@ -357,219 +347,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
     );
   }
 
-  Widget _buildNotificationsPage() {
-    final notifData = widget.notificationData;
-
-    // No notification access granted
-    if (notifData != null && !notifData.hasNotificationAccess) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.notifications_off_outlined,
-              color: Colors.white.withValues(alpha: 0.4),
-              size: 32,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Enable notification access to see\nimportant updates here',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.6),
-                fontSize: 13,
-                fontWeight: FontWeight.w400,
-                height: 1.4,
-              ),
-            ),
-            const SizedBox(height: 12),
-            GestureDetector(
-              onTap: () {
-                const MethodChannel('casi.launcher/media')
-                    .invokeMethod('openNotificationSettings');
-              },
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.2),
-                  ),
-                ),
-                child: const Text(
-                  'Open Settings',
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    // Still loading
-    if (notifData == null) {
-      return const Padding(
-        padding: EdgeInsets.all(24),
-        child: Center(
-          child: Text(
-            'Checking notifications...',
-            style: TextStyle(color: Colors.white54, fontSize: 14),
-          ),
-        ),
-      );
-    }
-
-    // No important notifications
-    if (notifData.items.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.check_circle_outline,
-              color: Colors.green.shade300,
-              size: 32,
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'All clear!',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w300,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'No important notifications right now',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.5),
-                fontSize: 13,
-                fontWeight: FontWeight.w400,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    // Show important notifications
-    final items = notifData.items;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 20, 16, 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                Icons.priority_high_rounded,
-                color: Colors.amber.shade300,
-                size: 16,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                'Things you should know',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.8),
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Expanded(
-            child: ListView.separated(
-              padding: EdgeInsets.zero,
-              physics: const BouncingScrollPhysics(),
-              itemCount: items.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 6),
-              itemBuilder: (context, index) {
-                final item = items[index];
-                final catIcon = _categoryIcon(item.appCategory);
-                final catColor = _categoryColor(item.appCategory);
-
-                return GestureDetector(
-                  onTap: () => AppLauncher.launchApp(item.packageName),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.06),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(catIcon, color: catColor, size: 16),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Text(
-                                    item.appLabel,
-                                    style: TextStyle(
-                                      color: catColor,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Expanded(
-                                    child: Text(
-                                      item.title,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 11.5,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              if (item.summary.isNotEmpty) ...[
-                                const SizedBox(height: 2),
-                                Text(
-                                  item.summary,
-                                  style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.55),
-                                    fontSize: 10.5,
-                                    fontWeight: FontWeight.w400,
-                                    height: 1.3,
-                                  ),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ── Panel 4: Calendar Events ────────────────────────────────────────────
+  // ── Panel 3: Calendar Events ────────────────────────────────────────────
 
   Widget _buildCalendarPage() {
     final calData = widget.calendarData;
@@ -795,7 +573,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
     );
   }
 
-  // ── Panel 5: Health & Fitness ───────────────────────────────────────────
+  // ── Panel 4: Health & Fitness ───────────────────────────────────────────
 
   Widget _buildHealthPage() {
     final health = widget.healthData;

@@ -22,7 +22,6 @@ import '../utils/app_launcher.dart';
 import '../widgets/notify_pill.dart';
 import '../morning_brief/morning_brief_panel.dart';
 import '../morning_brief/weather_brief_service.dart';
-import '../morning_brief/notification_brief_service.dart';
 import '../morning_brief/calendar_brief_service.dart';
 import '../morning_brief/health_brief_service.dart';
 import '../notification_history/notification_history_screen.dart';
@@ -130,7 +129,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   bool _showMorningBrief = true;
   int _morningBriefDismissDay = -1;
   WeatherBriefData? _weatherBriefData;
-  NotificationBriefData? _notificationBriefData;
   CalendarBriefData? _calendarBriefData;
   HealthBriefData? _healthBriefData;
   bool _isForecastVisible = false;
@@ -185,7 +183,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     _loadTimers();
     _loadMorningBriefState();
     _refreshWeatherBrief();
-    _refreshNotificationBrief();
     _refreshCalendarBrief();
     _refreshHealthBrief();
 
@@ -216,7 +213,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
       _checkAppChangesOnResume();
       _syncTimersOnResume();
       _refreshWeatherBrief();
-      _refreshNotificationBrief();
       _refreshCalendarBrief();
       _refreshHealthBrief();
       // Instantly close the drawer when returning to the launcher
@@ -305,7 +301,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
       if (_morningBriefDismissDay != today) {
         _showMorningBrief = true;
         _refreshWeatherBrief();
-        _refreshNotificationBrief();
         _refreshCalendarBrief();
         _refreshHealthBrief();
       }
@@ -649,7 +644,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
       _showMorningBrief = true;
     });
     _refreshWeatherBrief();
-    _refreshNotificationBrief();
     _refreshCalendarBrief();
     _refreshHealthBrief();
   }
@@ -672,15 +666,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     _notifSlideController.reverse().then((_) {
       if (mounted) setState(() => _isNotifHistoryOpen = false);
     });
-  }
-
-  Future<void> _refreshNotificationBrief() async {
-    final data = await NotificationBriefService.generateBrief();
-    if (mounted) {
-      setState(() {
-        _notificationBriefData = data;
-      });
-    }
   }
 
   Future<void> _refreshCalendarBrief() async {
@@ -1114,7 +1099,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                                 padding: const EdgeInsets.only(bottom: 16),
                                                 child: MorningBriefPanel(
                                                   weatherData: _weatherBriefData,
-                                                  notificationData: _notificationBriefData,
                                                   calendarData: _calendarBriefData,
                                                   healthData: _healthBriefData,
                                                   onDismiss: _dismissMorningBrief,
