@@ -132,6 +132,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   CalendarBriefData? _calendarBriefData;
   HealthBriefData? _healthBriefData;
   bool _isForecastVisible = false;
+  final GlobalKey _weatherPillKey = GlobalKey();
 
   // --- Settings ---
   String _bgType = 'color';
@@ -1062,8 +1063,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                         children: [
                                           GlassStatusBar(opacity: 1.0),
                                           const SizedBox(height: 4),
-                                          // Pill row: Event > Weather > Alarm > Timer
-                                          _buildPillRow(),
+                                          // Pill row: Alarm > Weather > Timer (clipped to prevent transient overflow)
+                                          ClipRect(child: _buildPillRow()),
                                           // Morning Brief panel — animated show/hide
                                           AnimatedCrossFade(
                                             duration: const Duration(milliseconds: 120),
@@ -1578,6 +1579,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     return bestIdx;
   }
 
+  // Fixed width for alarm & timer status pills so they always match
+  static const double _statusPillWidth = 105.0;
+
   Widget _buildPillRow() {
     // Build small status pills: Alarm (left) | Weather (center) | Timer (right)
     final nearestAlarm = _nearestAlarmLabel();
@@ -1588,97 +1592,118 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     // Hide status pills during active pill, alarm, or expanded weather
     final bool showStatusPills = !_showPill && !_isAlarmRinging && !_isForecastVisible;
 
-    // When forecast is expanded, just show the weather pill full-width
-    if (_isForecastVisible) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 40),
-        child: WeatherPill(
-          onExpandedChanged: (expanded) {
-            setState(() => _isForecastVisible = expanded);
-          },
-        ),
-      );
-    }
+    // GlobalKey preserves WeatherPill state (including _isExpanded) across layout changes
+    final weatherPill = WeatherPill(
+      key: _weatherPillKey,
+      onExpandedChanged: (expanded) {
+        setState(() => _isForecastVisible = expanded);
+      },
+    );
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Row(
-        children: [
-          // Left zone: alarm pill hugs the right edge (next to weather)
-          Expanded(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                if (showStatusPills && hasAlarm)
-                  Flexible(
-                    child: _buildStatusPill(
-                      icon: Icons.alarm,
-                      label: nearestAlarm,
-                      onTap: () {
-                        setState(() {
-                          _showPill = true;
-                          _isAlarmMode = false;
-                          _isViewingAlarms = true;
-                          _isStopwatchMode = false;
-                          _isTimerMode = false;
-                          _isCalendarMode = false;
-                          _isViewingEvents = false;
-                          _selectedAlarmIndex = null;
-                          _isEditingAlarm = false;
-                        });
-                      },
-                    ),
-                  ),
-              ],
-            ),
-          ),
-
-          // Gap between alarm and weather
-          SizedBox(width: showStatusPills && hasAlarm ? 4 : 0),
-
-          // Center: Weather pill (always centered)
-          WeatherPill(
-            key: const ValueKey('weather_pill_flex'),
-            onExpandedChanged: (expanded) {
-              setState(() => _isForecastVisible = expanded);
-            },
-          ),
-
-          // Gap between weather and timer
-          SizedBox(width: showStatusPills && hasTimer ? 4 : 0),
-
-          // Right zone: timer pill hugs the left edge (next to weather)
-          Expanded(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.start,
-              children: [
-                if (showStatusPills && hasTimer)
-                  Flexible(
-                    child: _buildStatusPill(
-                      icon: Icons.timer,
-                      label: _formatTimerTime(_appTimers[nearestTimer].remainingSeconds),
-                      onTap: () {
-                        setState(() {
-                          _showPill = true;
-                          _isTimerMode = true;
-                          _isStopwatchMode = false;
-                          _isAlarmMode = false;
-                          _isViewingAlarms = false;
-                          _isCalendarMode = false;
-                          _isViewingEvents = false;
-                          _isCreatingTimer = false;
-                          _isEditingTimer = false;
-                          _selectedTimerIndex = nearestTimer;
-                        });
-                      },
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ],
+    final alarmPill = SizedBox(
+      width: _statusPillWidth,
+      child: _buildStatusPill(
+        icon: Icons.alarm,
+        label: nearestAlarm ?? '',
+        onTap: () {
+          setState(() {
+            _showPill = true;
+            _isAlarmMode = false;
+            _isViewingAlarms = true;
+            _isStopwatchMode = false;
+            _isTimerMode = false;
+            _isCalendarMode = false;
+            _isViewingEvents = false;
+            _selectedAlarmIndex = null;
+            _isEditingAlarm = false;
+          });
+        },
       ),
     );
+
+    final timerPill = SizedBox(
+      width: _statusPillWidth,
+      child: _buildStatusPill(
+        icon: Icons.timer,
+        label: hasTimer ? _formatTimerTime(_appTimers[nearestTimer].remainingSeconds) : '',
+        textAlignment: Alignment.centerRight,
+        onTap: () {
+          setState(() {
+            _showPill = true;
+            _isTimerMode = true;
+            _isStopwatchMode = false;
+            _isAlarmMode = false;
+            _isViewingAlarms = false;
+            _isCalendarMode = false;
+            _isViewingEvents = false;
+            _isCreatingTimer = false;
+            _isEditingTimer = false;
+            _selectedTimerIndex = nearestTimer;
+          });
+        },
+      ),
+    );
+
+    final bool showAlarm = showStatusPills && hasAlarm;
+    final bool showTimer = showStatusPills && hasTimer;
+
+    if (showAlarm && showTimer) {
+      // 3 pills: Expanded(alarm right-aligned) | Weather | Expanded(timer left-aligned)
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: Row(
+          children: [
+            Expanded(
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [alarmPill],
+              ),
+            ),
+            const SizedBox(width: 4),
+            weatherPill,
+            const SizedBox(width: 4),
+            Expanded(
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.start,
+                children: [timerPill],
+              ),
+            ),
+          ],
+        ),
+      );
+    } else if (showAlarm) {
+      // 2 pills: center the alarm+weather pair together
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            alarmPill,
+            const SizedBox(width: 4),
+            weatherPill,
+          ],
+        ),
+      );
+    } else if (showTimer) {
+      // 2 pills: center the weather+timer pair together
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            weatherPill,
+            const SizedBox(width: 4),
+            timerPill,
+          ],
+        ),
+      );
+    } else {
+      // Weather only (or expanded forecast) — no Row so expanded width: double.infinity works
+      return Padding(
+        padding: EdgeInsets.symmetric(horizontal: _isForecastVisible ? 40 : 20),
+        child: weatherPill,
+      );
+    }
   }
 
   Widget _buildStatusPill({
@@ -1686,6 +1711,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     required String label,
     required VoidCallback onTap,
     VoidCallback? onLongPress,
+    Alignment textAlignment = Alignment.centerLeft,
   }) {
     return GestureDetector(
       onTap: onTap,
@@ -1702,16 +1728,18 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
               border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
             ),
             child: Row(
-              mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(icon, color: Colors.white, size: 13),
                 const SizedBox(width: 4),
-                Flexible(
-                  child: Text(
-                    label,
-                    style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w500),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                Expanded(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: textAlignment,
+                    child: Text(
+                      label,
+                      style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w500),
+                      maxLines: 1,
+                    ),
                   ),
                 ),
               ],
