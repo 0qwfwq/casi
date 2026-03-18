@@ -364,36 +364,33 @@ class _WeatherPillState extends State<WeatherPill> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     if (_temperature == null) return const SizedBox.shrink();
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 40),
-      child: AnimatedSize(
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeOutCubic,
-        alignment: Alignment.topCenter,
-        clipBehavior: Clip.antiAlias,
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 150),
-          switchInCurve: Curves.easeOutCubic,
-          switchOutCurve: Curves.easeInCubic,
-          transitionBuilder: (Widget child, Animation<double> animation) {
-            return FadeTransition(opacity: animation, child: child);
-          },
-          layoutBuilder: (Widget? currentChild, List<Widget> previousChildren) {
-            return Stack(
-              alignment: Alignment.topCenter,
-              clipBehavior: Clip.none,
-              children: <Widget>[
-                ...previousChildren.map((Widget child) {
-                  return Positioned(top: 0, left: 0, right: 0, child: child);
-                }),
-                if (currentChild != null) currentChild,
-              ],
-            );
-          },
-          child: _isExpanded
-              ? _buildExpanded(key: const ValueKey('weather_expanded'))
-              : _buildPill(key: const ValueKey('weather_pill')),
-        ),
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOutCubic,
+      alignment: Alignment.topCenter,
+      clipBehavior: Clip.antiAlias,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 150),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        transitionBuilder: (Widget child, Animation<double> animation) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+        layoutBuilder: (Widget? currentChild, List<Widget> previousChildren) {
+          return Stack(
+            alignment: Alignment.topCenter,
+            clipBehavior: Clip.none,
+            children: <Widget>[
+              ...previousChildren.map((Widget child) {
+                return Positioned(top: 0, left: 0, right: 0, child: child);
+              }),
+              if (currentChild != null) currentChild,
+            ],
+          );
+        },
+        child: _isExpanded
+            ? _buildExpanded(key: const ValueKey('weather_expanded'))
+            : _buildPill(key: const ValueKey('weather_pill')),
       ),
     );
   }
@@ -472,7 +469,6 @@ class _WeatherPillState extends State<WeatherPill> with WidgetsBindingObserver {
             child: Container(
               color: Colors.white.withValues(alpha: 0.2),
               child: WeatherForecastWidget(
-                initialViewMode: ForecastViewMode.details,
                 forecastData: _forecastData,
                 hourlyData: _hourlyData,
                 currentTemp: "${_temperature ?? '--'}°C",

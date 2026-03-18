@@ -55,15 +55,12 @@ class ScreenDock extends StatelessWidget {
     if (appCount <= 2) {
       iconSize = 44.0;
       spacing = 6.0;
-    } else if (appCount <= 4) {
+    } else if (appCount <= 5) {
       iconSize = 38.0;
       spacing = 6.0;
-    } else if (appCount <= 5) {
-      iconSize = 34.0;
-      spacing = 5.0;
     } else {
-      iconSize = 30.0;
-      spacing = 4.0;
+      iconSize = 38.0;
+      spacing = 3.0;
     }
 
     final sortedEntries = homeApps.entries.toList()

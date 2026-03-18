@@ -1064,11 +1064,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                         children: [
                                           GlassStatusBar(opacity: 1.0),
                                           const SizedBox(height: 4),
-                                          WeatherPill(
-                                            onExpandedChanged: (expanded) {
-                                              setState(() => _isForecastVisible = expanded);
-                                            },
-                                          ),
+                                          // Pill row: Event > Weather > Alarm > Timer
+                                          _buildPillRow(),
                                           // Morning Brief panel — animated show/hide
                                           AnimatedCrossFade(
                                             duration: const Duration(milliseconds: 120),
@@ -1131,10 +1128,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                         child: Column(
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
-                                            // Active alarm/timer status pills
-                                            if (!_showPill && !_isAlarmRinging)
-                                              _buildStatusPills(),
-                                            
                                             ScreenDock(
                                               isDragging: _isDragging,
                                               showApps: !_showPill && !_isAlarmRinging,
@@ -1593,6 +1586,127 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     return _calendarEvents[today] ?? [];
   }
 
+  Widget _buildPillRow() {
+    // Build small status pills for the row: Event > Weather > Alarm > Timer
+    final nearestAlarm = _nearestAlarmLabel();
+    final nearestTimer = _nearestTimerIndex();
+    final todayEvts = _todayEvents();
+    final bool hasAlarm = nearestAlarm != null;
+    final bool hasTimer = nearestTimer != null;
+    final bool hasEvents = todayEvts.isNotEmpty && !_eventPillDismissed;
+
+    final String eventLabel;
+    if (todayEvts.length == 1) {
+      eventLabel = todayEvts.first.title;
+    } else if (todayEvts.length > 1) {
+      eventLabel = '+${todayEvts.length}';
+    } else {
+      eventLabel = '';
+    }
+
+    // Hide status pills during active pill, alarm, or expanded weather
+    final bool showStatusPills = !_showPill && !_isAlarmRinging && !_isForecastVisible;
+
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: _isForecastVisible ? 40 : 20),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: _isForecastVisible ? MainAxisSize.max : MainAxisSize.min,
+        children: [
+          // Event pill (left of weather)
+          if (showStatusPills && hasEvents) ...[
+            Flexible(
+              child: _buildStatusPill(
+                icon: Icons.event,
+                label: eventLabel,
+                onTap: () {
+                  setState(() {
+                    _showPill = true;
+                    _isCalendarMode = true;
+                    _isViewingEvents = true;
+                    _isAlarmMode = false;
+                    _isViewingAlarms = false;
+                    _isStopwatchMode = false;
+                    _isTimerMode = false;
+                    _selectedEventIndex = null;
+                    _isEditingAlarm = false;
+                    _calendarFocusedDay = DateTime.now();
+                  });
+                },
+                onLongPress: () {
+                  setState(() => _eventPillDismissed = true);
+                  NotifyPill.show(context, 'Events dismissed for today', icon: Icons.visibility_off);
+                },
+              ),
+            ),
+            const SizedBox(width: 4),
+          ],
+
+          // Weather pill (center) — always at same tree position via key
+          Flexible(
+            key: const ValueKey('weather_pill_flex'),
+            flex: 2,
+            fit: _isForecastVisible ? FlexFit.tight : FlexFit.loose,
+            child: WeatherPill(
+              onExpandedChanged: (expanded) {
+                setState(() => _isForecastVisible = expanded);
+              },
+            ),
+          ),
+
+          // Alarm pill (right of weather)
+          if (showStatusPills && hasAlarm) ...[
+            const SizedBox(width: 4),
+            Flexible(
+              child: _buildStatusPill(
+                icon: Icons.alarm,
+                label: nearestAlarm,
+                onTap: () {
+                  setState(() {
+                    _showPill = true;
+                    _isAlarmMode = false;
+                    _isViewingAlarms = true;
+                    _isStopwatchMode = false;
+                    _isTimerMode = false;
+                    _isCalendarMode = false;
+                    _isViewingEvents = false;
+                    _selectedAlarmIndex = null;
+                    _isEditingAlarm = false;
+                  });
+                },
+              ),
+            ),
+          ],
+
+          // Timer pill (far right)
+          if (showStatusPills && hasTimer) ...[
+            const SizedBox(width: 4),
+            Flexible(
+              child: _buildStatusPill(
+                icon: Icons.timer,
+                label: _formatTimerTime(_appTimers[nearestTimer].remainingSeconds),
+                onTap: () {
+                  setState(() {
+                    _showPill = true;
+                    _isTimerMode = true;
+                    _isStopwatchMode = false;
+                    _isAlarmMode = false;
+                    _isViewingAlarms = false;
+                    _isCalendarMode = false;
+                    _isViewingEvents = false;
+                    _isCreatingTimer = false;
+                    _isEditingTimer = false;
+                    _selectedTimerIndex = nearestTimer;
+                  });
+                },
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _buildStatusPill({
     required IconData icon,
     required String label,
@@ -1607,7 +1721,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(20),
@@ -1616,12 +1730,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(icon, color: Colors.white, size: 14),
-                const SizedBox(width: 6),
+                Icon(icon, color: Colors.white, size: 13),
+                const SizedBox(width: 4),
                 Flexible(
                   child: Text(
                     label,
-                    style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
+                    style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w500),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -1630,107 +1744,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
             ),
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildStatusPills() {
-    final nearestAlarm = _nearestAlarmLabel();
-    final nearestTimer = _nearestTimerIndex();
-    final todayEvts = _todayEvents();
-    final bool hasAlarm = nearestAlarm != null;
-    final bool hasTimer = nearestTimer != null;
-    final bool hasEvents = todayEvts.isNotEmpty && !_eventPillDismissed;
-
-    if (!hasAlarm && !hasTimer && !hasEvents) return const SizedBox.shrink();
-
-    final String eventLabel;
-    if (todayEvts.length == 1) {
-      eventLabel = todayEvts.first.title;
-    } else if (todayEvts.length > 1) {
-      eventLabel = '+${todayEvts.length} events';
-    } else {
-      eventLabel = '';
-    }
-
-    final pills = <Widget>[];
-
-    if (hasAlarm) {
-      pills.add(_buildStatusPill(
-        icon: Icons.alarm,
-        label: nearestAlarm,
-        onTap: () {
-          setState(() {
-            _showPill = true;
-            _isAlarmMode = false;
-            _isViewingAlarms = true;
-            _isStopwatchMode = false;
-            _isTimerMode = false;
-            _isCalendarMode = false;
-            _isViewingEvents = false;
-            _selectedAlarmIndex = null;
-            _isEditingAlarm = false;
-          });
-        },
-      ));
-    }
-
-    if (hasEvents) {
-      if (pills.isNotEmpty) pills.add(const SizedBox(width: 8));
-      pills.add(Flexible(
-        child: _buildStatusPill(
-          icon: Icons.event,
-          label: eventLabel,
-          onTap: () {
-            setState(() {
-              _showPill = true;
-              _isCalendarMode = true;
-              _isViewingEvents = true;
-              _isAlarmMode = false;
-              _isViewingAlarms = false;
-              _isStopwatchMode = false;
-              _isTimerMode = false;
-              _selectedEventIndex = null;
-              _isEditingAlarm = false;
-              _calendarFocusedDay = DateTime.now();
-            });
-          },
-          onLongPress: () {
-            setState(() => _eventPillDismissed = true);
-            NotifyPill.show(context, 'Events dismissed for today', icon: Icons.visibility_off);
-          },
-        ),
-      ));
-    }
-
-    if (hasTimer) {
-      if (pills.isNotEmpty) pills.add(const SizedBox(width: 8));
-      pills.add(_buildStatusPill(
-        icon: Icons.timer,
-        label: _formatTimerTime(_appTimers[nearestTimer].remainingSeconds),
-        onTap: () {
-          setState(() {
-            _showPill = true;
-            _isTimerMode = true;
-            _isStopwatchMode = false;
-            _isAlarmMode = false;
-            _isViewingAlarms = false;
-            _isCalendarMode = false;
-            _isViewingEvents = false;
-            _isCreatingTimer = false;
-            _isEditingTimer = false;
-            _selectedTimerIndex = nearestTimer;
-          });
-        },
-      ));
-    }
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12, left: 40, right: 40),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        mainAxisSize: MainAxisSize.min,
-        children: pills,
       ),
     );
   }
