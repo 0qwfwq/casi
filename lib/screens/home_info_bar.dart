@@ -26,7 +26,6 @@ import '../morning_brief/morning_brief_panel.dart';
 import '../morning_brief/weather_brief_service.dart';
 import '../morning_brief/calendar_brief_service.dart';
 import '../morning_brief/health_brief_service.dart';
-import '../notification_history/notification_history_screen.dart';
 
 class AppTimer {
   int totalSeconds;
@@ -72,6 +71,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   
   bool _isLoading = true;
   bool _isDragging = false;
+  AppInfo? _draggingApp;
   bool _isPlayerVisible = false;
 
   // --- Pill & Alarm State ---
@@ -149,20 +149,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   final DraggableScrollableController _drawerController = DraggableScrollableController();
   double _dragStartY = 0.0;
 
-  // --- Notification History Slide ---
-  late final AnimationController _notifSlideController;
-  bool _isNotifHistoryOpen = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-
-    _notifSlideController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 100),
-      reverseDuration: const Duration(milliseconds: 80),
-    );
 
     if (_cachedFullApps != null) {
       _apps = _cachedFullApps!;
@@ -197,7 +188,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     _countdownTimer?.cancel();
     _stopAlarmSound();
     _audioPlayer.dispose();
-    _notifSlideController.dispose();
     super.dispose();
   }
 
@@ -648,17 +638,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     }
   }
 
-  void _openNotificationHistory() {
-    setState(() => _isNotifHistoryOpen = true);
-    _notifSlideController.forward();
-  }
-
-  void _closeNotificationHistory() {
-    _notifSlideController.reverse().then((_) {
-      if (mounted) setState(() => _isNotifHistoryOpen = false);
-    });
-  }
-
   Future<void> _refreshCalendarBrief() async {
     final data = await CalendarBriefService.getTodayEvents();
     if (mounted) {
@@ -961,20 +940,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
       body: Stack(
         children: [
           _buildBackground(),
-          // Main content — slides right when notification history opens
-          SlideTransition(
-            position: Tween<Offset>(
-              begin: Offset.zero,
-              end: const Offset(1.0, 0.0),
-            ).animate(CurvedAnimation(
-              parent: _notifSlideController,
-              curve: Curves.easeOutCubic,
-            )),
-            child: GestureDetector(
+          GestureDetector(
             behavior: HitTestBehavior.translucent,
             onDoubleTap: () {
               if (_drawerProgress.value > 0.05 || _showPill || _isAlarmRinging ||
-                  _isForecastVisible || _isNotifHistoryOpen) {
+                  _isForecastVisible) {
                 return;
               }
               const MethodChannel('casi.launcher/apps').invokeMethod('lockScreen');
@@ -989,15 +959,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
               final double screenHeight = MediaQuery.of(context).size.height;
               if (_dragStartY < screenHeight - 60 && details.primaryVelocity! < -500) {
                 _drawerController.animateTo(
-                  0.75,
+                  0.50,
                   duration: const Duration(milliseconds: 120),
                   curve: Curves.easeOutCubic,
                 );
-              }
-            },
-            onHorizontalDragEnd: (details) {
-              if (details.primaryVelocity != null && details.primaryVelocity! > 300) {
-                _openNotificationHistory();
               }
             },
             child: NotificationListener<CalendarTapNotification>(
@@ -1123,22 +1088,35 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                               onRemove: (app) {
                                                 setState(() {
                                                   _homeApps.removeWhere((key, value) => value.packageName == app.packageName);
+                                                  _isDragging = false;
+                                                  _draggingApp = null;
                                                 });
                                                 _saveLayout();
                                               },
                                               onUninstall: (app) {
+                                                setState(() {
+                                                  _isDragging = false;
+                                                  _draggingApp = null;
+                                                });
                                                 try {
                                                   InstalledApps.uninstallApp(app.packageName);
                                                 } catch (e) {
                                                   debugPrint("Uninstall error: $e");
                                                 }
                                               },
+                                              onCancel: () => setState(() {
+                                                _isDragging = false;
+                                                _draggingApp = null;
+                                              }),
                                               homeApps: _homeApps,
                                               maxHomeApps: _maxHomeApps,
                                               onAppDropped: (index, app) => _onAppDropped(index, app),
                                               onAppTap: (app) => AppLauncher.launchApp(app.packageName),
-                                              onDragStarted: () => setState(() => _isDragging = true),
-                                              onDragEnded: () => setState(() => _isDragging = false),
+                                              onDragStarted: (app) => setState(() {
+                                                _isDragging = true;
+                                                _draggingApp = app;
+                                              }),
+                                              draggingApp: _draggingApp,
                                               activePill: _showPill
                                                   ? DynamicPill(
                                                       key: const ValueKey('main_dynamic_pill'),
@@ -1471,21 +1449,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
               ),
             ),
           ),
-          ), // SlideTransition (main content)
-          // Notification history — slides in from the left
-          if (_isNotifHistoryOpen)
-            SlideTransition(
-              position: Tween<Offset>(
-                begin: const Offset(-1.0, 0.0),
-                end: Offset.zero,
-              ).animate(CurvedAnimation(
-                parent: _notifSlideController,
-                curve: Curves.easeOutCubic,
-              )),
-              child: NotificationHistoryPanel(
-                onDismiss: _closeNotificationHistory,
-              ),
-            ),
         ],
       ),
       ),
@@ -1735,7 +1698,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   void _showHomescreenContextMenu(Offset position) {
     // Only show on bare wallpaper — not when drawer, pill, forecast, etc. are active
     if (_showMorningBrief || _showPill || _isAlarmRinging ||
-        _isForecastVisible || _isNotifHistoryOpen ||
+        _isForecastVisible ||
         _drawerProgress.value > 0.05) {
       return;
     }
@@ -1833,6 +1796,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
         }
       }
       _homeApps[newIndex] = data;
+      _isDragging = false;
+      _draggingApp = null;
     });
     _saveLayout();
   }

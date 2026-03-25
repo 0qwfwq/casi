@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:installed_apps/app_info.dart';
 import 'package:casi/design_system.dart';
@@ -8,6 +9,7 @@ class ScreenDock extends StatelessWidget {
 
   final void Function(AppInfo)? onRemove;
   final void Function(AppInfo)? onUninstall;
+  final VoidCallback? onCancel;
 
   final Widget? activePill;
 
@@ -15,8 +17,8 @@ class ScreenDock extends StatelessWidget {
   final int maxHomeApps;
   final void Function(int index, AppInfo app)? onAppDropped;
   final void Function(AppInfo app)? onAppTap;
-  final VoidCallback? onDragStarted;
-  final VoidCallback? onDragEnded;
+  final void Function(AppInfo app)? onDragStarted;
+  final AppInfo? draggingApp;
 
   const ScreenDock({
     super.key,
@@ -24,13 +26,14 @@ class ScreenDock extends StatelessWidget {
     this.showApps = true,
     this.onRemove,
     this.onUninstall,
+    this.onCancel,
     this.activePill,
     this.homeApps = const {},
     this.maxHomeApps = 7,
     this.onAppDropped,
     this.onAppTap,
     this.onDragStarted,
-    this.onDragEnded,
+    this.draggingApp,
   });
 
   Widget _buildAppIcon(AppInfo app, double iconSize) {
@@ -79,8 +82,7 @@ class ScreenDock extends StatelessWidget {
           builder: (context, candidateData, rejectedData) {
             return LongPressDraggable<AppInfo>(
               data: app,
-              onDragStarted: () => onDragStarted?.call(),
-              onDragEnd: (_) => onDragEnded?.call(),
+              onDragStarted: () => onDragStarted?.call(app),
               feedback: Material(
                 color: Colors.transparent,
                 child: _buildAppIcon(app, iconSize),
@@ -107,78 +109,129 @@ class ScreenDock extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          DragTarget<AppInfo>(
-            onAcceptWithDetails: (details) => onRemove?.call(details.data),
-            builder: (context, candidateData, rejectedData) {
-              final isHovered = candidateData.isNotEmpty;
-              return AnimatedContainer(
-                duration: CASIMotion.micro,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: CASISpacing.md + CASISpacing.xs,
-                  vertical: 10,
-                ),
-                decoration: BoxDecoration(
-                  color: isHovered
-                      ? CASIColors.alert.withValues(alpha: 0.6)
-                      : Colors.white.withValues(alpha: CASIElevation.base.bgAlpha),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: CASIElevation.card.borderAlpha),
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.close, color: CASIColors.textPrimary, size: CASIIcons.micro + 2),
-                    const SizedBox(width: CASISpacing.sm),
-                    Text(
-                      "Remove",
-                      style: CASITypography.caption.copyWith(
-                        color: CASIColors.textPrimary,
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
+          _buildGlassDragTarget(
+            onAccept: (app) => onRemove?.call(app),
+            onTap: draggingApp != null ? () => onRemove?.call(draggingApp!) : null,
+            icon: Icons.close,
+            label: 'Remove',
+            hoverColor: CASIColors.alert,
           ),
-          DragTarget<AppInfo>(
-            onAcceptWithDetails: (details) => onUninstall?.call(details.data),
-            builder: (context, candidateData, rejectedData) {
-              final isHovered = candidateData.isNotEmpty;
-              return AnimatedContainer(
-                duration: CASIMotion.micro,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: CASISpacing.md + CASISpacing.xs,
-                  vertical: 10,
-                ),
-                decoration: BoxDecoration(
-                  color: isHovered
-                      ? CASIColors.caution.withValues(alpha: 0.6)
-                      : Colors.white.withValues(alpha: CASIElevation.base.bgAlpha),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: CASIElevation.card.borderAlpha),
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.delete_outline, color: CASIColors.textPrimary, size: CASIIcons.micro + 2),
-                    const SizedBox(width: CASISpacing.sm),
-                    Text(
-                      "Uninstall",
-                      style: CASITypography.caption.copyWith(
-                        color: CASIColors.textPrimary,
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
+          _buildCancelTarget(),
+          _buildGlassDragTarget(
+            onAccept: (app) => onUninstall?.call(app),
+            onTap: draggingApp != null ? () => onUninstall?.call(draggingApp!) : null,
+            icon: Icons.delete_outline,
+            label: 'Uninstall',
+            hoverColor: CASIColors.caution,
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildCancelTarget() {
+    return DragTarget<AppInfo>(
+      onAcceptWithDetails: (_) => onCancel?.call(),
+      builder: (context, candidateData, rejectedData) {
+        final isHovered = candidateData.isNotEmpty;
+        return GestureDetector(
+          onTap: () => onCancel?.call(),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(24),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(
+                sigmaX: CASIGlass.blurStandard,
+                sigmaY: CASIGlass.blurStandard,
+              ),
+              child: AnimatedContainer(
+                duration: CASIMotion.micro,
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: isHovered
+                      ? Colors.white.withValues(alpha: 0.3)
+                      : Colors.white.withValues(alpha: CASIElevation.card.bgAlpha),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: CASIElevation.card.borderAlpha),
+                    width: 1.0,
+                  ),
+                ),
+                child: Center(
+                  child: Icon(
+                    Icons.close_rounded,
+                    color: isHovered ? CASIColors.textPrimary : CASIColors.textSecondary,
+                    size: CASIIcons.small,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildGlassDragTarget({
+    required void Function(AppInfo) onAccept,
+    VoidCallback? onTap,
+    required IconData icon,
+    required String label,
+    required Color hoverColor,
+  }) {
+    return DragTarget<AppInfo>(
+      onAcceptWithDetails: (details) => onAccept(details.data),
+      builder: (context, candidateData, rejectedData) {
+        final isHovered = candidateData.isNotEmpty;
+        return GestureDetector(
+          onTap: onTap,
+          child: ClipRRect(
+          borderRadius: BorderRadius.circular(CASIGlass.cornerStandard),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(
+              sigmaX: CASIGlass.blurStandard,
+              sigmaY: CASIGlass.blurStandard,
+            ),
+            child: AnimatedContainer(
+              duration: CASIMotion.micro,
+              padding: const EdgeInsets.symmetric(
+                horizontal: CASISpacing.md,
+                vertical: 12,
+              ),
+              decoration: BoxDecoration(
+                color: isHovered
+                    ? hoverColor.withValues(alpha: 0.4)
+                    : Colors.white.withValues(alpha: CASIElevation.card.bgAlpha),
+                borderRadius: BorderRadius.circular(CASIGlass.cornerStandard),
+                border: Border.all(
+                  color: isHovered
+                      ? hoverColor.withValues(alpha: 0.6)
+                      : Colors.white.withValues(alpha: CASIElevation.card.borderAlpha),
+                  width: 1.0,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    icon,
+                    color: isHovered ? hoverColor : CASIColors.textSecondary,
+                    size: CASIIcons.small,
+                  ),
+                  const SizedBox(width: CASISpacing.sm),
+                  Text(
+                    label,
+                    style: CASITypography.body2.copyWith(
+                      color: isHovered ? hoverColor : CASIColors.textPrimary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        );
+      },
     );
   }
 

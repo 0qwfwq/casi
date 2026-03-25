@@ -429,22 +429,6 @@ class NotificationBriefService {
     return NotificationBriefData(items: topItems, hasNotificationAccess: true);
   }
 
-  /// Fetches all stored notifications from the history (SharedPreferences).
-  /// Returns all notifications from the last 24 hours, sorted by timestamp
-  /// descending (newest first). Used by the notification history screen.
-  static Future<List<CapturedNotification>> getAllNotifications() async {
-    final hasAccess = await _checkAccess();
-    if (!hasAccess) return [];
-
-    final notifications = await _fetchNotifications('getNotifications');
-    if (notifications == null) return [];
-
-    final cutoff = DateTime.now().millisecondsSinceEpoch - _dayInMs;
-    final recent = notifications.where((n) => n.timestamp > cutoff).toList();
-
-    recent.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-    return recent;
-  }
 
   static String _truncate(String text, int maxLen) {
     if (text.length <= maxLen) return text;

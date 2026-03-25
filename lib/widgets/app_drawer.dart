@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:installed_apps/app_info.dart';
+import 'package:installed_apps/installed_apps.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:casi/utils/app_launcher.dart';
 import 'package:casi/design_system.dart';
@@ -41,9 +42,9 @@ class AppDrawer extends StatelessWidget {
         controller: controller,
         initialChildSize: 0.0,
         minChildSize: 0.0,
-        maxChildSize: 0.75,
+        maxChildSize: 1.0,
         snap: true,
-        snapSizes: const [0.0, 0.75],
+        snapSizes: const [0.0, 0.50],
         snapAnimationDuration: CASIMotion.micro,
         builder: (context, scrollController) {
           return _AppDrawerSheet(
@@ -89,8 +90,9 @@ class _AppDrawerSheet extends StatefulWidget {
 class _AppDrawerSheetState extends State<_AppDrawerSheet> {
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
 
-  Set<String> _pinnedPackages = {};
+  List<String> _pinnedPackages = [];
 
   String? _activeLetter;
   bool _isAlphabetDragging = false;
@@ -138,13 +140,13 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
     final prefs = await SharedPreferences.getInstance();
     final List<String>? pinned = prefs.getStringList('pinned_drawer_apps');
     if (pinned != null && mounted) {
-      setState(() => _pinnedPackages = pinned.toSet());
+      setState(() => _pinnedPackages = List<String>.from(pinned));
     }
   }
 
   Future<void> _savePinnedApps() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList('pinned_drawer_apps', _pinnedPackages.toList());
+    await prefs.setStringList('pinned_drawer_apps', _pinnedPackages);
   }
 
   void _togglePin(AppInfo app) {
@@ -163,10 +165,11 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
   // ── App Lists ─────────────────────────────────────────────────────────
 
   List<AppInfo> get _pinnedApps {
-    return widget.apps
-        .where((app) => _pinnedPackages.contains(app.packageName))
-        .toList()
-      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    final appMap = {for (final app in widget.apps) app.packageName: app};
+    return _pinnedPackages
+        .where((pkg) => appMap.containsKey(pkg))
+        .map((pkg) => appMap[pkg]!)
+        .toList();
   }
 
   List<AppInfo> get _unpinnedApps {
@@ -221,6 +224,7 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
   void dispose() {
     widget.progressNotifier.removeListener(_onDrawerProgressChanged);
     _searchController.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
@@ -256,9 +260,9 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                         opacity: contentOpacity,
                         sliver: SliverToBoxAdapter(
                           child: Padding(
-                            padding: const EdgeInsets.only(
+                            padding: EdgeInsets.only(
                               left: CASISpacing.md,
-                              right: 36,
+                              right: progress > 0.85 ? 36 : CASISpacing.md,
                             ),
                             child: _searchQuery.isNotEmpty
                                 ? _buildSearchResults()
@@ -274,19 +278,21 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                     ],
                   ),
                 ),
-                // Alphabet sidebar
-                Positioned(
-                  right: 20,
-                  top: 0,
-                  bottom: 10,
-                  child: Offstage(
-                    offstage: _searchQuery.isNotEmpty,
-                    child: Opacity(
-                      opacity: contentOpacity,
-                      child: _buildAlphabetSidebar(),
+                // Alphabet sidebar — only visible at full screen
+                if (progress > 0.85)
+                  Positioned(
+                    right: 20,
+                    top: 0,
+                    bottom: 10,
+                    child: Offstage(
+                      offstage: _searchQuery.isNotEmpty,
+                      child: AnimatedOpacity(
+                        opacity: ((progress - 0.85) / 0.15).clamp(0.0, 1.0),
+                        duration: CASIMotion.micro,
+                        child: _buildAlphabetSidebar(),
+                      ),
                     ),
                   ),
-                ),
                 // Search bar — glass.heavy spec (section 8.2)
                 Positioned(
                   left: 0,
@@ -316,6 +322,7 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                               ),
                               child: TextField(
                                 controller: _searchController,
+                                focusNode: _searchFocusNode,
                                 onChanged: _updateSearch,
                                 style: CASITypography.body1.copyWith(
                                   color: CASIColors.textPrimary,
@@ -396,7 +403,7 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Pinned section
+        // Pinned section — 6-column grid
         if (pinned.isNotEmpty) ...[
           Padding(
             padding: const EdgeInsets.only(
@@ -413,8 +420,20 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
               ),
             ),
           ),
-          for (final app in pinned)
-            _buildAppRow(app, isPinned: true),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 6,
+              childAspectRatio: 0.75,
+              mainAxisSpacing: CASISpacing.xs,
+              crossAxisSpacing: CASISpacing.xs,
+            ),
+            itemCount: pinned.length,
+            itemBuilder: (context, index) {
+              return _buildPinnedGridCell(pinned[index]);
+            },
+          ),
           // Separator — color.surface.divider (5% white hairline)
           Padding(
             padding: const EdgeInsets.symmetric(
@@ -511,6 +530,52 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
               ),
           ],
         ),
+      ),
+    );
+  }
+
+  // ── Pinned App Grid Cell ─────────────────────────────────────────────
+
+  Widget _buildPinnedGridCell(AppInfo app) {
+    final hasIcon = app.icon != null && app.icon!.isNotEmpty;
+
+    return GestureDetector(
+      onTap: () => widget.onAppTap(app),
+      onLongPressStart: (details) {
+        _showContextMenu(app, details.globalPosition);
+      },
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: SizedBox(
+              width: 40,
+              height: 40,
+              child: hasIcon
+                  ? Image.memory(
+                      app.icon!,
+                      width: 40,
+                      height: 40,
+                      gaplessPlayback: true,
+                      errorBuilder: (_, _, _) =>
+                          Icon(Icons.android, color: CASIColors.textSecondary, size: 36),
+                    )
+                  : Icon(Icons.android, color: CASIColors.textSecondary, size: 36),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            app.name,
+            style: CASITypography.caption.copyWith(
+              color: CASIColors.textPrimary,
+              fontSize: 10,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+          ),
+        ],
       ),
     );
   }
@@ -617,6 +682,39 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                                   const SizedBox(width: 12),
                                   Text(
                                     'Add to Home',
+                                    style: CASITypography.body2.copyWith(
+                                      color: CASIColors.textPrimary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          Container(
+                            height: 0.5,
+                            color: CASIColors.glassDivider,
+                          ),
+                          // App Info
+                          InkWell(
+                            onTap: () {
+                              Navigator.of(context).pop();
+                              InstalledApps.openSettings(app.packageName);
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: CASISpacing.md,
+                                vertical: 14,
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.info_outline,
+                                    color: CASIColors.textPrimary,
+                                    size: CASIIcons.standard,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Text(
+                                    'App Info',
                                     style: CASITypography.body2.copyWith(
                                       color: CASIColors.textPrimary,
                                     ),
