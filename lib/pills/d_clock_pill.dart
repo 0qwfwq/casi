@@ -139,7 +139,7 @@ class DClockPill extends StatelessWidget {
   });
 
   double _getDesiredHeight() {
-    if (isAlarmRinging) return 76.0;
+    if (isAlarmRinging) return 120.0;
 
     if (isStopwatchMode) {
       double lapsHeight = stopwatchLaps.isEmpty ? 0 : stopwatchLaps.length * 40.0;
@@ -165,7 +165,6 @@ class DClockPill extends StatelessWidget {
     if (isAlarmRinging) {
       return _RingingSlider(
         key: const ValueKey('ringing_slider'),
-        ringColor: Colors.white,
         onSnooze: onSnoozeRinging,
         onCancel: onCancelRinging,
       );
@@ -978,13 +977,11 @@ class DClockPill extends StatelessWidget {
 class _RingingSlider extends StatefulWidget {
   final VoidCallback? onSnooze;
   final VoidCallback? onCancel;
-  final Color ringColor;
 
   const _RingingSlider({
     super.key,
     this.onSnooze,
     this.onCancel,
-    required this.ringColor,
   });
 
   @override
@@ -1024,7 +1021,8 @@ class _RingingSliderState extends State<_RingingSlider> with TickerProviderState
   }
 
   void _onDragEnd(DragEndDetails details) {
-    final double maxDrag = 90.0;
+    final double trackWidth = DClockPill._fixedPillWidth - (CASISpacing.md * 2);
+    final double maxDrag = (trackWidth - 56) / 2;
     if (_dragOffset > maxDrag * 0.7) {
       widget.onCancel?.call(); // Stop
     } else if (_dragOffset < -maxDrag * 0.7) {
@@ -1040,7 +1038,9 @@ class _RingingSliderState extends State<_RingingSlider> with TickerProviderState
 
   @override
   Widget build(BuildContext context) {
-    final double maxDrag = 90.0;
+    final double trackWidth = DClockPill._fixedPillWidth - (CASISpacing.md * 2);
+    final double maxDrag = (trackWidth - 56) / 2;
+    final double normalizedDrag = (maxDrag > 0) ? (_dragOffset / maxDrag).clamp(-1.0, 1.0) : 0.0;
 
     return AnimatedBuilder(
       animation: _pulseController,
@@ -1048,75 +1048,115 @@ class _RingingSliderState extends State<_RingingSlider> with TickerProviderState
         final pulse = _pulseController.value;
         return Container(
           width: DClockPill._fixedPillWidth,
-          height: 76.0,
-          decoration: BoxDecoration(
-            color: widget.ringColor.withValues(alpha:0.1 + (pulse * 0.05)),
-            borderRadius: BorderRadius.circular(38),
-            border: Border.all(color: widget.ringColor.withValues(alpha:0.3 + (pulse * 0.2)), width: 1.5),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha:0.1 + (pulse * 0.1)),
-                blurRadius: 10 + (pulse * 4),
-                spreadRadius: 1,
-              )
-            ],
-          ),
-          child: Stack(
-            alignment: Alignment.center,
+          height: 120.0,
+          padding: const EdgeInsets.all(CASISpacing.md),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Positioned(
-                left: 20,
-                child: Opacity(
-                  opacity: (_dragOffset < 0) ? 1.0 : 0.4,
-                  child: const Row(
-                    children: [
-                      Icon(Icons.chevron_left, color: Colors.white, size: 24),
-                      SizedBox(width: 4),
-                      Text("Snooze", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-                    ],
+              // Ringing label with subtle pulse
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.notifications_active_rounded,
+                    color: CASIColors.alert.withValues(alpha: 0.6 + (pulse * 0.4)),
+                    size: CASIIcons.small,
                   ),
-                ),
-              ),
-              Positioned(
-                right: 20,
-                child: Opacity(
-                  opacity: (_dragOffset > 0) ? 1.0 : 0.4,
-                  child: const Row(
-                    children: [
-                      Text("Stop", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-                      SizedBox(width: 4),
-                      Icon(Icons.chevron_right, color: Colors.white, size: 24),
-                    ],
-                  ),
-                ),
-              ),
-              Positioned(
-                left: DClockPill._fixedPillWidth / 2 - 28 + _dragOffset,
-                child: GestureDetector(
-                  onHorizontalDragUpdate: (details) {
-                    if (_snapController.isAnimating) _snapController.stop();
-                    setState(() {
-                      _dragOffset += details.delta.dx;
-                      _dragOffset = _dragOffset.clamp(-maxDrag, maxDrag);
-                    });
-                  },
-                  onHorizontalDragEnd: _onDragEnd,
-                  child: Container(
-                    width: 56,
-                    height: 56,
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: CASIColors.bgPrimary,
-                          blurRadius: 8,
-                          offset: Offset(0, 4),
-                        )
-                      ],
+                  const SizedBox(width: CASISpacing.sm),
+                  Text(
+                    "Alarm Ringing",
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.7 + (pulse * 0.3)),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
                     ),
-                    child: const Icon(Icons.notifications_active_rounded, color: CASIColors.bgPrimary, size: 28),
                   ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              // Slide track — glass-on-glass
+              Container(
+                height: 52,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: CASIElevation.base.bgAlpha),
+                  borderRadius: BorderRadius.circular(26),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.04),
+                    width: 1.0,
+                  ),
+                ),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    // Snooze label (left) — fades in as you drag left
+                    Positioned(
+                      left: CASISpacing.md,
+                      child: Opacity(
+                        opacity: normalizedDrag < 0 ? (-normalizedDrag).clamp(0.3, 1.0) : 0.3,
+                        child: const Text(
+                          "Snooze",
+                          style: TextStyle(
+                            color: CASIColors.accentPrimary,
+                            fontWeight: FontWeight.w500,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ),
+                    // Stop label (right) — fades in as you drag right
+                    Positioned(
+                      right: CASISpacing.md,
+                      child: Opacity(
+                        opacity: normalizedDrag > 0 ? normalizedDrag.clamp(0.3, 1.0) : 0.3,
+                        child: const Text(
+                          "Stop",
+                          style: TextStyle(
+                            color: CASIColors.alert,
+                            fontWeight: FontWeight.w500,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ),
+                    // Draggable thumb — glass circle
+                    Positioned(
+                      left: (trackWidth - 44) / 2 + _dragOffset,
+                      child: GestureDetector(
+                        onHorizontalDragUpdate: (details) {
+                          if (_snapController.isAnimating) _snapController.stop();
+                          setState(() {
+                            _dragOffset += details.delta.dx;
+                            _dragOffset = _dragOffset.clamp(-maxDrag, maxDrag);
+                          });
+                        },
+                        onHorizontalDragEnd: _onDragEnd,
+                        child: Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white.withValues(alpha: CASIElevation.raised.bgAlpha),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: CASIElevation.raised.borderAlpha),
+                              width: 1.0,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.15),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.chevron_left_rounded,
+                            color: CASIColors.textSecondary,
+                            size: 22,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
