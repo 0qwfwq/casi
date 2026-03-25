@@ -9,6 +9,7 @@ import 'package:installed_apps/installed_apps.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:volume_controller/volume_controller.dart';
+import 'package:casi/design_system.dart';
 import 'settings_page.dart';
 import '../widgets/glass_header.dart';
 import '../widgets/app_drawer.dart';
@@ -828,44 +829,44 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
 
     showDialog(
       context: context,
-      barrierColor: Colors.black54, 
+      barrierColor: Colors.black54,
       builder: (context) {
         return Dialog(
           backgroundColor: Colors.transparent,
           elevation: 0,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+          insetPadding: const EdgeInsets.symmetric(horizontal: CASISpacing.lg),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(32),
+            borderRadius: BorderRadius.circular(CASIGlass.cornerSheet),
             child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+              filter: ImageFilter.blur(sigmaX: CASIGlass.blurHeavy, sigmaY: CASIGlass.blurHeavy),
               child: Container(
-                padding: const EdgeInsets.all(24),
+                padding: const EdgeInsets.all(CASISpacing.lg),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha:0.1),
-                  borderRadius: BorderRadius.circular(32),
-                  border: Border.all(color: Colors.white.withValues(alpha:0.2), width: 1.5),
+                  color: Colors.white.withValues(alpha: CASIElevation.card.bgAlpha),
+                  borderRadius: BorderRadius.circular(CASIGlass.cornerSheet),
+                  border: Border.all(color: Colors.white.withValues(alpha: CASIElevation.card.borderAlpha), width: 1.0),
                   boxShadow: [
-                    BoxShadow(color: Colors.black.withValues(alpha:0.2), blurRadius: 20, spreadRadius: 5)
+                    BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 20, spreadRadius: 5)
                   ]
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const Text(
-                      'New Event', 
-                      style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)
+                      'New Event',
+                      style: TextStyle(color: CASIColors.textPrimary, fontSize: 22, fontWeight: FontWeight.bold)
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: CASISpacing.lg),
                     TextField(
                       controller: titleController,
-                      style: const TextStyle(color: Colors.white, fontSize: 16),
+                      style: const TextStyle(color: CASIColors.textPrimary, fontSize: 16),
                       autofocus: true,
                       textCapitalization: TextCapitalization.sentences,
                       decoration: InputDecoration(
                         hintText: 'Event Title',
-                        hintStyle: TextStyle(color: Colors.white.withValues(alpha:0.5)),
+                        hintStyle: const TextStyle(color: CASIColors.textTertiary),
                         filled: true,
-                        fillColor: Colors.black.withValues(alpha:0.3),
+                        fillColor: CASIColors.bgPrimary.withValues(alpha: 0.5),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(20),
@@ -876,14 +877,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                     const SizedBox(height: 16),
                     TextField(
                       controller: descController,
-                      style: const TextStyle(color: Colors.white, fontSize: 16),
+                      style: const TextStyle(color: CASIColors.textPrimary, fontSize: 16),
                       maxLines: 3,
                       textCapitalization: TextCapitalization.sentences,
                       decoration: InputDecoration(
                         hintText: 'Description (Optional)',
-                        hintStyle: TextStyle(color: Colors.white.withValues(alpha:0.5)),
+                        hintStyle: const TextStyle(color: CASIColors.textTertiary),
                         filled: true,
-                        fillColor: Colors.black.withValues(alpha:0.3),
+                        fillColor: CASIColors.bgPrimary.withValues(alpha: 0.5),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(20),
@@ -901,7 +902,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                               padding: const EdgeInsets.symmetric(vertical: 16),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
                             ),
-                            child: const Text('Cancel', style: TextStyle(color: Colors.white70, fontSize: 16, fontWeight: FontWeight.w600)),
+                            child: const Text('Cancel', style: TextStyle(color: CASIColors.textSecondary, fontSize: 16, fontWeight: FontWeight.w600)),
                           ),
                         ),
                         const SizedBox(width: 16),
@@ -923,8 +924,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                               }
                             },
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.blueAccent.withValues(alpha:0.8),
-                              foregroundColor: Colors.white,
+                              backgroundColor: CASIColors.accentPrimary.withValues(alpha: 0.8),
+                              foregroundColor: CASIColors.textPrimary,
                               padding: const EdgeInsets.symmetric(vertical: 16),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
                               elevation: 0,
@@ -955,7 +956,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
         }
       },
       child: Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: CASIColors.bgPrimary,
       resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
@@ -1698,19 +1699,19 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
       onTap: onTap,
       onLongPress: onLongPress,
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(CASIGlass.cornerPill),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          filter: ImageFilter.blur(sigmaX: CASIGlass.blurStandard, sigmaY: CASIGlass.blurStandard),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+              color: Colors.white.withValues(alpha: CASIElevation.card.bgAlpha),
+              borderRadius: BorderRadius.circular(CASIGlass.cornerPill),
+              border: Border.all(color: Colors.white.withValues(alpha: CASIElevation.card.borderAlpha)),
             ),
             child: Row(
               children: [
-                Icon(icon, color: Colors.white, size: 13),
+                Icon(icon, color: CASIColors.textPrimary, size: 13),
                 const SizedBox(width: 4),
                 Expanded(
                   child: FittedBox(
@@ -1718,7 +1719,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                     alignment: textAlignment,
                     child: Text(
                       label,
-                      style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w500),
+                      style: const TextStyle(color: CASIColors.textPrimary, fontSize: 11, fontWeight: FontWeight.w500),
                       maxLines: 1,
                     ),
                   ),
@@ -1761,21 +1762,21 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
               child: Material(
                 color: Colors.transparent,
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(CASIGlass.cornerStandard),
                   child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+                    filter: ImageFilter.blur(sigmaX: CASIGlass.blurHeavy, sigmaY: CASIGlass.blurHeavy),
                     child: Container(
                       width: 200,
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(16),
+                        color: Colors.white.withValues(alpha: CASIElevation.float_.bgAlpha),
+                        borderRadius: BorderRadius.circular(CASIGlass.cornerStandard),
                         border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.3),
-                          width: 1.2,
+                          color: Colors.white.withValues(alpha: CASIElevation.float_.borderAlpha),
+                          width: 1.0,
                         ),
                       ),
                       child: InkWell(
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius: BorderRadius.circular(CASIGlass.cornerStandard),
                         onTap: () {
                           Navigator.of(ctx).pop();
                           _showMorningBriefAgain();
@@ -1784,9 +1785,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                           padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                           child: Row(
                             children: [
-                              Icon(Icons.wb_sunny_outlined, color: Colors.white, size: 20),
+                              Icon(Icons.wb_sunny_outlined, color: CASIColors.textPrimary, size: 20),
                               SizedBox(width: 12),
-                              Text('Show Brief', style: TextStyle(color: Colors.white, fontSize: 14)),
+                              Text('Show Brief', style: TextStyle(color: CASIColors.textPrimary, fontSize: 14)),
                             ],
                           ),
                         ),
@@ -1808,7 +1809,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
           ? Image.file(
               File(_bgImagePath!),
               fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) => Container(color: Colors.black),
+              errorBuilder: (context, error, stackTrace) => Container(color: CASIColors.bgPrimary),
             )
           : Container(color: _bgColor),
     );

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:installed_apps/app_info.dart';
+import 'package:casi/design_system.dart';
 
 class ScreenDock extends StatelessWidget {
   final bool isDragging;
@@ -41,9 +42,9 @@ class ScreenDock extends StatelessWidget {
             height: iconSize,
             gaplessPlayback: true,
             errorBuilder: (context, error, stackTrace) =>
-                Icon(Icons.android, color: Colors.white, size: iconSize),
+                Icon(Icons.android, color: CASIColors.textPrimary, size: iconSize),
           )
-        : Icon(Icons.android, color: Colors.white, size: iconSize);
+        : Icon(Icons.android, color: CASIColors.textPrimary, size: iconSize);
   }
 
   Widget _buildHomeAppRow() {
@@ -54,13 +55,13 @@ class ScreenDock extends StatelessWidget {
     double spacing;
     if (appCount <= 2) {
       iconSize = 44.0;
-      spacing = 6.0;
+      spacing = CASISpacing.sm;
     } else if (appCount <= 5) {
       iconSize = 38.0;
-      spacing = 6.0;
+      spacing = CASISpacing.sm;
     } else {
       iconSize = 38.0;
-      spacing = 3.0;
+      spacing = CASISpacing.xs;
     }
 
     final sortedEntries = homeApps.entries.toList()
@@ -111,21 +112,31 @@ class ScreenDock extends StatelessWidget {
             builder: (context, candidateData, rejectedData) {
               final isHovered = candidateData.isNotEmpty;
               return AnimatedContainer(
-                duration: const Duration(milliseconds: 100),
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                duration: CASIMotion.micro,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: CASISpacing.md + CASISpacing.xs,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
                   color: isHovered
-                      ? Colors.red.withValues(alpha: 0.6)
-                      : Colors.white.withValues(alpha: 0.1),
+                      ? CASIColors.alert.withValues(alpha: 0.6)
+                      : Colors.white.withValues(alpha: CASIElevation.base.bgAlpha),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: CASIElevation.card.borderAlpha),
+                  ),
                 ),
-                child: const Row(
+                child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.close, color: Colors.white, size: 16),
-                    SizedBox(width: 6),
-                    Text("Remove", style: TextStyle(color: Colors.white, fontSize: 12)),
+                    Icon(Icons.close, color: CASIColors.textPrimary, size: CASIIcons.micro + 2),
+                    const SizedBox(width: CASISpacing.sm),
+                    Text(
+                      "Remove",
+                      style: CASITypography.caption.copyWith(
+                        color: CASIColors.textPrimary,
+                      ),
+                    ),
                   ],
                 ),
               );
@@ -136,21 +147,31 @@ class ScreenDock extends StatelessWidget {
             builder: (context, candidateData, rejectedData) {
               final isHovered = candidateData.isNotEmpty;
               return AnimatedContainer(
-                duration: const Duration(milliseconds: 100),
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                duration: CASIMotion.micro,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: CASISpacing.md + CASISpacing.xs,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
                   color: isHovered
-                      ? Colors.orange.withValues(alpha: 0.6)
-                      : Colors.white.withValues(alpha: 0.1),
+                      ? CASIColors.caution.withValues(alpha: 0.6)
+                      : Colors.white.withValues(alpha: CASIElevation.base.bgAlpha),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: CASIElevation.card.borderAlpha),
+                  ),
                 ),
-                child: const Row(
+                child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.delete_outline, color: Colors.white, size: 16),
-                    SizedBox(width: 6),
-                    Text("Uninstall", style: TextStyle(color: Colors.white, fontSize: 12)),
+                    Icon(Icons.delete_outline, color: CASIColors.textPrimary, size: CASIIcons.micro + 2),
+                    const SizedBox(width: CASISpacing.sm),
+                    Text(
+                      "Uninstall",
+                      style: CASITypography.caption.copyWith(
+                        color: CASIColors.textPrimary,
+                      ),
+                    ),
                   ],
                 ),
               );
@@ -164,7 +185,12 @@ class ScreenDock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(40.0, 0, 40.0, 40.0),
+      padding: const EdgeInsets.fromLTRB(
+        CASISpacing.xl + CASISpacing.sm,
+        0,
+        CASISpacing.xl + CASISpacing.sm,
+        CASISpacing.xl + CASISpacing.sm,
+      ),
       child: SizedBox(
         width: double.infinity,
         child: Stack(
@@ -174,15 +200,15 @@ class ScreenDock extends StatelessWidget {
             // Active pill (clock/alarm/timer/calendar)
             AnimatedOpacity(
               opacity: isDragging ? 0.0 : 1.0,
-              duration: const Duration(milliseconds: 100),
+              duration: CASIMotion.micro,
               child: IgnorePointer(
                 ignoring: isDragging,
                 child: AnimatedSize(
-                  duration: const Duration(milliseconds: 100),
+                  duration: CASIMotion.micro,
                   curve: Curves.easeOutCubic,
                   alignment: Alignment.bottomCenter,
                   child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 100),
+                    duration: CASIMotion.micro,
                     transitionBuilder: (child, animation) {
                       return SlideTransition(
                         position: Tween<Offset>(
@@ -210,7 +236,7 @@ class ScreenDock extends StatelessWidget {
             // Home app row + drag targets
             AnimatedOpacity(
               opacity: showApps ? 1.0 : 0.0,
-              duration: const Duration(milliseconds: 100),
+              duration: CASIMotion.micro,
               child: IgnorePointer(
                 ignoring: !showApps,
                 child: Column(

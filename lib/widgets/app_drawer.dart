@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:installed_apps/app_info.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:casi/utils/app_launcher.dart';
+import 'package:casi/design_system.dart';
 
 // ─── Main AppDrawer Widget ──────────────────────────────────────────────────
 
@@ -43,7 +44,7 @@ class AppDrawer extends StatelessWidget {
         maxChildSize: 0.75,
         snap: true,
         snapSizes: const [0.0, 0.75],
-        snapAnimationDuration: const Duration(milliseconds: 120),
+        snapAnimationDuration: CASIMotion.micro,
         builder: (context, scrollController) {
           return _AppDrawerSheet(
             apps: apps,
@@ -89,15 +90,12 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
 
-  // Pinned favorites
   Set<String> _pinnedPackages = {};
 
-  // Alphabet index state
   String? _activeLetter;
   bool _isAlphabetDragging = false;
-  double _alphabetDragLocalY = 0.0; // Track finger position for morph effect
+  double _alphabetDragLocalY = 0.0;
 
-  // Section keys for scroll jumping
   final Map<String, GlobalKey> _sectionKeys = {};
 
   @override
@@ -205,7 +203,7 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
   // ── Alphabet Navigation ───────────────────────────────────────────────
 
   void _jumpToLetter(String letter) {
-    if (_activeLetter == letter) return; // Skip redundant jumps
+    if (_activeLetter == letter) return;
     _activeLetter = letter;
     HapticFeedback.selectionClick();
 
@@ -213,7 +211,7 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
     if (key?.currentContext != null) {
       Scrollable.ensureVisible(
         key!.currentContext!,
-        duration: Duration.zero, // Instant jump — no animation lag
+        duration: Duration.zero,
         alignment: 0.4,
       );
     }
@@ -234,11 +232,9 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
         final double screenWidth = MediaQuery.of(context).size.width;
         final double contentOpacity = (progress * 2).clamp(0.0, 1.0);
 
-        // Ensure section keys exist for all available letters
         for (final letter in _availableLetters) {
           _sectionKeys.putIfAbsent(letter, () => GlobalKey());
         }
-        // Remove stale keys
         _sectionKeys.removeWhere((k, _) => !_availableLetters.contains(k));
 
         return Align(
@@ -256,19 +252,20 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                     controller: widget.scrollController,
                     physics: const ClampingScrollPhysics(),
                     slivers: [
-                      // Content
                       SliverOpacity(
                         opacity: contentOpacity,
                         sliver: SliverToBoxAdapter(
                           child: Padding(
-                            padding: const EdgeInsets.only(left: 16, right: 36),
+                            padding: const EdgeInsets.only(
+                              left: CASISpacing.md,
+                              right: 36,
+                            ),
                             child: _searchQuery.isNotEmpty
                                 ? _buildSearchResults()
                                 : _buildAppList(),
                           ),
                         ),
                       ),
-                      // Bottom padding for search bar
                       SliverToBoxAdapter(
                         child: SizedBox(
                           height: MediaQuery.of(context).viewInsets.bottom + 80,
@@ -277,8 +274,7 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                     ],
                   ),
                 ),
-                // Alphabet sidebar - positioned on right edge
-                // Always in tree (Offstage) so search bar TextField keeps its index & focus
+                // Alphabet sidebar
                 Positioned(
                   right: 20,
                   top: 0,
@@ -291,36 +287,45 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                     ),
                   ),
                 ),
-                // Search bar
+                // Search bar — glass.heavy spec (section 8.2)
                 Positioned(
                   left: 0,
                   right: 0,
-                  bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+                  bottom: MediaQuery.of(context).viewInsets.bottom + CASISpacing.md,
                   child: Opacity(
                     opacity: contentOpacity,
                     child: Center(
                       child: SizedBox(
                         width: screenWidth * 0.6,
                         child: ClipRRect(
-                          borderRadius: BorderRadius.circular(30),
+                          borderRadius: BorderRadius.circular(CASISearchBarSpec.cornerRadius),
                           child: BackdropFilter(
-                            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                            filter: ImageFilter.blur(
+                              sigmaX: CASISearchBarSpec.blurRadius,
+                              sigmaY: CASISearchBarSpec.blurRadius,
+                            ),
                             child: Container(
+                              height: CASISearchBarSpec.height,
                               decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(30),
+                                color: Colors.white.withValues(alpha: CASISearchBarSpec.tintAlpha),
+                                borderRadius: BorderRadius.circular(CASISearchBarSpec.cornerRadius),
                                 border: Border.all(
-                                  color: Colors.white.withValues(alpha: 0.5),
-                                  width: 1.2,
+                                  color: Colors.white.withValues(alpha: CASIElevation.card.borderAlpha),
+                                  width: CASISearchBarSpec.focusBorderWidth,
                                 ),
                               ),
                               child: TextField(
                                 controller: _searchController,
                                 onChanged: _updateSearch,
-                                style: const TextStyle(color: Colors.white),
+                                style: CASITypography.body1.copyWith(
+                                  color: CASIColors.textPrimary,
+                                ),
+                                cursorColor: CASIColors.accentPrimary,
                                 decoration: InputDecoration(
-                                  hintText: 'Search apps',
-                                  hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
+                                  hintText: 'Search or ask',
+                                  hintStyle: CASITypography.body1.copyWith(
+                                    color: CASIColors.textTertiary,
+                                  ),
                                   suffixIcon: Padding(
                                     padding: const EdgeInsets.only(right: 14.0),
                                     child: Row(
@@ -329,23 +334,31 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                                         Material(
                                           color: Colors.transparent,
                                           child: InkWell(
-                                            borderRadius: BorderRadius.circular(30),
+                                            borderRadius: BorderRadius.circular(CASIGlass.cornerPill),
                                             onTap: () {
                                               AppLauncher.launchApp('com.google.ar.lens');
                                             },
-                                            child: const Icon(Icons.center_focus_strong, color: Colors.white70),
+                                            child: Icon(
+                                              Icons.center_focus_strong_outlined,
+                                              color: CASIColors.textSecondary,
+                                              size: CASISearchBarSpec.iconSize,
+                                            ),
                                           ),
                                         ),
-                                        const SizedBox(width: 8),
+                                        const SizedBox(width: CASISpacing.sm),
                                         Material(
                                           color: Colors.transparent,
                                           child: InkWell(
-                                            borderRadius: BorderRadius.circular(30),
+                                            borderRadius: BorderRadius.circular(CASIGlass.cornerPill),
                                             onTap: widget.onOpenSettings,
                                             onLongPress: () {
                                               AppLauncher.launchApp('com.android.settings');
                                             },
-                                            child: const Icon(Icons.settings, color: Colors.white70),
+                                            child: Icon(
+                                              Icons.settings_outlined,
+                                              color: CASIColors.textSecondary,
+                                              size: CASISearchBarSpec.iconSize,
+                                            ),
                                           ),
                                         ),
                                       ],
@@ -353,7 +366,10 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                                   ),
                                   filled: false,
                                   border: InputBorder.none,
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: CASISearchBarSpec.horizontalPadding,
+                                    vertical: 12,
+                                  ),
                                 ),
                               ),
                             ),
@@ -383,12 +399,15 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
         // Pinned section
         if (pinned.isNotEmpty) ...[
           Padding(
-            padding: const EdgeInsets.only(left: 16, top: 8, bottom: 4),
+            padding: const EdgeInsets.only(
+              left: CASISpacing.md,
+              top: CASISpacing.sm,
+              bottom: CASISpacing.xs,
+            ),
             child: Text(
               'PINNED',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.4),
-                fontSize: 11,
+              style: CASITypography.caption.copyWith(
+                color: CASIColors.textTertiary,
                 fontWeight: FontWeight.w500,
                 letterSpacing: 1.5,
               ),
@@ -396,32 +415,36 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
           ),
           for (final app in pinned)
             _buildAppRow(app, isPinned: true),
-          // Separator
+          // Separator — color.surface.divider (5% white hairline)
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.symmetric(
+              horizontal: CASISpacing.md,
+              vertical: CASISpacing.sm,
+            ),
             child: Container(
               height: 0.5,
-              color: Colors.white.withValues(alpha: 0.1),
+              color: CASIColors.glassDivider,
             ),
           ),
         ],
         // Alphabetical sections
         for (final entry in grouped.entries) ...[
-          // Section header
           Container(
             key: _sectionKeys[entry.key],
-            padding: const EdgeInsets.only(left: 16, top: 16, bottom: 6),
+            padding: const EdgeInsets.only(
+              left: CASISpacing.md,
+              top: CASISpacing.md,
+              bottom: CASISpacing.xs,
+            ),
             child: Text(
               entry.key,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.35),
-                fontSize: 12,
+              style: CASITypography.caption.copyWith(
+                color: CASIColors.textTertiary,
                 fontWeight: FontWeight.w400,
                 letterSpacing: 1.0,
               ),
             ),
           ),
-          // Apps in this section
           for (final app in entry.value)
             _buildAppRow(app, isPinned: false),
         ],
@@ -429,7 +452,7 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
     );
   }
 
-  // ── Single App Row ────────────────────────────────────────────────────
+  // ── Single App Row (section 4.4 Single Column Spec) ────────────────────
 
   Widget _buildAppRow(AppInfo app, {required bool isPinned}) {
     final hasIcon = app.icon != null && app.icon!.isNotEmpty;
@@ -440,38 +463,38 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
         _showContextMenu(app, details.globalPosition);
       },
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        // Row horizontal padding: 16dp each side (space.md)
+        padding: const EdgeInsets.symmetric(
+          horizontal: CASISpacing.md,
+          vertical: 10,
+        ),
         child: Row(
           children: [
-            // App icon
+            // App icon — 48dp x 48dp (section 4.4)
             ClipRRect(
               borderRadius: BorderRadius.circular(10),
               child: SizedBox(
-                width: 48,
-                height: 48,
+                width: CASIAppIconSpec.iconStandard,
+                height: CASIAppIconSpec.iconStandard,
                 child: hasIcon
                     ? Image.memory(
                         app.icon!,
-                        width: 48,
-                        height: 48,
+                        width: CASIAppIconSpec.iconStandard,
+                        height: CASIAppIconSpec.iconStandard,
                         gaplessPlayback: true,
                         errorBuilder: (_, _, _) =>
-                            const Icon(Icons.android, color: Colors.white54, size: 40),
+                            Icon(Icons.android, color: CASIColors.textSecondary, size: 40),
                       )
-                    : const Icon(Icons.android, color: Colors.white54, size: 40),
+                    : Icon(Icons.android, color: CASIColors.textSecondary, size: 40),
               ),
             ),
-            const SizedBox(width: 16),
-            // App name
+            // Icon-to-label padding: 16dp (space.md)
+            const SizedBox(width: CASIAppIconSpec.iconToLabelPadding),
+            // App name — type.body1 SemiBold (section 4.4)
             Expanded(
               child: Text(
                 app.name,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w400,
-                  height: 1.4,
-                ),
+                style: CASITypography.appLabel,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -479,11 +502,11 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
             // Pin indicator
             if (isPinned)
               Padding(
-                padding: const EdgeInsets.only(left: 8),
+                padding: const EdgeInsets.only(left: CASISpacing.sm),
                 child: Icon(
                   Icons.push_pin,
-                  size: 14,
-                  color: Colors.white.withValues(alpha: 0.3),
+                  size: CASIIcons.micro,
+                  color: CASIColors.textTertiary,
                 ),
               ),
           ],
@@ -492,7 +515,7 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
     );
   }
 
-  // ── Context Menu (Long Press) ─────────────────────────────────────────
+  // ── Context Menu (Long Press) — glass.float level ─────────────────────
 
   void _showContextMenu(AppInfo app, Offset position) {
     final screenSize = MediaQuery.of(context).size;
@@ -518,17 +541,20 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
               child: Material(
                 color: Colors.transparent,
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(CASIGlass.cornerStandard),
                   child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+                    filter: ImageFilter.blur(
+                      sigmaX: CASIGlass.blurHeavy,
+                      sigmaY: CASIGlass.blurHeavy,
+                    ),
                     child: Container(
                       width: 200,
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(16),
+                        color: Colors.white.withValues(alpha: CASIElevation.float_.bgAlpha),
+                        borderRadius: BorderRadius.circular(CASIGlass.cornerStandard),
                         border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.3),
-                          width: 1.2,
+                          color: Colors.white.withValues(alpha: CASIElevation.float_.borderAlpha),
+                          width: 1.0,
                         ),
                       ),
                       child: Column(
@@ -536,62 +562,101 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                         children: [
                           // Pin / Unpin
                           InkWell(
-                            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                            borderRadius: const BorderRadius.vertical(
+                              top: Radius.circular(CASIGlass.cornerStandard),
+                            ),
                             onTap: () {
                               Navigator.of(context).pop();
                               _togglePin(app);
                             },
                             child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: CASISpacing.md,
+                                vertical: 14,
+                              ),
                               child: Row(
                                 children: [
                                   Icon(
                                     pinned ? Icons.push_pin_outlined : Icons.push_pin,
-                                    color: Colors.white,
-                                    size: 20,
+                                    color: CASIColors.textPrimary,
+                                    size: CASIIcons.standard,
                                   ),
                                   const SizedBox(width: 12),
                                   Text(
                                     pinned ? 'Unpin' : 'Pin to Top',
-                                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                                    style: CASITypography.body2.copyWith(
+                                      color: CASIColors.textPrimary,
+                                    ),
                                   ),
                                 ],
                               ),
                             ),
                           ),
-                          Container(height: 0.5, color: Colors.white.withValues(alpha: 0.2)),
+                          Container(
+                            height: 0.5,
+                            color: CASIColors.glassDivider,
+                          ),
                           // Add to Home
                           InkWell(
                             onTap: () {
                               Navigator.of(context).pop();
                               widget.onAddToHome(app);
                             },
-                            child: const Padding(
-                              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: CASISpacing.md,
+                                vertical: 14,
+                              ),
                               child: Row(
                                 children: [
-                                  Icon(Icons.add_to_home_screen, color: Colors.white, size: 20),
-                                  SizedBox(width: 12),
-                                  Text('Add to Home', style: TextStyle(color: Colors.white, fontSize: 14)),
+                                  Icon(
+                                    Icons.add_to_home_screen_outlined,
+                                    color: CASIColors.textPrimary,
+                                    size: CASIIcons.standard,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Text(
+                                    'Add to Home',
+                                    style: CASITypography.body2.copyWith(
+                                      color: CASIColors.textPrimary,
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
                           ),
-                          Container(height: 0.5, color: Colors.white.withValues(alpha: 0.2)),
+                          Container(
+                            height: 0.5,
+                            color: CASIColors.glassDivider,
+                          ),
                           // Uninstall
                           InkWell(
-                            borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
+                            borderRadius: const BorderRadius.vertical(
+                              bottom: Radius.circular(CASIGlass.cornerStandard),
+                            ),
                             onTap: () {
                               Navigator.of(context).pop();
                               widget.onUninstall(app);
                             },
-                            child: const Padding(
-                              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: CASISpacing.md,
+                                vertical: 14,
+                              ),
                               child: Row(
                                 children: [
-                                  Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
-                                  SizedBox(width: 12),
-                                  Text('Uninstall', style: TextStyle(color: Colors.redAccent, fontSize: 14)),
+                                  Icon(
+                                    Icons.delete_outline,
+                                    color: CASIColors.alert,
+                                    size: CASIIcons.standard,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Text(
+                                    'Uninstall',
+                                    style: CASITypography.body2.copyWith(
+                                      color: CASIColors.alert,
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
@@ -619,11 +684,13 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
 
     if (filtered.isEmpty) {
       return Padding(
-        padding: const EdgeInsets.only(top: 60),
+        padding: const EdgeInsets.only(top: CASISpacing.hero),
         child: Center(
           child: Text(
-            'No apps found',
-            style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 16),
+            'No apps match that',
+            style: CASITypography.body1.copyWith(
+              color: CASIColors.textSecondary,
+            ),
           ),
         ),
       );
@@ -647,16 +714,14 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
     return SafeArea(
       child: LayoutBuilder(
         builder: (context, constraints) {
-          // Sidebar starts near vertical center and extends down
-          // Each letter gets a base height, the whole column aligns from center-down
           const double baseLetterSize = 10.0;
           const double maxLetterSize = 22.0;
-          const double morphRadius = 3.5; // How many letters away the effect reaches
+          const double morphRadius = 3.5;
           const double sidebarWidth = 28.0;
 
           final double availableHeight = constraints.maxHeight;
           final double letterSpacing = (availableHeight * 0.5) / letters.length;
-          final double topOffset = availableHeight * 0.42; // Start below center, easier to reach
+          final double topOffset = availableHeight * 0.42;
 
           return SizedBox(
             width: sidebarWidth,
@@ -682,7 +747,7 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                 if (letters[idx] != _activeLetter) {
                   _jumpToLetter(letters[idx]);
                 }
-                setState(() {}); // Rebuild for morph effect only
+                setState(() {});
               },
               onVerticalDragEnd: (_) {
                 setState(() => _isAlphabetDragging = false);
@@ -695,16 +760,15 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
               child: Stack(
                 clipBehavior: Clip.none,
                 children: [
-                  // Star icon for pinned apps
                   if (_pinnedPackages.isNotEmpty)
                     Positioned(
-                      top: topOffset - 16,
+                      top: topOffset - CASISpacing.md,
                       right: 0,
                       child: GestureDetector(
                         onTap: () {
                           widget.scrollController.animateTo(
                             0,
-                            duration: const Duration(milliseconds: 100),
+                            duration: CASIMotion.micro,
                             curve: Curves.easeOutCubic,
                           );
                         },
@@ -716,8 +780,8 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                               padding: const EdgeInsets.only(right: 5),
                               child: Icon(
                                 Icons.star_rounded,
-                                size: 12,
-                                color: Colors.white.withValues(alpha: 0.5),
+                                size: CASIIcons.micro,
+                                color: CASIColors.textSecondary,
                               ),
                             ),
                           ),
@@ -730,7 +794,6 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                       final isActive = _activeLetter == letter;
                       final double centerY = topOffset + (i * letterSpacing) + letterSpacing / 2;
 
-                      // Fisheye morph: letters near finger bulge outward
                       double fontSize = baseLetterSize;
                       double xOffset = 0.0;
 
@@ -739,10 +802,8 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                             (centerY - _alphabetDragLocalY).abs() / letterSpacing;
                         if (distFromFinger < morphRadius) {
                           final double t = 1.0 - (distFromFinger / morphRadius);
-                          // Smooth curve for the bulge
                           final double curve = sin(t * pi / 2);
                           fontSize = baseLetterSize + (maxLetterSize - baseLetterSize) * curve;
-                          // Push letters to the left so user's finger doesn't cover them
                           xOffset = -28.0 * curve;
                         }
                       } else if (isActive) {
@@ -751,7 +812,7 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
 
                       return Positioned(
                         top: centerY - fontSize / 2,
-                        right: -xOffset, // Move left = increase right offset? No: left of sidebar
+                        right: -xOffset,
                         child: GestureDetector(
                           onTap: () => _jumpToLetter(letter),
                           child: Transform.translate(
@@ -765,10 +826,10 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                                   padding: const EdgeInsets.only(right: 4),
                                   child: Text(
                                     letter,
-                                    style: TextStyle(
+                                    style: CASITypography.caption.copyWith(
                                       color: isActive
-                                          ? Colors.white
-                                          : Colors.white.withValues(alpha: 0.45),
+                                          ? CASIColors.textPrimary
+                                          : CASIColors.textTertiary,
                                       fontSize: fontSize,
                                       fontWeight: isActive || (_isAlphabetDragging && fontSize > 14)
                                           ? FontWeight.w600
@@ -806,14 +867,17 @@ class _GradientBackground extends StatelessWidget {
     return Positioned.fill(
       child: ClipRRect(
         borderRadius: const BorderRadius.vertical(
-          top: Radius.circular(36.0),
+          top: Radius.circular(CASIGlass.cornerSheet),
         ),
         child: Stack(
           children: [
             // Full blur layer (frosted glass effect)
             Positioned.fill(
               child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+                filter: ImageFilter.blur(
+                  sigmaX: CASIGlass.blurBackground,
+                  sigmaY: CASIGlass.blurBackground,
+                ),
                 child: Container(color: Colors.transparent),
               ),
             ),
@@ -825,9 +889,9 @@ class _GradientBackground extends StatelessWidget {
                   end: Alignment.bottomCenter,
                   colors: [
                     Colors.white.withValues(alpha: 0.0),
-                    Colors.white.withValues(alpha: 0.03),
-                    Colors.white.withValues(alpha: 0.08),
-                    Colors.white.withValues(alpha: 0.15),
+                    Colors.white.withValues(alpha: CASIElevation.base.bgAlpha),
+                    Colors.white.withValues(alpha: CASIGlass.tintLight),
+                    Colors.white.withValues(alpha: CASIGlass.tintStandard),
                   ],
                   stops: const [0.0, 0.3, 0.6, 1.0],
                 ),

@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:casi/design_system.dart';
 
 class DailyForecastData {
   final String day;
@@ -116,7 +117,7 @@ class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
             if (widget.forecastData.isEmpty && widget.hourlyData.isEmpty)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 16),
-                child: Center(child: CircularProgressIndicator(color: Colors.white54)),
+                child: Center(child: CircularProgressIndicator(color: CASIColors.textSecondary)),
               )
             else
               AnimatedSize(
@@ -163,9 +164,9 @@ class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.15),
+              color: CASIColors.glassCard,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.4), width: 1),
+              border: Border.all(color: CASIColors.textTertiary, width: 1),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -228,7 +229,7 @@ class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
     if (widget.hourlyData.isEmpty) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 16),
-        child: Center(child: CircularProgressIndicator(color: Colors.white54)),
+        child: Center(child: CircularProgressIndicator(color: CASIColors.textSecondary)),
       );
     }
     return Row(
@@ -251,7 +252,7 @@ class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
     if (widget.forecastData.isEmpty) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 16),
-        child: Center(child: CircularProgressIndicator(color: Colors.white54)),
+        child: Center(child: CircularProgressIndicator(color: CASIColors.textSecondary)),
       );
     }
     return Column(
@@ -276,21 +277,21 @@ class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
           child: Row(
             children: [
               Expanded(child: _buildDetailItem("Feels Like", widget.feelsLike)),
-              Container(width: 1, color: Colors.white24),
+              Container(width: 1, color: CASIColors.glassDivider),
               Expanded(child: _buildDetailItem("Wind", widget.wind)),
-              Container(width: 1, color: Colors.white24),
+              Container(width: 1, color: CASIColors.glassDivider),
               Expanded(child: _buildDetailItem("Precipitation", widget.precipitation)),
             ],
           ),
         ),
-        const Divider(color: Colors.white24, height: 1, thickness: 1),
+        const Divider(color: CASIColors.glassDivider, height: 1, thickness: 1),
         IntrinsicHeight(
           child: Row(
             children: [
               Expanded(child: _buildDetailItem("Humidity", widget.humidity)),
-              Container(width: 1, color: Colors.white24),
+              Container(width: 1, color: CASIColors.glassDivider),
               Expanded(child: _buildDetailItem("UV Index", widget.uvIndex)),
-              Container(width: 1, color: Colors.white24),
+              Container(width: 1, color: CASIColors.glassDivider),
               Expanded(child: _buildDetailItem("Sunrise", widget.sunrise)),
             ],
           ),
@@ -305,7 +306,7 @@ class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(title, style: const TextStyle(fontSize: 11, color: Colors.white70, fontWeight: FontWeight.w500)),
+          Text(title, style: const TextStyle(fontSize: 11, color: CASIColors.textSecondary, fontWeight: FontWeight.w500)),
           const SizedBox(height: 3),
           Text(value, style: const TextStyle(fontSize: 14, color: Colors.white, fontWeight: FontWeight.w600), textAlign: TextAlign.center),
         ],
@@ -326,7 +327,7 @@ class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
         Expanded(
           child: Align(
             alignment: Alignment.centerRight,
-            child: Text(desc, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w400, color: Colors.white70)),
+            child: Text(desc, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w400, color: CASIColors.textSecondary)),
           ),
         ),
       ],
@@ -344,7 +345,7 @@ class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
           width: isActive ? 16 : 6,
           height: 6,
           decoration: BoxDecoration(
-            color: isActive ? Colors.white : Colors.white.withValues(alpha: 0.3),
+            color: isActive ? Colors.white : CASIColors.textTertiary,
             borderRadius: BorderRadius.circular(3),
           ),
         );

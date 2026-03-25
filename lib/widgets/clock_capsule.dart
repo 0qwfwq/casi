@@ -2,10 +2,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:installed_apps/app_info.dart';
 import 'package:installed_apps/installed_apps.dart';
+import 'package:casi/design_system.dart';
 
-// --- NEW: Custom notifications that bubble up to the Hub! ---
+// --- Custom notifications that bubble up to the Hub ---
 class ClockTapNotification extends Notification {}
-class CalendarTapNotification extends Notification {} // <-- NEW: For the Date
+class CalendarTapNotification extends Notification {}
 
 class ClockCapsule extends StatefulWidget {
   final double opacity;
@@ -18,8 +19,7 @@ class ClockCapsule extends StatefulWidget {
 
 class _ClockCapsuleState extends State<ClockCapsule> {
   late Timer _timer;
-  
-  // --- Time State ---
+
   DateTime _now = DateTime.now();
   String? _clockPackage;
 
@@ -40,7 +40,7 @@ class _ClockCapsuleState extends State<ClockCapsule> {
   Future<void> _findClockApp() async {
     try {
       List<AppInfo> apps = await InstalledApps.getInstalledApps(withIcon: false, excludeSystemApps: false);
-      
+
       String? findPackage(List<String> priorityPackages, String keyword) {
         for (var pkg in priorityPackages) {
           if (apps.any((app) => app.packageName == pkg)) return pkg;
@@ -72,15 +72,14 @@ class _ClockCapsuleState extends State<ClockCapsule> {
     }
   }
 
-  // Helper to format date like "Wed Jun 11" without needing 'intl' package
   String _getFormattedDate() {
     const List<String> days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     const List<String> months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    
+
     String dayName = days[_now.weekday - 1];
     String monthName = months[_now.month - 1];
     String dayNum = _now.day.toString();
-    
+
     return "$dayName $monthName $dayNum";
   }
 
@@ -100,19 +99,18 @@ class _ClockCapsuleState extends State<ClockCapsule> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // 1. The Date (Lightened, added soft shadow for depth)
+        // 1. The Date — type.body2 equivalent (Inter, 14sp would be too small here; using body1 at 20sp)
         GestureDetector(
-          onTap: () => CalendarTapNotification().dispatch(context), // <-- NEW: Dispatches Calendar Event
+          onTap: () => CalendarTapNotification().dispatch(context),
           child: Padding(
-            padding: const EdgeInsets.only(bottom: 6.0), 
+            padding: const EdgeInsets.only(bottom: CASISpacing.sm),
             child: Text(
               _getFormattedDate(),
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.95),
-                fontSize: 20, // Slightly larger to match the new proportions
-                fontWeight: FontWeight.w400, // Regular weight
+              style: CASITypography.body1.copyWith(
+                color: CASIColors.textSecondary,
+                fontSize: 20,
+                fontWeight: FontWeight.w400,
                 letterSpacing: 0.5,
-                fontFamily: 'Roboto', 
                 shadows: [
                   Shadow(
                     offset: const Offset(0, 2),
@@ -125,29 +123,25 @@ class _ClockCapsuleState extends State<ClockCapsule> {
           ),
         ),
 
-        // 2. The Clock (Thinner, elegant, with a subtle drop shadow)
+        // 2. The Clock — type.display scale (Inter, ExtraLight for premium airy look)
         SizedBox(
-          // Slightly reduced height allocation since the font isn't being stretched anymore
-          height: screenHeight * 0.17, 
+          height: screenHeight * 0.17,
           width: double.infinity,
           child: GestureDetector(
-            // --- NEW: Normal tap signals the Hub to open the Dynamic Pill! ---
             onTap: () => ClockTapNotification().dispatch(context),
-            // --- BONUS UX: Long pressing the clock still opens the actual clock app ---
             onLongPress: () => _launchApp(_clockPackage),
             child: FittedBox(
               fit: BoxFit.contain,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                padding: const EdgeInsets.symmetric(horizontal: CASISpacing.md),
                 child: Text(
                   "$hour:$minute",
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white,
-                    // w200 (ExtraLight) gives it that premium, airy look
-                    fontWeight: FontWeight.w200, 
+                  style: CASITypography.display.copyWith(
+                    fontSize: 120, // Will be scaled by FittedBox
+                    fontWeight: FontWeight.w200,
                     height: 1.0,
-                    letterSpacing: -1.0, // Relaxed letter spacing
+                    letterSpacing: -1.0,
                     shadows: [
                       Shadow(
                         offset: const Offset(0, 8),

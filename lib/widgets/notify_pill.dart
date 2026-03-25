@@ -1,12 +1,11 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:casi/design_system.dart';
 
 /// A frosted-glass notification pill that drops from the top center of the
-/// screen (near the holepunch camera) and auto-dismisses after a few seconds.
+/// screen and auto-dismisses after a few seconds.
 ///
-/// Usage:
-///   NotifyPill.show(context, 'Home Screen is full!');
-///   NotifyPill.show(context, 'App added to Home Screen', icon: Icons.check);
+/// Uses CASI glass.raised (18% white, 12% border) with heavy blur.
 class NotifyPill extends StatefulWidget {
   final String message;
   final IconData? icon;
@@ -82,22 +81,29 @@ class _NotifyPillOverlayState extends State<_NotifyPillOverlay>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 150),
-      reverseDuration: const Duration(milliseconds: 100),
+      duration: CASIMotion.fast,       // 150ms enter (section 7.2)
+      reverseDuration: CASIMotion.micro, // 100ms exit
     );
 
     // Slide: starts above screen (-1.0) → drops to position (0.0)
     _slideAnimation = Tween<double>(begin: -1.0, end: 0.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic, reverseCurve: Curves.easeIn),
+      CurvedAnimation(
+        parent: _controller,
+        curve: CASIMotion.easeEnter,   // Decelerate in
+        reverseCurve: CASIMotion.easeExit, // Accelerate out
+      ),
     );
 
     // Fade in/out
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOut, reverseCurve: Curves.easeIn),
+      CurvedAnimation(
+        parent: _controller,
+        curve: Curves.easeOut,
+        reverseCurve: CASIMotion.easeExit,
+      ),
     );
 
     _controller.forward().then((_) {
-      // Wait, then reverse to dismiss
       Future.delayed(widget.duration, () {
         if (mounted) {
           _controller.reverse().then((_) {
@@ -122,8 +128,7 @@ class _NotifyPillOverlayState extends State<_NotifyPillOverlay>
       animation: _controller,
       builder: (context, child) {
         return Positioned(
-          // Slide from above the screen, land just below the status bar / holepunch
-          top: topPadding + 8 + (_slideAnimation.value * (topPadding + 60)),
+          top: topPadding + CASISpacing.sm + (_slideAnimation.value * (topPadding + 60)),
           left: 0,
           right: 0,
           child: Opacity(
@@ -135,7 +140,6 @@ class _NotifyPillOverlayState extends State<_NotifyPillOverlay>
       child: Center(
         child: GestureDetector(
           onVerticalDragEnd: (details) {
-            // Swipe up to dismiss early
             if (details.primaryVelocity != null && details.primaryVelocity! < -200) {
               _controller.reverse().then((_) {
                 if (mounted) widget.onDismissed();
@@ -143,40 +147,41 @@ class _NotifyPillOverlayState extends State<_NotifyPillOverlay>
             }
           },
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(28),
+            borderRadius: BorderRadius.circular(CASISearchBarSpec.cornerRadius),
             child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+              filter: ImageFilter.blur(
+                sigmaX: CASIGlass.blurHeavy,
+                sigmaY: CASIGlass.blurHeavy,
+              ),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: CASISearchBarSpec.horizontalPadding,
+                  vertical: 12,
+                ),
                 constraints: const BoxConstraints(maxWidth: 300),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(28),
+                  color: Colors.white.withValues(alpha: CASIElevation.raised.bgAlpha),
+                  borderRadius: BorderRadius.circular(CASISearchBarSpec.cornerRadius),
                   border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.3),
-                    width: 1.2,
+                    color: Colors.white.withValues(alpha: CASIElevation.raised.borderAlpha),
+                    width: 1.0,
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.1),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     if (widget.icon != null) ...[
-                      Icon(widget.icon, color: Colors.white, size: 18),
+                      Icon(
+                        widget.icon,
+                        color: CASIColors.textPrimary,
+                        size: CASIIcons.small,
+                      ),
                       const SizedBox(width: 10),
                     ],
                     Flexible(
                       child: Text(
                         widget.message,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 13.5,
+                        style: CASITypography.body2.copyWith(
                           fontWeight: FontWeight.w500,
                           height: 1.3,
                           decoration: TextDecoration.none,

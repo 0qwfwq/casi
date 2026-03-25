@@ -7,6 +7,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:casi/widgets/weather_forecast_widget.dart';
+import 'package:casi/design_system.dart';
 
 class WeatherPill extends StatefulWidget {
   final ValueChanged<bool>? onExpandedChanged;
@@ -340,8 +341,8 @@ class _WeatherPillState extends State<WeatherPill> with WidgetsBindingObserver {
   }
 
   Color _getWeatherIconColor(int? code, [bool isDay = true]) {
-    if (code == 0) return isDay ? Colors.orange.shade300 : Colors.indigo.shade300;
-    if (code != null && code >= 1 && code <= 3) return isDay ? Colors.white : Colors.indigo.shade200;
+    if (code == 0) return isDay ? CASIColors.caution : CASIColors.accentSecondary;
+    if (code != null && code >= 1 && code <= 3) return isDay ? Colors.white : CASIColors.accentSecondary;
     return Colors.white;
   }
 
@@ -401,15 +402,15 @@ class _WeatherPillState extends State<WeatherPill> with WidgetsBindingObserver {
       onTap: _expand,
       child: Center(
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(CASIGlass.cornerPill),
           child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+            filter: ImageFilter.blur(sigmaX: CASIGlass.blurStandard, sigmaY: CASIGlass.blurStandard),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+                color: Colors.white.withValues(alpha: CASIElevation.card.bgAlpha),
+                borderRadius: BorderRadius.circular(CASIGlass.cornerPill),
+                border: Border.all(color: Colors.white.withValues(alpha: CASIElevation.card.borderAlpha)),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -419,7 +420,7 @@ class _WeatherPillState extends State<WeatherPill> with WidgetsBindingObserver {
                   Text(
                     "${_temperature ?? '--'}°C",
                     style: const TextStyle(
-                      color: Colors.white,
+                      color: CASIColors.textPrimary,
                       fontSize: 13,
                       fontWeight: FontWeight.w500,
                     ),
@@ -427,8 +428,8 @@ class _WeatherPillState extends State<WeatherPill> with WidgetsBindingObserver {
                   const SizedBox(width: 4),
                   Text(
                     _currentDescription,
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.7),
+                    style: const TextStyle(
+                      color: CASIColors.textSecondary,
                       fontSize: 12,
                       fontWeight: FontWeight.w400,
                     ),
@@ -449,10 +450,10 @@ class _WeatherPillState extends State<WeatherPill> with WidgetsBindingObserver {
       child: Container(
         width: double.infinity,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(28),
+          borderRadius: BorderRadius.circular(CASIGlass.cornerSheet),
           border: Border.all(
-            color: Colors.white.withValues(alpha: 0.3),
-            width: 1.2,
+            color: Colors.white.withValues(alpha: CASIElevation.float_.borderAlpha),
+            width: 1.0,
           ),
           boxShadow: [
             BoxShadow(
@@ -463,11 +464,11 @@ class _WeatherPillState extends State<WeatherPill> with WidgetsBindingObserver {
           ],
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(27),
+          borderRadius: BorderRadius.circular(CASIGlass.cornerSheet - 1),
           child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+            filter: ImageFilter.blur(sigmaX: CASIGlass.blurSheet, sigmaY: CASIGlass.blurSheet),
             child: Container(
-              color: Colors.white.withValues(alpha: 0.2),
+              color: Colors.white.withValues(alpha: CASIGlass.tintSheet),
               child: WeatherForecastWidget(
                 forecastData: _forecastData,
                 hourlyData: _hourlyData,

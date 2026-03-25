@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:installed_apps/installed_apps.dart';
+import 'package:casi/design_system.dart';
 
 class SongPlayer extends StatefulWidget {
   final ValueChanged<bool>? onVisibilityChanged;
@@ -140,11 +141,11 @@ class _SongPlayerState extends State<SongPlayer> with WidgetsBindingObserver {
     final double progress = (_duration > 0) ? (_position / _duration).clamp(0.0, 1.0) : 0.0;
 
     return Container(
-      height: 70, 
-      margin: const EdgeInsets.symmetric(horizontal: 40), 
+      height: 70,
+      margin: const EdgeInsets.symmetric(horizontal: 40),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(35),
-        border: Border.all(color: Colors.white.withValues(alpha:0.3), width: 1.2),
+        border: Border.all(color: Colors.white.withValues(alpha: CASIElevation.float_.borderAlpha), width: 1.0),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha:0.1),
@@ -156,12 +157,12 @@ class _SongPlayerState extends State<SongPlayer> with WidgetsBindingObserver {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(34),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 25.0, sigmaY: 25.0),
+          filter: ImageFilter.blur(sigmaX: CASIGlass.blurHeavy, sigmaY: CASIGlass.blurHeavy),
           child: Stack(
             children: [
               // Main content container
               Container(
-                color: Colors.white.withValues(alpha:0.2), 
+                color: Colors.white.withValues(alpha: CASIElevation.raised.bgAlpha),
                 padding: const EdgeInsets.symmetric(horizontal: 16.0),
                 child: Row(
                   children: [
@@ -177,9 +178,9 @@ class _SongPlayerState extends State<SongPlayer> with WidgetsBindingObserver {
                               width: 42,
                               height: 42,
                               decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha:0.15),
+                                color: Colors.white.withValues(alpha: CASIElevation.card.bgAlpha),
                                 borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: Colors.white.withValues(alpha:0.2)),
+                                border: Border.all(color: Colors.white.withValues(alpha: CASIElevation.card.borderAlpha)),
                               ),
                               child: _albumArt == null 
                                   ? const Icon(CupertinoIcons.music_note, color: Colors.white, size: 20)
@@ -213,8 +214,8 @@ class _SongPlayerState extends State<SongPlayer> with WidgetsBindingObserver {
                                   ),
                                   Text(
                                     _artist,
-                                    style: TextStyle(
-                                      color: Colors.white.withValues(alpha:0.7),
+                                    style: const TextStyle(
+                                      color: CASIColors.textSecondary,
                                       fontSize: 12,
                                       fontWeight: FontWeight.w400,
                                     ),
@@ -245,7 +246,7 @@ class _SongPlayerState extends State<SongPlayer> with WidgetsBindingObserver {
                           child: Container(
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha:0.2),
+                              color: Colors.white.withValues(alpha: CASIElevation.raised.bgAlpha),
                               shape: BoxShape.circle,
                             ),
                             child: Icon(
@@ -279,7 +280,7 @@ class _SongPlayerState extends State<SongPlayer> with WidgetsBindingObserver {
                     value: progress,
                     minHeight: 2.5,
                     backgroundColor: Colors.transparent,
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white.withValues(alpha:0.6)),
+                    valueColor: const AlwaysStoppedAnimation<Color>(CASIColors.textSecondary),
                   ),
                 ),
               ),

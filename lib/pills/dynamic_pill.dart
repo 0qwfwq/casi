@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'dart:ui';
+import 'package:casi/design_system.dart';
 
 /// The parent wrapper for the dynamic pill.
 /// It handles the layout structure and the glassmorphic background.
-/// Swipe-to-dismiss has been removed; dismissal relies on tapping outside.
+/// Uses CASI glass.standard: 20dp blur, 12% white, 1dp border at 6% white.
 class DynamicPill extends StatelessWidget {
   final Widget child;
 
@@ -19,23 +20,28 @@ class DynamicPill extends StatelessWidget {
       alignment: Alignment.center,
       children: [
         ClipRRect(
-          borderRadius: BorderRadius.circular(40.0),
+          borderRadius: BorderRadius.circular(CASIGlass.cornerStandard),
           child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 10.0, sigmaY: 10.0),
+            filter: ImageFilter.blur(
+              sigmaX: CASIGlass.blurStandard,
+              sigmaY: CASIGlass.blurStandard,
+            ),
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 120),
+              duration: CASIMotion.micro,
               curve: Curves.easeOutCubic,
-              // Reduced horizontal padding to prevent layout collisions
-              padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 6.0),
+              padding: const EdgeInsets.symmetric(
+                horizontal: CASISpacing.sm,
+                vertical: CASISpacing.sm,
+              ),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha:0.15),
-                borderRadius: BorderRadius.circular(40.0),
+                color: Colors.white.withValues(alpha: CASIElevation.card.bgAlpha),
+                borderRadius: BorderRadius.circular(CASIGlass.cornerStandard),
                 border: Border.all(
-                  color: Colors.white.withValues(alpha:0.2),
-                  width: 1.5,
+                  color: Colors.white.withValues(alpha: CASIElevation.card.borderAlpha),
+                  width: 1.0,
                 ),
               ),
-              child: child, 
+              child: child,
             ),
           ),
         ),

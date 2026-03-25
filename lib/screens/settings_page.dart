@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:casi/design_system.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -44,7 +45,7 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[900],
+      backgroundColor: CASIColors.bgPrimary,
       appBar: AppBar(
         title: const Text('Settings'),
         backgroundColor: Colors.transparent,
@@ -69,11 +70,11 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           SwitchListTile(
             title: const Text("Immersive Mode", style: TextStyle(color: Colors.white)),
-            subtitle: const Text("Hide status & navigation bars", style: TextStyle(color: Colors.white54, fontSize: 12)),
+            subtitle: const Text("Hide status & navigation bars", style: TextStyle(color: CASIColors.textSecondary, fontSize: 12)),
             secondary: const Icon(Icons.fullscreen, color: Colors.white),
             value: _immersiveMode,
             onChanged: _toggleImmersiveMode,
-            activeThumbColor: Colors.blue,
+            activeThumbColor: CASIColors.accentPrimary,
           ),
         ],
       ),
@@ -163,7 +164,7 @@ class _BackgroundSettingsPageState extends State<BackgroundSettingsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[900],
+      backgroundColor: CASIColors.bgPrimary,
       appBar: AppBar(
         title: const Text('Background Settings'),
         backgroundColor: Colors.transparent,
@@ -181,7 +182,7 @@ class _BackgroundSettingsPageState extends State<BackgroundSettingsPage> {
           // Background Type Selector
           Container(
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.1),
+              color: CASIColors.glassCard,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Column(
@@ -196,7 +197,7 @@ class _BackgroundSettingsPageState extends State<BackgroundSettingsPage> {
                     });
                     _saveSettings();
                   },
-                  activeColor: Colors.blue,
+                  activeColor: CASIColors.accentPrimary,
                 ),
                 RadioListTile<String>(
                   title: const Text("Image", style: TextStyle(color: Colors.white)),
@@ -208,7 +209,7 @@ class _BackgroundSettingsPageState extends State<BackgroundSettingsPage> {
                     });
                     _saveSettings();
                   },
-                  activeColor: Colors.blue,
+                  activeColor: CASIColors.accentPrimary,
                 ),
               ],
             ),
@@ -218,7 +219,7 @@ class _BackgroundSettingsPageState extends State<BackgroundSettingsPage> {
 
           // Contextual Settings based on selection
           if (_backgroundType == 'color') ...[
-            const Text("Hex Color", style: TextStyle(color: Colors.white70)),
+            const Text("Hex Color", style: TextStyle(color: CASIColors.textSecondary)),
             const SizedBox(height: 8),
             Row(
               children: [
@@ -227,7 +228,7 @@ class _BackgroundSettingsPageState extends State<BackgroundSettingsPage> {
                   height: 40,
                   decoration: BoxDecoration(
                     color: _backgroundColor,
-                    border: Border.all(color: Colors.white54),
+                    border: Border.all(color: CASIColors.textSecondary),
                     borderRadius: BorderRadius.circular(8),
                   ),
                 ),
@@ -238,12 +239,12 @@ class _BackgroundSettingsPageState extends State<BackgroundSettingsPage> {
                     style: const TextStyle(color: Colors.white),
                     decoration: InputDecoration(
                       prefixText: '# ',
-                      prefixStyle: const TextStyle(color: Colors.white54),
+                      prefixStyle: const TextStyle(color: CASIColors.textSecondary),
                       filled: true,
-                      fillColor: Colors.white.withValues(alpha: 0.1),
+                      fillColor: CASIColors.glassCard,
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                       hintText: '000000',
-                      hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3)),
+                      hintStyle: TextStyle(color: CASIColors.textTertiary),
                     ),
                     onChanged: _updateColorFromHex,
                   ),
@@ -251,7 +252,7 @@ class _BackgroundSettingsPageState extends State<BackgroundSettingsPage> {
               ],
             ),
           ] else ...[
-            const Text("Selected Image", style: TextStyle(color: Colors.white70)),
+            const Text("Selected Image", style: TextStyle(color: CASIColors.textSecondary)),
             const SizedBox(height: 8),
             GestureDetector(
               onTap: _pickImage,
@@ -259,9 +260,9 @@ class _BackgroundSettingsPageState extends State<BackgroundSettingsPage> {
                 height: 200,
                 width: double.infinity,
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.1),
+                  color: CASIColors.glassCard,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.white24),
+                  border: Border.all(color: CASIColors.glassDivider),
                   image: _backgroundImagePath != null
                       ? DecorationImage(
                           image: FileImage(File(_backgroundImagePath!)),
@@ -274,9 +275,9 @@ class _BackgroundSettingsPageState extends State<BackgroundSettingsPage> {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.add_photo_alternate, color: Colors.white54, size: 40),
+                            Icon(Icons.add_photo_alternate, color: CASIColors.textSecondary, size: 40),
                             SizedBox(height: 8),
-                            Text("Tap to pick image", style: TextStyle(color: Colors.white54)),
+                            Text("Tap to pick image", style: TextStyle(color: CASIColors.textSecondary)),
                           ],
                         ),
                       )
@@ -289,8 +290,8 @@ class _BackgroundSettingsPageState extends State<BackgroundSettingsPage> {
                 child: Center(
                   child: TextButton.icon(
                     onPressed: _pickImage,
-                    icon: const Icon(Icons.edit, color: Colors.blue),
-                    label: const Text("Change Image", style: TextStyle(color: Colors.blue)),
+                    icon: const Icon(Icons.edit, color: CASIColors.accentPrimary),
+                    label: const Text("Change Image", style: TextStyle(color: CASIColors.accentPrimary)),
                   ),
                 ),
               ),

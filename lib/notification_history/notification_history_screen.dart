@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:casi/design_system.dart';
 import '../morning_brief/notification_brief_service.dart';
 import '../utils/app_launcher.dart';
 import '../utils/notification_categories.dart';
@@ -67,7 +68,7 @@ class _NotificationHistoryPanelState extends State<NotificationHistoryPanel> {
       child: _isLoading
           ? const Center(
               child: CircularProgressIndicator(
-                color: Colors.white24,
+                color: CASIColors.glassDivider,
                 strokeWidth: 2,
               ),
             )
@@ -78,14 +79,14 @@ class _NotificationHistoryPanelState extends State<NotificationHistoryPanel> {
                     children: [
                       Icon(
                         Icons.notifications_none,
-                        color: Colors.white.withValues(alpha: 0.3),
+                        color: CASIColors.textTertiary,
                         size: 48,
                       ),
                       const SizedBox(height: 12),
                       Text(
                         'No notifications in the last 24 hours',
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.4),
+                          color: CASIColors.textTertiary,
                           fontSize: 14,
                           fontWeight: FontWeight.w400,
                         ),
@@ -118,18 +119,18 @@ class _NotificationHistoryPanelState extends State<NotificationHistoryPanel> {
     return GestureDetector(
       onTap: () => AppLauncher.launchApp(notif.packageName),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(CASIGlass.cornerStandard),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+          filter: ImageFilter.blur(sigmaX: CASIGlass.blurStandard, sigmaY: CASIGlass.blurStandard),
           child: Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(CASISpacing.md),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(22),
+              color: Colors.white.withValues(alpha: CASIElevation.raised.bgAlpha),
+              borderRadius: BorderRadius.circular(CASIGlass.cornerStandard),
               border: Border.all(
-                color: Colors.white.withValues(alpha: 0.25),
-                width: 0.8,
+                color: Colors.white.withValues(alpha: CASIElevation.raised.borderAlpha),
+                width: 1.0,
               ),
               boxShadow: [
                 BoxShadow(
@@ -159,7 +160,7 @@ class _NotificationHistoryPanelState extends State<NotificationHistoryPanel> {
                     Text(
                       _timeAgo(notif.timestamp),
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.35),
+                        color: CASIColors.textTertiary,
                         fontSize: 10,
                         fontWeight: FontWeight.w400,
                       ),
@@ -184,7 +185,7 @@ class _NotificationHistoryPanelState extends State<NotificationHistoryPanel> {
                   Text(
                     fullText,
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.6),
+                      color: CASIColors.textSecondary,
                       fontSize: 12.5,
                       fontWeight: FontWeight.w400,
                       height: 1.45,
@@ -197,7 +198,7 @@ class _NotificationHistoryPanelState extends State<NotificationHistoryPanel> {
                   Text(
                     notif.subText,
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.4),
+                      color: CASIColors.textTertiary,
                       fontSize: 11,
                       fontWeight: FontWeight.w400,
                       fontStyle: FontStyle.italic,

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:casi/design_system.dart';
 
 /// The specific content for the Clock version of the dynamic pill.
 /// Features a focal-display pattern (big time at top) across all tabs,
@@ -77,9 +78,10 @@ class DClockPill extends StatelessWidget {
 
   // --- Constants ---
   static const double _fixedPillWidth = 272.0;
-  static const Color _cAlarm = Color(0xFF00E676);
-  static const Color _cTimer = Color(0xFFFFAB00);
-  static const Color _cStopwatch = Color(0xFF40C4FF);
+  // CASI Design System semantic colors
+  static const Color _cAlarm = CASIColors.confirm;      // #4FD17A — success/positive
+  static const Color _cTimer = CASIColors.caution;       // #F7874F — warnings/attention
+  static const Color _cStopwatch = CASIColors.accentPrimary; // #4F8EF7 — primary accent
 
   const DClockPill({
     super.key,
@@ -238,7 +240,7 @@ class DClockPill extends StatelessWidget {
           color: isActive ? activeColor.withValues(alpha:0.2) : Colors.transparent,
           shape: BoxShape.circle,
         ),
-        child: Icon(icon, color: isActive ? activeColor : Colors.white54, size: 22),
+        child: Icon(icon, color: isActive ? activeColor : CASIColors.textSecondary, size: 22),
       ),
     );
   }
@@ -301,7 +303,7 @@ class DClockPill extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                _buildActionButton("Delete", Icons.delete, Colors.redAccent, () => onDeleteAlarm?.call(selectedIndex!)),
+                _buildActionButton("Delete", Icons.delete, CASIColors.alert, () => onDeleteAlarm?.call(selectedIndex!)),
                 _buildActionButton("Edit", Icons.edit, _cAlarm, onEditSelectedAlarm),
               ],
             ),
@@ -341,10 +343,10 @@ class DClockPill extends StatelessWidget {
                     padding: const EdgeInsets.only(right: 16),
                     margin: const EdgeInsets.only(bottom: 4),
                     decoration: BoxDecoration(
-                      color: Colors.redAccent.withValues(alpha: 0.3),
+                      color: CASIColors.alert.withValues(alpha: 0.3),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(Icons.delete, color: Colors.redAccent, size: 20),
+                    child: const Icon(Icons.delete, color: CASIColors.alert, size: 20),
                   ),
                   child: GestureDetector(
                     onTap: () => onAlarmRowTapped?.call(index),
@@ -354,7 +356,7 @@ class DClockPill extends StatelessWidget {
                       margin: const EdgeInsets.only(bottom: 4),
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                       decoration: BoxDecoration(
-                        color: isSelected ? _cAlarm.withValues(alpha: 0.15) : Colors.white12,
+                        color: isSelected ? _cAlarm.withValues(alpha: 0.15) : CASIColors.glassCard,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
                           color: isSelected ? _cAlarm.withValues(alpha: 0.5) : Colors.transparent,
@@ -364,12 +366,12 @@ class DClockPill extends StatelessWidget {
                         children: [
                           SizedBox(
                             width: 40,
-                            child: Text(day, style: TextStyle(color: isSelected ? _cAlarm : Colors.white54, fontSize: 13, fontWeight: FontWeight.bold)),
+                            child: Text(day, style: TextStyle(color: isSelected ? _cAlarm : CASIColors.textSecondary, fontSize: 13, fontWeight: FontWeight.bold)),
                           ),
                           const SizedBox(width: 8),
                           Text(time, style: TextStyle(color: isSelected ? _cAlarm : Colors.white, fontSize: 20, fontWeight: FontWeight.w400, fontFeatures: const [FontFeature.tabularFigures()])),
                           const SizedBox(width: 4),
-                          Text(ampm, style: TextStyle(color: isSelected ? _cAlarm.withValues(alpha: 0.8) : Colors.white54, fontSize: 12, fontWeight: FontWeight.bold)),
+                          Text(ampm, style: TextStyle(color: isSelected ? _cAlarm.withValues(alpha: 0.8) : CASIColors.textSecondary, fontSize: 12, fontWeight: FontWeight.bold)),
                         ],
                       ),
                     ),
@@ -424,7 +426,7 @@ class DClockPill extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     _buildNumberScroller(12, true, 40),
-                    const Text(":", style: TextStyle(color: Colors.white54, fontSize: 24, fontWeight: FontWeight.bold)),
+                    const Text(":", style: TextStyle(color: CASIColors.textSecondary, fontSize: 24, fontWeight: FontWeight.bold)),
                     _buildNumberScroller(60, false, 40),
                     const SizedBox(width: 8),
                     _buildStringScroller(['AM', 'PM'], initialAmPm, onAmPmChanged, 45),
@@ -437,7 +439,7 @@ class DClockPill extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              _buildActionButton("Cancel", Icons.close, Colors.white54, onCancelAlarmTapped),
+              _buildActionButton("Cancel", Icons.close, CASIColors.textSecondary, onCancelAlarmTapped),
               _buildActionButton("Save", Icons.check, _cAlarm, onSaveAlarmTapped),
             ],
           ),
@@ -487,9 +489,9 @@ class DClockPill extends StatelessWidget {
             children: [
               _buildActionButton(isStopwatchRunning ? "Stop" : "Start", isStopwatchRunning ? Icons.pause : Icons.play_arrow, _cStopwatch, onStopwatchToggle),
               if (isStopwatchRunning)
-                _buildActionButton("Lap", Icons.flag, Colors.white54, onStopwatchLap)
+                _buildActionButton("Lap", Icons.flag, CASIColors.textSecondary, onStopwatchLap)
               else if (stopwatchTime != "00:00.00")
-                _buildActionButton("Reset", Icons.refresh, Colors.redAccent, onStopwatchReset),
+                _buildActionButton("Reset", Icons.refresh, CASIColors.alert, onStopwatchReset),
             ],
           ),
           if (stopwatchLaps.isNotEmpty) ...[
@@ -503,11 +505,11 @@ class DClockPill extends StatelessWidget {
                 return Container(
                   margin: const EdgeInsets.only(bottom: 6),
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  decoration: BoxDecoration(color: Colors.white12, borderRadius: BorderRadius.circular(12)),
+                  decoration: BoxDecoration(color: CASIColors.glassCard, borderRadius: BorderRadius.circular(12)),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text("Lap ${stopwatchLaps.length - index}", style: const TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.bold)),
+                      Text("Lap ${stopwatchLaps.length - index}", style: const TextStyle(color: CASIColors.textSecondary, fontSize: 13, fontWeight: FontWeight.bold)),
                       Text(stopwatchLaps[index], style: const TextStyle(color: _cStopwatch, fontSize: 16, fontWeight: FontWeight.w600, fontFeatures: [FontFeature.tabularFigures()])),
                     ],
                   ),
@@ -582,7 +584,7 @@ class DClockPill extends StatelessWidget {
                   () => onToggleTimer?.call(selectedTimerIndex!),
                 ),
                 if (!focusedRunning && !focusedAtStart)
-                  _buildActionButton("Reset", Icons.refresh, Colors.redAccent, onTimerReset),
+                  _buildActionButton("Reset", Icons.refresh, CASIColors.alert, onTimerReset),
               ],
             ),
           ],
@@ -607,10 +609,10 @@ class DClockPill extends StatelessWidget {
                     padding: const EdgeInsets.only(right: 16),
                     margin: const EdgeInsets.only(bottom: 4),
                     decoration: BoxDecoration(
-                      color: Colors.redAccent.withValues(alpha: 0.3),
+                      color: CASIColors.alert.withValues(alpha: 0.3),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(Icons.delete, color: Colors.redAccent, size: 20),
+                    child: const Icon(Icons.delete, color: CASIColors.alert, size: 20),
                   ),
                   child: GestureDetector(
                     onTap: () => onTimerRowTapped?.call(index),
@@ -621,7 +623,7 @@ class DClockPill extends StatelessWidget {
                       margin: const EdgeInsets.only(bottom: 4),
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                       decoration: BoxDecoration(
-                        color: isSelected ? _cTimer.withValues(alpha: 0.15) : Colors.white12,
+                        color: isSelected ? _cTimer.withValues(alpha: 0.15) : CASIColors.glassCard,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
                           color: isSelected ? _cTimer.withValues(alpha: 0.5) : Colors.transparent,
@@ -636,7 +638,7 @@ class DClockPill extends StatelessWidget {
                               padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
                               child: Icon(
                                 isRunning ? Icons.pause_circle_filled : Icons.play_circle_fill,
-                                color: isSelected ? _cTimer : Colors.white70,
+                                color: isSelected ? _cTimer : CASIColors.textSecondary,
                                 size: 24,
                               ),
                             ),
@@ -711,7 +713,7 @@ class DClockPill extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              _buildActionButton("Cancel", Icons.close, Colors.white54, onCancelTimerTapped),
+              _buildActionButton("Cancel", Icons.close, CASIColors.textSecondary, onCancelTimerTapped),
               _buildActionButton(
                 isEditingTimer ? "Save" : "Start",
                 isEditingTimer ? Icons.check : Icons.play_arrow,
@@ -733,7 +735,7 @@ class DClockPill extends StatelessWidget {
     if (isEmpty) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 16),
-        child: Text(time, style: TextStyle(color: Colors.white54, fontSize: 16, fontWeight: FontWeight.w400)),
+        child: Text(time, style: TextStyle(color: CASIColors.textSecondary, fontSize: 16, fontWeight: FontWeight.w400)),
       );
     }
     return Column(
@@ -785,13 +787,13 @@ class DClockPill extends StatelessWidget {
               color: allSelected ? _cAlarm.withValues(alpha: 0.25) : Colors.transparent,
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: allSelected ? _cAlarm.withValues(alpha: 0.6) : Colors.white24,
+                color: allSelected ? _cAlarm.withValues(alpha: 0.6) : CASIColors.glassDivider,
               ),
             ),
             child: Text(
               "All",
               style: TextStyle(
-                color: allSelected ? Colors.white : Colors.white38,
+                color: allSelected ? Colors.white : CASIColors.textTertiary,
                 fontSize: 11,
                 fontWeight: FontWeight.bold,
               ),
@@ -822,13 +824,13 @@ class DClockPill extends StatelessWidget {
                   color: isSelected ? _cAlarm.withValues(alpha: 0.25) : Colors.transparent,
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: isSelected ? _cAlarm.withValues(alpha: 0.6) : Colors.white24,
+                    color: isSelected ? _cAlarm.withValues(alpha: 0.6) : CASIColors.glassDivider,
                   ),
                 ),
                 child: Text(
                   dayLabels[i],
                   style: TextStyle(
-                    color: isSelected ? Colors.white : Colors.white38,
+                    color: isSelected ? Colors.white : CASIColors.textTertiary,
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
                   ),
@@ -848,15 +850,15 @@ class DClockPill extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color: onTap != null ? color.withValues(alpha:0.2) : Colors.white12,
+          color: onTap != null ? color.withValues(alpha:0.2) : CASIColors.glassCard,
           borderRadius: BorderRadius.circular(20),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: onTap != null ? color : Colors.white30, size: 16),
+            Icon(icon, color: onTap != null ? color : CASIColors.textTertiary, size: 16),
             const SizedBox(width: 6),
-            Text(label, style: TextStyle(color: onTap != null ? color : Colors.white30, fontSize: 13, fontWeight: FontWeight.bold)),
+            Text(label, style: TextStyle(color: onTap != null ? color : CASIColors.textTertiary, fontSize: 13, fontWeight: FontWeight.bold)),
           ],
         ),
       ),
@@ -963,7 +965,7 @@ class DClockPill extends StatelessWidget {
             ),
           ),
         ),
-        Text(label, style: const TextStyle(color: Colors.white54, fontSize: 16, fontWeight: FontWeight.bold)),
+        Text(label, style: const TextStyle(color: CASIColors.textSecondary, fontSize: 16, fontWeight: FontWeight.bold)),
       ],
     );
   }
@@ -1107,13 +1109,13 @@ class _RingingSliderState extends State<_RingingSlider> with TickerProviderState
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black26,
+                          color: CASIColors.bgPrimary,
                           blurRadius: 8,
                           offset: Offset(0, 4),
                         )
                       ],
                     ),
-                    child: const Icon(Icons.notifications_active_rounded, color: Colors.black87, size: 28),
+                    child: const Icon(Icons.notifications_active_rounded, color: CASIColors.bgPrimary, size: 28),
                   ),
                 ),
               ),

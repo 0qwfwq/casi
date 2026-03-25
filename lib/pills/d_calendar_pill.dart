@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:casi/design_system.dart';
 
 /// A data model representing a calendar event with a title and optional description.
 class CalendarEvent {
@@ -135,7 +136,7 @@ class _DCalendarPillState extends State<DCalendarPill> {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.event, color: Colors.blueAccent, size: 16),
+              const Icon(Icons.event, color: CASIColors.accentPrimary, size: 16),
               const SizedBox(width: 6),
               Text(
                 "${monthNames[widget.focusedDay.month - 1]} ${widget.focusedDay.day}, ${widget.focusedDay.year}",
@@ -147,7 +148,7 @@ class _DCalendarPillState extends State<DCalendarPill> {
           Expanded(
             child: dayEvents.isEmpty
                 ? const Center(
-                    child: Text("No events", style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w500))
+                    child: Text("No events", style: TextStyle(color: CASIColors.textSecondary, fontSize: 13, fontWeight: FontWeight.w500))
                   )
                 : ListView.builder(
                     padding: EdgeInsets.zero,
@@ -165,10 +166,10 @@ class _DCalendarPillState extends State<DCalendarPill> {
                           padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 4.0),
                           alignment: Alignment.centerLeft,
                           decoration: BoxDecoration(
-                            color: isSelected ? Colors.redAccent.withValues(alpha:0.3) : Colors.redAccent.withValues(alpha:0.15),
+                            color: isSelected ? CASIColors.alert.withValues(alpha:0.3) : CASIColors.alert.withValues(alpha:0.15),
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
-                              color: isSelected ? Colors.redAccent : Colors.redAccent.withValues(alpha:0.4), 
+                              color: isSelected ? CASIColors.alert : CASIColors.alert.withValues(alpha:0.4), 
                               width: isSelected ? 2 : 1
                             ),
                           ),
@@ -178,7 +179,7 @@ class _DCalendarPillState extends State<DCalendarPill> {
                             children: [
                               Text(
                                 event.title,
-                                style: const TextStyle(color: Colors.redAccent, fontSize: 13, fontWeight: FontWeight.w600),
+                                style: const TextStyle(color: CASIColors.alert, fontSize: 13, fontWeight: FontWeight.w600),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -186,7 +187,7 @@ class _DCalendarPillState extends State<DCalendarPill> {
                                 const SizedBox(height: 2),
                                 Text(
                                   event.description,
-                                  style: TextStyle(color: Colors.redAccent.withValues(alpha:0.7), fontSize: 10),
+                                  style: TextStyle(color: CASIColors.alert.withValues(alpha:0.7), fontSize: 10),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
@@ -208,7 +209,7 @@ class _DCalendarPillState extends State<DCalendarPill> {
                 borderRadius: BorderRadius.circular(20),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(20)),
+                  decoration: BoxDecoration(color: CASIColors.glassDivider, borderRadius: BorderRadius.circular(20)),
                   child: const Row(
                     children: [
                       Icon(Icons.arrow_back, color: Colors.white, size: 16),
@@ -223,12 +224,12 @@ class _DCalendarPillState extends State<DCalendarPill> {
                 borderRadius: BorderRadius.circular(20),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(color: Colors.greenAccent.withValues(alpha:0.2), borderRadius: BorderRadius.circular(20)),
+                  decoration: BoxDecoration(color: CASIColors.confirm.withValues(alpha:0.2), borderRadius: BorderRadius.circular(20)),
                   child: const Row(
                     children: [
-                      Icon(Icons.add, color: Colors.greenAccent, size: 16),
+                      Icon(Icons.add, color: CASIColors.confirm, size: 16),
                       SizedBox(width: 4),
-                      Text("Add", style: TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                      Text("Add", style: TextStyle(color: CASIColors.confirm, fontSize: 12, fontWeight: FontWeight.bold)),
                     ],
                   ),
                 ),
@@ -239,14 +240,14 @@ class _DCalendarPillState extends State<DCalendarPill> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
-                    color: widget.selectedEventIndex != null ? Colors.redAccent.withValues(alpha:0.2) : Colors.white12, 
+                    color: widget.selectedEventIndex != null ? CASIColors.alert.withValues(alpha:0.2) : CASIColors.glassCard, 
                     borderRadius: BorderRadius.circular(20)
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.delete, color: widget.selectedEventIndex != null ? Colors.redAccent : Colors.white30, size: 16),
+                      Icon(Icons.delete, color: widget.selectedEventIndex != null ? CASIColors.alert : CASIColors.textTertiary, size: 16),
                       const SizedBox(width: 4),
-                      Text("Delete", style: TextStyle(color: widget.selectedEventIndex != null ? Colors.redAccent : Colors.white30, fontSize: 12, fontWeight: FontWeight.bold)),
+                      Text("Delete", style: TextStyle(color: widget.selectedEventIndex != null ? CASIColors.alert : CASIColors.textTertiary, fontSize: 12, fontWeight: FontWeight.bold)),
                     ],
                   ),
                 ),
@@ -316,7 +317,7 @@ class _DCalendarPillState extends State<DCalendarPill> {
                 day,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
-                  color: Colors.white54, 
+                  color: CASIColors.textSecondary, 
                   fontSize: 12, 
                   fontWeight: FontWeight.bold
                 ),
@@ -350,17 +351,17 @@ class _DCalendarPillState extends State<DCalendarPill> {
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: isToday 
-                        ? Colors.blueAccent 
+                        ? CASIColors.accentPrimary 
                         : (isSelected 
                             ? Colors.white.withValues(alpha:0.2) 
-                            : (hasEvents ? Colors.redAccent.withValues(alpha:0.15) : Colors.transparent)),
+                            : (hasEvents ? CASIColors.alert.withValues(alpha:0.15) : Colors.transparent)),
                     borderRadius: BorderRadius.circular(8),
-                    border: hasEvents ? Border.all(color: Colors.redAccent.withValues(alpha:0.8), width: 1.5) : null,
+                    border: hasEvents ? Border.all(color: CASIColors.alert.withValues(alpha:0.8), width: 1.5) : null,
                   ),
                   child: Text(
                     '$day',
                     style: TextStyle(
-                      color: hasEvents ? Colors.redAccent : (isToday || isSelected ? Colors.white : Colors.white70),
+                      color: hasEvents ? CASIColors.alert : (isToday || isSelected ? Colors.white : CASIColors.textSecondary),
                       fontSize: 14,
                       fontWeight: isToday || isSelected || hasEvents ? FontWeight.bold : FontWeight.normal,
                     ),
@@ -381,14 +382,14 @@ class _DCalendarPillState extends State<DCalendarPill> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   decoration: BoxDecoration(
-                    color: hasEventsForFocusedDay ? Colors.blueAccent.withValues(alpha:0.2) : Colors.white12,
+                    color: hasEventsForFocusedDay ? CASIColors.accentPrimary.withValues(alpha:0.2) : CASIColors.glassCard,
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.event_note, color: hasEventsForFocusedDay ? Colors.blueAccent : Colors.white30, size: 18),
+                      Icon(Icons.event_note, color: hasEventsForFocusedDay ? CASIColors.accentPrimary : CASIColors.textTertiary, size: 18),
                       const SizedBox(width: 6),
-                      Text("View", style: TextStyle(color: hasEventsForFocusedDay ? Colors.blueAccent : Colors.white30, fontSize: 13, fontWeight: FontWeight.bold)),
+                      Text("View", style: TextStyle(color: hasEventsForFocusedDay ? CASIColors.accentPrimary : CASIColors.textTertiary, fontSize: 13, fontWeight: FontWeight.bold)),
                     ],
                   ),
                 ),
@@ -399,14 +400,14 @@ class _DCalendarPillState extends State<DCalendarPill> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   decoration: BoxDecoration(
-                    color: Colors.greenAccent.withValues(alpha:0.2),
+                    color: CASIColors.confirm.withValues(alpha:0.2),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: const Row(
                     children: [
-                      Icon(Icons.add, color: Colors.greenAccent, size: 18),
+                      Icon(Icons.add, color: CASIColors.confirm, size: 18),
                       SizedBox(width: 6),
-                      Text("Add", style: TextStyle(color: Colors.greenAccent, fontSize: 13, fontWeight: FontWeight.bold)),
+                      Text("Add", style: TextStyle(color: CASIColors.confirm, fontSize: 13, fontWeight: FontWeight.bold)),
                     ],
                   ),
                 ),

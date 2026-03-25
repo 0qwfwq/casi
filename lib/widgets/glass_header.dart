@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:casi/design_system.dart';
 import 'clock_capsule.dart';
 
 class GlassStatusBar extends StatelessWidget {
@@ -14,7 +15,7 @@ class GlassStatusBar extends StatelessWidget {
     if (opacity == 0) return const SizedBox.shrink();
 
     return Padding(
-      padding: const EdgeInsets.only(top: 8.0),
+      padding: const EdgeInsets.only(top: CASISpacing.sm),
       child: ClockCapsule(opacity: opacity),
     );
   }

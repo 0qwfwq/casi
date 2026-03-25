@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:casi/design_system.dart';
 
 /// Shared category-to-UI mappings used by Morning Brief and Notification History.
+/// Uses CASI Design System semantic and accent colors.
 class NotificationCategories {
   const NotificationCategories._();
 
@@ -16,11 +18,11 @@ class NotificationCategories {
 
   static Color colorFor(String category) {
     return switch (category) {
-      'email' => Colors.red.shade300,
-      'work' => Colors.blue.shade300,
-      'social' => Colors.purple.shade300,
-      'ignore' => Colors.grey.shade500,
-      _ => Colors.teal.shade300,
+      'email' => CASIColors.alert,           // Red — errors/attention
+      'work' => CASIColors.accentPrimary,    // Pulse Blue — interactive
+      'social' => CASIColors.accentSecondary, // Pulse Purple — secondary
+      'ignore' => CASIColors.textTertiary,    // Muted — disabled state
+      _ => CASIColors.accentTertiary,         // Teal — informational
     };
   }
 }

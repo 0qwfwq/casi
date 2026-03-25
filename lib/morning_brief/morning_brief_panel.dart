@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:casi/design_system.dart';
 import 'weather_brief_service.dart';
 import 'calendar_brief_service.dart';
 import 'health_brief_service.dart';
@@ -69,13 +70,13 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
   };
 
   Color _conditionColor(String condition) => switch (condition) {
-    'Clear' => Colors.orange.shade300,
-    'Cloudy' => Colors.blueGrey.shade200,
-    'Rainy' => Colors.blue.shade300,
-    'Snowy' => Colors.lightBlue.shade100,
-    'Stormy' => Colors.deepPurple.shade300,
-    'Foggy' => Colors.grey.shade400,
-    _ => Colors.orange.shade300,
+    'Clear' => CASIColors.caution,           // Warm orange
+    'Cloudy' => CASIColors.textSecondary,     // Muted
+    'Rainy' => CASIColors.accentPrimary,      // Pulse Blue
+    'Snowy' => CASIColors.accentTertiary,     // Teal
+    'Stormy' => CASIColors.accentSecondary,   // Pulse Purple
+    'Foggy' => CASIColors.textSecondary,      // Muted
+    _ => CASIColors.caution,
   };
 
   @override
@@ -86,17 +87,17 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 32),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: BorderRadius.circular(CASIGlass.cornerSheet),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+          filter: ImageFilter.blur(sigmaX: CASIGlass.blurSheet, sigmaY: CASIGlass.blurSheet),
           child: Container(
             width: panelWidth,
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(28),
+              color: Colors.white.withValues(alpha: CASIGlass.tintSheet),
+              borderRadius: BorderRadius.circular(CASIGlass.cornerSheet),
               border: Border.all(
-                color: Colors.white.withValues(alpha: 0.3),
-                width: 1.2,
+                color: Colors.white.withValues(alpha: CASIElevation.float_.borderAlpha),
+                width: 1.0,
               ),
               boxShadow: [
                 BoxShadow(
@@ -141,7 +142,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
                       height: 28,
                       child: Icon(
                         Icons.close,
-                        color: Colors.white54,
+                        color: CASIColors.textSecondary,
                         size: 16,
                       ),
                     ),
@@ -168,7 +169,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
           width: isActive ? 18 : 6,
           height: 6,
           decoration: BoxDecoration(
-            color: isActive ? Colors.white : Colors.white30,
+            color: isActive ? Colors.white : CASIColors.textTertiary,
             borderRadius: BorderRadius.circular(3),
           ),
         );
@@ -195,7 +196,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
           Text(
             _getDateString(),
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.6),
+              color: CASIColors.textSecondary,
               fontSize: 14,
               fontWeight: FontWeight.w400,
               letterSpacing: 0.3,
@@ -208,7 +209,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
               Text(
                 'Swipe to see your day',
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.4),
+                  color: CASIColors.textTertiary,
                   fontSize: 12,
                   fontWeight: FontWeight.w400,
                 ),
@@ -216,7 +217,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
               const SizedBox(width: 4),
               Icon(
                 Icons.arrow_forward_ios,
-                color: Colors.white.withValues(alpha: 0.4),
+                color: CASIColors.textTertiary,
                 size: 10,
               ),
             ],
@@ -234,7 +235,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
         child: Center(
           child: Text(
             'Weather data is loading...',
-            style: TextStyle(color: Colors.white54, fontSize: 14),
+            style: TextStyle(color: CASIColors.textSecondary, fontSize: 14),
           ),
         ),
       );
@@ -279,7 +280,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
                           Text(
                             ' / ${weather.lowTemp.round()}°C',
                             style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.5),
+                              color: CASIColors.textTertiary,
                               fontSize: 14,
                               fontWeight: FontWeight.w400,
                             ),
@@ -305,7 +306,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
               children: [
                 Icon(
                   Icons.checkroom,
-                  color: Colors.white.withValues(alpha: 0.5),
+                  color: CASIColors.textTertiary,
                   size: 14,
                 ),
                 const SizedBox(width: 6),
@@ -313,7 +314,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
                   child: Text(
                     weather.clothingSuggestion,
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.7),
+                      color: CASIColors.textSecondary,
                       fontSize: 12,
                       fontWeight: FontWeight.w400,
                       height: 1.4,
@@ -329,13 +330,13 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
               width: double.infinity,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.06),
+                color: CASIColors.glassCard,
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Text(
                 weather.weatherSummary,
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.6),
+                  color: CASIColors.textSecondary,
                   fontSize: 11.5,
                   fontWeight: FontWeight.w400,
                   height: 1.5,
@@ -379,7 +380,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
           children: [
             Icon(
               Icons.calendar_month_outlined,
-              color: Colors.white.withValues(alpha: 0.4),
+              color: CASIColors.textTertiary,
               size: 32,
             ),
             const SizedBox(height: 12),
@@ -387,7 +388,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
               'Allow calendar access to see\nyour events here',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.6),
+                color: CASIColors.textSecondary,
                 fontSize: 13,
                 fontWeight: FontWeight.w400,
                 height: 1.4,
@@ -399,16 +400,16 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.1),
+                  color: CASIColors.glassCard,
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.2),
+                    color: CASIColors.glassDivider,
                   ),
                 ),
                 child: const Text(
                   'Grant Permission',
                   style: TextStyle(
-                    color: Colors.white70,
+                    color: CASIColors.textSecondary,
                     fontSize: 12,
                     fontWeight: FontWeight.w500,
                   ),
@@ -427,7 +428,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
         child: Center(
           child: Text(
             'Loading calendar...',
-            style: TextStyle(color: Colors.white54, fontSize: 14),
+            style: TextStyle(color: CASIColors.textSecondary, fontSize: 14),
           ),
         ),
       );
@@ -446,7 +447,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
           children: [
             Icon(
               Icons.event_available,
-              color: Colors.green.shade300,
+              color: CASIColors.confirm,
               size: 32,
             ),
             const SizedBox(height: 12),
@@ -462,7 +463,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
             Text(
               'Your schedule is clear',
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.5),
+                color: CASIColors.textTertiary,
                 fontSize: 13,
                 fontWeight: FontWeight.w400,
               ),
@@ -480,14 +481,14 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
             children: [
               Icon(
                 Icons.calendar_today_rounded,
-                color: Colors.blue.shade300,
+                color: CASIColors.accentPrimary,
                 size: 16,
               ),
               const SizedBox(width: 6),
               Text(
                 "Today's Schedule",
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.8),
+                  color: CASIColors.textPrimary,
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
                 ),
@@ -496,7 +497,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
               Text(
                 '${events.length} event${events.length == 1 ? '' : 's'}',
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.4),
+                  color: CASIColors.textTertiary,
                   fontSize: 11,
                   fontWeight: FontWeight.w400,
                 ),
@@ -515,7 +516,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
                 return Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.06),
+                    color: CASIColors.glassCard,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Row(
@@ -526,7 +527,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
                         height: 32,
                         margin: const EdgeInsets.only(right: 10),
                         decoration: BoxDecoration(
-                          color: Colors.blue.shade300,
+                          color: CASIColors.accentPrimary,
                           borderRadius: BorderRadius.circular(2),
                         ),
                       ),
@@ -550,7 +551,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
                                 Text(
                                   event.timeString,
                                   style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.5),
+                                    color: CASIColors.textTertiary,
                                     fontSize: 10.5,
                                     fontWeight: FontWeight.w400,
                                   ),
@@ -559,7 +560,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
                                   const SizedBox(width: 8),
                                   Icon(
                                     Icons.location_on,
-                                    color: Colors.white.withValues(alpha: 0.35),
+                                    color: CASIColors.textTertiary,
                                     size: 10,
                                   ),
                                   const SizedBox(width: 2),
@@ -567,7 +568,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
                                     child: Text(
                                       event.location,
                                       style: TextStyle(
-                                        color: Colors.white.withValues(alpha: 0.4),
+                                        color: CASIColors.textTertiary,
                                         fontSize: 10,
                                         fontWeight: FontWeight.w400,
                                       ),
@@ -606,7 +607,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
           children: [
             Icon(
               Icons.favorite_border,
-              color: Colors.white.withValues(alpha: 0.4),
+              color: CASIColors.textTertiary,
               size: 32,
             ),
             const SizedBox(height: 12),
@@ -614,7 +615,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
               'Health Connect is required\nto view your fitness data',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.6),
+                color: CASIColors.textSecondary,
                 fontSize: 13,
                 fontWeight: FontWeight.w400,
                 height: 1.4,
@@ -629,16 +630,16 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.1),
+                  color: CASIColors.glassCard,
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.2),
+                    color: CASIColors.glassDivider,
                   ),
                 ),
                 child: const Text(
                   'Set Up Health',
                   style: TextStyle(
-                    color: Colors.white70,
+                    color: CASIColors.textSecondary,
                     fontSize: 12,
                     fontWeight: FontWeight.w500,
                   ),
@@ -657,7 +658,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
         child: Center(
           child: Text(
             'Loading health data...',
-            style: TextStyle(color: Colors.white54, fontSize: 14),
+            style: TextStyle(color: CASIColors.textSecondary, fontSize: 14),
           ),
         ),
       );
@@ -673,14 +674,14 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
             children: [
               Icon(
                 Icons.favorite_rounded,
-                color: Colors.red.shade300,
+                color: CASIColors.alert,
                 size: 16,
               ),
               const SizedBox(width: 6),
               Text(
                 "Today's Activity",
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.8),
+                  color: CASIColors.textPrimary,
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
                 ),
@@ -694,7 +695,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
               Expanded(
                 child: _buildHealthRow(
                   icon: Icons.directions_walk,
-                  iconColor: Colors.green.shade300,
+                  iconColor: CASIColors.confirm,
                   label: 'Steps',
                   value: health.stepsString,
                 ),
@@ -703,7 +704,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
               Expanded(
                 child: _buildHealthRow(
                   icon: Icons.bedtime_outlined,
-                  iconColor: Colors.indigo.shade300,
+                  iconColor: CASIColors.accentSecondary,
                   label: 'Sleep',
                   value: health.sleepString,
                 ),
@@ -717,7 +718,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
               Expanded(
                 child: _buildHealthRow(
                   icon: Icons.local_fire_department,
-                  iconColor: Colors.orange.shade300,
+                  iconColor: CASIColors.caution,
                   label: 'Calories',
                   value: health.caloriesString,
                 ),
@@ -726,7 +727,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
               Expanded(
                 child: _buildHealthRow(
                   icon: Icons.timer_outlined,
-                  iconColor: Colors.cyan.shade300,
+                  iconColor: CASIColors.accentTertiary,
                   label: 'Active',
                   value: health.activeTimeString,
                 ),
@@ -740,7 +741,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
               Expanded(
                 child: _buildHealthRow(
                   icon: Icons.straighten,
-                  iconColor: Colors.teal.shade300,
+                  iconColor: CASIColors.accentTertiary,
                   label: 'Distance',
                   value: health.distanceString,
                 ),
@@ -751,12 +752,12 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
                 child: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.06),
+                    color: CASIColors.glassCard,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
                     Icons.refresh_rounded,
-                    color: Colors.white.withValues(alpha: 0.4),
+                    color: CASIColors.textTertiary,
                     size: 16,
                   ),
                 ),
@@ -777,7 +778,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.06),
+        color: CASIColors.glassCard,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
@@ -787,7 +788,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
           Text(
             label,
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.45),
+              color: CASIColors.textTertiary,
               fontSize: 11,
               fontWeight: FontWeight.w400,
             ),
