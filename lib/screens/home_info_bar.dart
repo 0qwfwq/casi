@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -26,6 +25,7 @@ import '../morning_brief/morning_brief_panel.dart';
 import '../morning_brief/weather_brief_service.dart';
 import '../morning_brief/calendar_brief_service.dart';
 import '../morning_brief/health_brief_service.dart';
+import '../services/wallpaper_service.dart';
 
 class AppTimer {
   int totalSeconds;
@@ -134,9 +134,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   final GlobalKey _weatherPillKey = GlobalKey();
 
   // --- Settings ---
-  String _bgType = 'color';
-  Color _bgColor = Colors.black;
-  String? _bgImagePath;
+  final WallpaperService _wallpaperService = WallpaperService();
   bool _immersiveMode = false;
 
   int _lastCheckedDay = DateTime.now().day;
@@ -188,6 +186,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     _countdownTimer?.cancel();
     _stopAlarmSound();
     _audioPlayer.dispose();
+    _wallpaperService.dispose();
     super.dispose();
   }
 
@@ -195,6 +194,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _applyImmersiveMode();
+      _wallpaperService.reload();
       _checkAppChangesOnResume();
       _syncTimersOnResume();
       _refreshWeatherBrief();
@@ -571,13 +571,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-      _bgType = prefs.getString('bg_type') ?? 'color';
-      final int colorValue = prefs.getInt('bg_color') ?? 0xFF000000;
-      _bgColor = Color(colorValue);
-      _bgImagePath = prefs.getString('bg_image_path');
       _immersiveMode = prefs.getBool('immersive_mode') ?? false;
     });
     _applyImmersiveMode();
+    await _wallpaperService.initialize();
+    if (mounted) setState(() {});
   }
 
   void _applyImmersiveMode() {
@@ -845,7 +843,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                         hintText: 'Event Title',
                         hintStyle: const TextStyle(color: CASIColors.textTertiary),
                         filled: true,
-                        fillColor: CASIColors.bgPrimary.withValues(alpha: 0.5),
+                        fillColor: Colors.white.withValues(alpha: CASIElevation.card.bgAlpha),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(20),
@@ -863,7 +861,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                         hintText: 'Description (Optional)',
                         hintStyle: const TextStyle(color: CASIColors.textTertiary),
                         filled: true,
-                        fillColor: CASIColors.bgPrimary.withValues(alpha: 0.5),
+                        fillColor: Colors.white.withValues(alpha: CASIElevation.card.bgAlpha),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(20),
@@ -935,7 +933,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
         }
       },
       child: Scaffold(
-      backgroundColor: CASIColors.bgPrimary,
+      backgroundColor: Colors.transparent,
       resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
@@ -1768,13 +1766,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
 
   Widget _buildBackground() {
     return Positioned.fill(
-      child: _bgType == 'image' && _bgImagePath != null
-          ? Image.file(
-              File(_bgImagePath!),
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) => Container(color: CASIColors.bgPrimary),
-            )
-          : Container(color: _bgColor),
+      child: _wallpaperService.buildBackground(),
     );
   }
 

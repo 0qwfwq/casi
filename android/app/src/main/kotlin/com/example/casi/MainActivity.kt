@@ -1,6 +1,7 @@
 package com.example.casi
 
 import android.Manifest
+import android.app.WallpaperManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -41,6 +42,7 @@ class MainActivity: FlutterFragmentActivity() {
     private val NOTIF_CHANNEL = "casi.launcher/notifications"
     private val CALENDAR_CHANNEL = "casi.launcher/calendar"
     private val HEALTH_CHANNEL = "casi.launcher/health"
+    private val WALLPAPER_CHANNEL = "casi.launcher/wallpaper"
     private val CALENDAR_PERMISSION_REQUEST = 100
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
@@ -191,6 +193,57 @@ class MainActivity: FlutterFragmentActivity() {
                             putExtra(android.app.admin.DevicePolicyManager.EXTRA_ADD_EXPLANATION, "Casi needs device admin to turn off the screen on double-tap")
                         }
                         startActivity(intent)
+                        result.success(false)
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        // --- Wallpaper Channel ---
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, WALLPAPER_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getSystemWallpaper" -> {
+                    try {
+                        val wallpaperManager = WallpaperManager.getInstance(this)
+                        val drawable = wallpaperManager.drawable
+                        if (drawable != null) {
+                            val bitmap = if (drawable is android.graphics.drawable.BitmapDrawable) {
+                                drawable.bitmap
+                            } else {
+                                val bmp = Bitmap.createBitmap(
+                                    drawable.intrinsicWidth.coerceAtMost(1080),
+                                    drawable.intrinsicHeight.coerceAtMost(1920),
+                                    Bitmap.Config.ARGB_8888
+                                )
+                                val canvas = android.graphics.Canvas(bmp)
+                                drawable.setBounds(0, 0, canvas.width, canvas.height)
+                                drawable.draw(canvas)
+                                bmp
+                            }
+                            // Scale down for transfer efficiency
+                            val scaled = Bitmap.createScaledBitmap(
+                                bitmap,
+                                bitmap.width.coerceAtMost(1080),
+                                bitmap.height.coerceAtMost(1920),
+                                true
+                            )
+                            val stream = ByteArrayOutputStream()
+                            scaled.compress(Bitmap.CompressFormat.JPEG, 85, stream)
+                            result.success(stream.toByteArray())
+                        } else {
+                            result.success(null)
+                        }
+                    } catch (e: Exception) {
+                        result.success(null)
+                    }
+                }
+                "isLiveWallpaper" -> {
+                    try {
+                        val wallpaperManager = WallpaperManager.getInstance(this)
+                        val info = wallpaperManager.wallpaperInfo
+                        result.success(info != null)
+                    } catch (e: Exception) {
                         result.success(false)
                     }
                 }

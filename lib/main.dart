@@ -40,8 +40,8 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,
-        // Section 13.1: Force dark mode, use CASI background
-        scaffoldBackgroundColor: CASIColors.bgPrimary,
+        // F1.02: Transparent scaffold — wallpaper breathes through everything
+        scaffoldBackgroundColor: Colors.transparent,
         colorScheme: const ColorScheme.dark(
           primary: CASIColors.accentPrimary,
           secondary: CASIColors.accentSecondary,

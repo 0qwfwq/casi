@@ -1,3 +1,4 @@
+import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 
 // =============================================================================
@@ -273,4 +274,121 @@ class CASIAppIconSpec {
   static const double labelToIconGap = 6;   // Gap below icon to label
   static const double rowHeight = 72;       // Preferred row height (64 min)
   static const double iconToLabelPadding = 16; // space.md
+}
+
+// ─── 6b. Glass Surface Widget ───────────────────────────────────────────────
+
+/// Reusable frosted glass container that encapsulates the
+/// ClipRRect → BackdropFilter → Container pattern from the design system.
+///
+/// Supports adaptive opacity via [tintMultiplier] and [borderMultiplier]
+/// which are driven by wallpaper brightness analysis.
+///
+/// Wrapped in [RepaintBoundary] to isolate blur repaint cost from
+/// surrounding widget tree, helping maintain 60fps on all devices.
+class GlassSurface extends StatelessWidget {
+  final Widget child;
+  final double blur;
+  final double tintAlpha;
+  final double borderAlpha;
+  final double cornerRadius;
+  final EdgeInsetsGeometry? padding;
+  final EdgeInsetsGeometry? margin;
+
+  /// Multiplier from wallpaper brightness (1.0 = no adjustment).
+  final double tintMultiplier;
+  final double borderMultiplier;
+
+  /// Optional explicit background color override (e.g. for hover states).
+  final Color? colorOverride;
+
+  const GlassSurface({
+    super.key,
+    required this.child,
+    this.blur = CASIGlass.blurStandard,
+    this.tintAlpha = CASIGlass.tintStandard,
+    this.borderAlpha = 0.06,
+    this.cornerRadius = CASIGlass.cornerStandard,
+    this.padding,
+    this.margin,
+    this.tintMultiplier = 1.0,
+    this.borderMultiplier = 1.0,
+    this.colorOverride,
+  });
+
+  /// Convenience: card elevation glass surface.
+  factory GlassSurface.card({
+    Key? key,
+    required Widget child,
+    EdgeInsetsGeometry? padding,
+    EdgeInsetsGeometry? margin,
+    double tintMultiplier = 1.0,
+    double borderMultiplier = 1.0,
+  }) {
+    return GlassSurface(
+      key: key,
+      blur: CASIGlass.blurStandard,
+      tintAlpha: CASIElevation.card.bgAlpha,
+      borderAlpha: CASIElevation.card.borderAlpha,
+      padding: padding,
+      margin: margin,
+      tintMultiplier: tintMultiplier,
+      borderMultiplier: borderMultiplier,
+      child: child,
+    );
+  }
+
+  /// Convenience: sheet / modal elevation glass surface.
+  factory GlassSurface.sheet({
+    Key? key,
+    required Widget child,
+    EdgeInsetsGeometry? padding,
+    double tintMultiplier = 1.0,
+    double borderMultiplier = 1.0,
+  }) {
+    return GlassSurface(
+      key: key,
+      blur: CASIGlass.blurSheet,
+      tintAlpha: CASIGlass.tintSheet,
+      borderAlpha: CASIElevation.float_.borderAlpha,
+      cornerRadius: CASIGlass.cornerSheet,
+      padding: padding,
+      tintMultiplier: tintMultiplier,
+      borderMultiplier: borderMultiplier,
+      child: child,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final effectiveTint = colorOverride ??
+        Colors.white.withValues(
+          alpha: (tintAlpha * tintMultiplier).clamp(0.0, 0.6),
+        );
+    final effectiveBorder = Colors.white.withValues(
+      alpha: (borderAlpha * borderMultiplier).clamp(0.0, 0.5),
+    );
+
+    Widget surface = ClipRRect(
+      borderRadius: BorderRadius.circular(cornerRadius),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+        child: Container(
+          padding: padding,
+          decoration: BoxDecoration(
+            color: effectiveTint,
+            borderRadius: BorderRadius.circular(cornerRadius),
+            border: Border.all(color: effectiveBorder, width: 1.0),
+          ),
+          child: child,
+        ),
+      ),
+    );
+
+    if (margin != null) {
+      surface = Padding(padding: margin!, child: surface);
+    }
+
+    return RepaintBoundary(child: surface);
+  }
 }
