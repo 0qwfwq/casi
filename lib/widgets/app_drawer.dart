@@ -92,6 +92,7 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
 
+
   List<String> _pinnedPackages = [];
 
   String? _activeLetter;

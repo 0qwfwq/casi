@@ -17,6 +17,7 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   bool _immersiveMode = false;
   final WallpaperService _wallpaperService = WallpaperService();
+  final TextEditingController _nameController = TextEditingController();
 
   @override
   void initState() {
@@ -27,6 +28,7 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   void dispose() {
     _wallpaperService.dispose();
+    _nameController.dispose();
     super.dispose();
   }
 
@@ -35,7 +37,13 @@ class _SettingsPageState extends State<SettingsPage> {
     await _wallpaperService.initialize();
     setState(() {
       _immersiveMode = prefs.getBool('immersive_mode') ?? false;
+      _nameController.text = prefs.getString('user_name') ?? '';
     });
+  }
+
+  Future<void> _saveName(String name) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('user_name', name.trim());
   }
 
   Future<void> _toggleImmersiveMode(bool value) async {
@@ -76,6 +84,36 @@ class _SettingsPageState extends State<SettingsPage> {
           SafeArea(
             child: ListView(
               children: [
+                // Your Name
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.person_outline, color: Colors.white),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: TextField(
+                          controller: _nameController,
+                          style: const TextStyle(color: Colors.white),
+                          decoration: const InputDecoration(
+                            labelText: 'Your Name',
+                            labelStyle: TextStyle(color: CASIColors.textSecondary),
+                            hintText: 'How should ARIA greet you?',
+                            hintStyle: TextStyle(color: CASIColors.textTertiary, fontSize: 13),
+                            enabledBorder: UnderlineInputBorder(
+                              borderSide: BorderSide(color: CASIColors.textTertiary),
+                            ),
+                            focusedBorder: UnderlineInputBorder(
+                              borderSide: BorderSide(color: CASIColors.accentPrimary),
+                            ),
+                          ),
+                          onChanged: _saveName,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
                 ListTile(
                   title: const Text("Background", style: TextStyle(color: Colors.white)),
                   leading: const Icon(Icons.wallpaper, color: Colors.white),

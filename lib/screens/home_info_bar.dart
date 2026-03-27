@@ -26,6 +26,7 @@ import '../morning_brief/weather_brief_service.dart';
 import '../morning_brief/calendar_brief_service.dart';
 import '../morning_brief/health_brief_service.dart';
 import '../services/wallpaper_service.dart';
+import 'package:casi/services/aria_service.dart';
 
 class AppTimer {
   int totalSeconds;
@@ -133,6 +134,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   bool _isForecastVisible = false;
   final GlobalKey _weatherPillKey = GlobalKey();
 
+  // --- ARIA State ---
+  String? _ariaSuggestion;
+  bool _ariaReady = false;
+  bool _ariaGenerating = false;
+  String? _lastLaunchedPackage;
+
   // --- Settings ---
   final WallpaperService _wallpaperService = WallpaperService();
   bool _immersiveMode = false;
@@ -176,6 +183,36 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     _alarmTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       _checkAlarms();
     });
+
+    _initARIA();
+  }
+
+  Future<void> _initARIA() async {
+    await ARIAService.instance.initialize();
+    if (mounted) {
+      setState(() => _ariaReady = ARIAService.instance.isReady);
+      if (_ariaReady && _showMorningBrief) _refreshARIA();
+    }
+  }
+
+  Future<void> _refreshARIA() async {
+    if (!_ariaReady || ARIAService.instance.isGenerating) return;
+    if (mounted) setState(() => _ariaGenerating = true);
+    final message = await ARIAService.instance.generateBriefMessage();
+    if (mounted) {
+      setState(() {
+        _ariaGenerating = false;
+        if (message != null) _ariaSuggestion = message;
+      });
+    }
+  }
+
+  Future<void> _importARIAModel() async {
+    final success = await ARIAService.instance.pickModelFile();
+    if (success && mounted) {
+      setState(() => _ariaReady = true);
+      _refreshARIA();
+    }
   }
 
   @override
@@ -200,6 +237,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
       _refreshWeatherBrief();
       _refreshCalendarBrief();
       _refreshHealthBrief();
+      // ARIA: record last launched app
+      if (_ariaReady && _lastLaunchedPackage != null) {
+        ARIAService.instance.recordAppLaunch(_lastLaunchedPackage!);
+      }
       // Instantly close the drawer when returning to the launcher
       if (_drawerController.isAttached && _drawerController.size > 0.0) {
         _drawerController.jumpTo(0.0);
@@ -287,6 +328,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
         _refreshWeatherBrief();
         _refreshCalendarBrief();
         _refreshHealthBrief();
+        _refreshARIA();
       }
     }
 
@@ -625,6 +667,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     _refreshWeatherBrief();
     _refreshCalendarBrief();
     _refreshHealthBrief();
+    _refreshARIA();
   }
 
   Future<void> _refreshWeatherBrief() async {
@@ -739,6 +782,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
       debugPrint("Error loading calendar events: $e");
     }
   }
+
 
   void _addToHomeScreen(AppInfo app) {
     if (_homeApps.values.any((element) => element.packageName == app.packageName)) {
@@ -1035,6 +1079,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                                 launcherEvents: _calendarEvents,
                                                 onDismiss: _dismissMorningBrief,
                                                 onRefreshHealth: _refreshHealthBrief,
+                                                ariaSuggestion: _ariaSuggestion,
+                                                ariaReady: _ariaReady,
+                                                ariaGenerating: _ariaGenerating,
+                                                onImportARIAModel: _importARIAModel,
                                               ),
                                             ),
                                             secondChild: const SizedBox(width: double.infinity),
@@ -1109,7 +1157,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                               homeApps: _homeApps,
                                               maxHomeApps: _maxHomeApps,
                                               onAppDropped: (index, app) => _onAppDropped(index, app),
-                                              onAppTap: (app) => AppLauncher.launchApp(app.packageName),
+                                              onAppTap: (app) {
+                                                _lastLaunchedPackage = app.packageName;
+                                                AppLauncher.launchApp(app.packageName);
+                                              },
                                               onDragStarted: (app) => setState(() {
                                                 _isDragging = true;
                                                 _draggingApp = app;
@@ -1418,7 +1469,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                               apps: _apps,
                               progressNotifier: _drawerProgress,
                               controller: _drawerController,
-                              onAppTap: (app) => AppLauncher.launchApp(app.packageName),
+                              onAppTap: (app) {
+                                _lastLaunchedPackage = app.packageName;
+                                AppLauncher.launchApp(app.packageName);
+                              },
                               onAddToHome: (app) => _addToHomeScreen(app),
                               onUninstall: (app) {
                                 try {

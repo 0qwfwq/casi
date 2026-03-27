@@ -268,7 +268,11 @@ class _WallpaperLayer extends StatelessWidget {
 
     if (imageProvider == null) {
       return SizedBox.expand(
-        child: ColoredBox(color: isOLED ? Colors.black : color),
+        child: ColoredBox(
+          color: type == WallpaperType.system 
+              ? Colors.transparent 
+              : (isOLED ? Colors.black : color),
+        ),
       );
     }
 
@@ -278,7 +282,9 @@ class _WallpaperLayer extends StatelessWidget {
         fit: BoxFit.cover,
         filterQuality: FilterQuality.medium,
         errorBuilder: (context, error, stackTrace) => ColoredBox(
-          color: isOLED ? Colors.black : const Color(0xFF0F1B2D),
+          color: type == WallpaperType.system
+              ? Colors.transparent
+              : (isOLED ? Colors.black : const Color(0xFF0F1B2D)),
           child: const SizedBox.expand(),
         ),
       ),

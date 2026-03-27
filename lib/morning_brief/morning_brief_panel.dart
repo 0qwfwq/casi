@@ -14,6 +14,10 @@ class MorningBriefPanel extends StatefulWidget {
   final CalendarBriefData? calendarData;
   final HealthBriefData? healthData;
   final Map<DateTime, List<CalendarEvent>> launcherEvents;
+  final String? ariaSuggestion;
+  final bool ariaReady;
+  final bool ariaGenerating;
+  final VoidCallback? onImportARIAModel;
 
   const MorningBriefPanel({
     super.key,
@@ -23,6 +27,10 @@ class MorningBriefPanel extends StatefulWidget {
     this.calendarData,
     this.healthData,
     this.launcherEvents = const {},
+    this.ariaSuggestion,
+    this.ariaReady = false,
+    this.ariaGenerating = false,
+    this.onImportARIAModel,
   });
 
   @override
@@ -178,52 +186,142 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
   }
 
   Widget _buildGreetingPage() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 32, 24, 8),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            _getGreeting(),
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 28,
-              fontWeight: FontWeight.w300,
-              letterSpacing: 0.5,
+    final suggestion = widget.ariaSuggestion;
+    return Stack(
+      children: [
+        // "New" model button — top left (only when ARIA has a model)
+        if (widget.ariaReady)
+          Positioned(
+            top: 12,
+            left: 12,
+            child: GestureDetector(
+              onTap: widget.onImportARIAModel,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.12),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.auto_awesome,
+                      color: CASIColors.textTertiary,
+                      size: 12,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'ARIA',
+                      style: TextStyle(
+                        color: CASIColors.textTertiary,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            _getDateString(),
-            style: TextStyle(
-              color: CASIColors.textSecondary,
-              fontSize: 14,
-              fontWeight: FontWeight.w400,
-              letterSpacing: 0.3,
-            ),
-          ),
-          const Spacer(),
-          Row(
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 32, 24, 8),
+          child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(
-                'Swipe to see your day',
-                style: TextStyle(
-                  color: CASIColors.textTertiary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w400,
+                _getGreeting(),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 28,
+                  fontWeight: FontWeight.w300,
+                  letterSpacing: 0.5,
                 ),
               ),
-              const SizedBox(width: 4),
-              Icon(
-                Icons.arrow_forward_ios,
-                color: CASIColors.textTertiary,
-                size: 10,
+              const SizedBox(height: 8),
+              Text(
+                _getDateString(),
+                style: TextStyle(
+                  color: CASIColors.textSecondary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w400,
+                  letterSpacing: 0.3,
+                ),
+              ),
+              const SizedBox(height: 16),
+              // ARIA-generated encouragement
+              if (widget.ariaGenerating)
+                SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 1.5,
+                    color: CASIColors.accentPrimary,
+                  ),
+                )
+              else if (suggestion != null && widget.ariaReady)
+                Text(
+                  suggestion,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: CASIColors.textSecondary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w300,
+                    fontStyle: FontStyle.italic,
+                    height: 1.4,
+                  ),
+                )
+              else if (!widget.ariaReady)
+                GestureDetector(
+                  onTap: widget.onImportARIAModel,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.auto_awesome,
+                        color: CASIColors.textTertiary,
+                        size: 14,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Set up ARIA',
+                        style: TextStyle(
+                          color: CASIColors.textTertiary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              const Spacer(),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'Swipe to see your day',
+                    style: TextStyle(
+                      color: CASIColors.textTertiary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w400,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(
+                    Icons.arrow_forward_ios,
+                    color: CASIColors.textTertiary,
+                    size: 10,
+                  ),
+                ],
               ),
             ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
