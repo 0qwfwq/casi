@@ -115,48 +115,35 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
                 ),
               ],
             ),
-            child: Stack(
-              children: [
-                Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    SizedBox(
-                      height: _panelHeight,
-                      child: PageView(
-                        controller: _pageController,
-                        onPageChanged: (page) {
-                          setState(() => _currentPage = page);
-                        },
-                        children: [
-                          _buildGreetingPage(),
-                          _buildWeatherPage(),
-                          _buildCalendarPage(),
-                          _buildHealthPage(),
-                        ],
-                      ),
-                    ),
-                    _buildPageIndicator(),
-                    const SizedBox(height: 12),
-                  ],
-                ),
-                // Dismiss button
-                Positioned(
-                  top: 8,
-                  right: 8,
-                  child: GestureDetector(
-                    onTap: widget.onDismiss,
-                    child: const SizedBox(
-                      width: 28,
-                      height: 28,
-                      child: Icon(
-                        Icons.close,
-                        color: CASIColors.textSecondary,
-                        size: 16,
-                      ),
+            child: GestureDetector(
+              onVerticalDragEnd: (details) {
+                // Swipe up to dismiss (like weather widget)
+                if (details.primaryVelocity != null && details.primaryVelocity! < -300) {
+                  widget.onDismiss();
+                }
+              },
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    height: _panelHeight,
+                    child: PageView(
+                      controller: _pageController,
+                      onPageChanged: (page) {
+                        setState(() => _currentPage = page);
+                      },
+                      children: [
+                        _buildGreetingPage(),
+                        _buildWeatherPage(),
+                        _buildCalendarPage(),
+                        _buildHealthPage(),
+                      ],
                     ),
                   ),
-                ),
-              ],
+                  _buildPageIndicator(),
+                  const SizedBox(height: 12),
+                ],
+              ),
             ),
           ),
         ),
@@ -187,47 +174,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
 
   Widget _buildGreetingPage() {
     final suggestion = widget.ariaSuggestion;
-    return Stack(
-      children: [
-        // "New" model button — top left (only when ARIA has a model)
-        if (widget.ariaReady)
-          Positioned(
-            top: 12,
-            left: 12,
-            child: GestureDetector(
-              onTap: widget.onImportARIAModel,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.12),
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.auto_awesome,
-                      color: CASIColors.textTertiary,
-                      size: 12,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      'ARIA',
-                      style: TextStyle(
-                        color: CASIColors.textTertiary,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w400,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        Padding(
+    return Padding(
           padding: const EdgeInsets.fromLTRB(24, 32, 24, 8),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -252,17 +199,8 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
                 ),
               ),
               const SizedBox(height: 16),
-              // ARIA-generated encouragement
-              if (widget.ariaGenerating)
-                SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 1.5,
-                    color: CASIColors.accentPrimary,
-                  ),
-                )
-              else if (suggestion != null && widget.ariaReady)
+              // ARIA-generated encouragement (streams word-by-word)
+              if (suggestion != null && widget.ariaReady)
                 Text(
                   suggestion,
                   textAlign: TextAlign.center,
@@ -272,6 +210,15 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
                     fontWeight: FontWeight.w300,
                     fontStyle: FontStyle.italic,
                     height: 1.4,
+                  ),
+                )
+              else if (widget.ariaGenerating)
+                SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 1.5,
+                    color: CASIColors.accentPrimary,
                   ),
                 )
               else if (!widget.ariaReady)
@@ -320,9 +267,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
               ),
             ],
           ),
-        ),
-      ],
-    );
+        );
   }
 
   Widget _buildWeatherPage() {

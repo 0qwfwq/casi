@@ -128,6 +128,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   // --- Morning Brief State ---
   bool _showMorningBrief = true;
   int _morningBriefDismissDay = -1;
+  int _morningBriefKey = 0; // incremented to force panel reset to page 0
   WeatherBriefData? _weatherBriefData;
   CalendarBriefData? _calendarBriefData;
   HealthBriefData? _healthBriefData;
@@ -198,7 +199,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   Future<void> _refreshARIA() async {
     if (!_ariaReady || ARIAService.instance.isGenerating) return;
     if (mounted) setState(() => _ariaGenerating = true);
-    final message = await ARIAService.instance.generateBriefMessage();
+    final message = await ARIAService.instance.generateBriefMessage(
+      onWord: (partialText) {
+        if (mounted) {
+          setState(() => _ariaSuggestion = partialText);
+        }
+      },
+    );
     if (mounted) {
       setState(() {
         _ariaGenerating = false;
@@ -663,6 +670,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     setState(() {
       _morningBriefDismissDay = -1;
       _showMorningBrief = true;
+      _morningBriefKey++; // force panel to recreate at page 0
     });
     _refreshWeatherBrief();
     _refreshCalendarBrief();
@@ -1073,6 +1081,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                             firstChild: Padding(
                                               padding: const EdgeInsets.only(top: 12),
                                               child: MorningBriefPanel(
+                                                key: ValueKey(_morningBriefKey),
                                                 weatherData: _weatherBriefData,
                                                 calendarData: _calendarBriefData,
                                                 healthData: _healthBriefData,
@@ -1589,8 +1598,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     final bool hasAlarm = nearestAlarm != null;
     final bool hasTimer = nearestTimer != null;
 
-    // Hide status pills during active pill, alarm, or expanded weather
-    final bool showStatusPills = !_showPill && !_isAlarmRinging && !_isForecastVisible;
+    // Hide status pills during alarm ringing or expanded weather (but keep them
+    // visible when panels like timer/alarm/calendar are open)
+    final bool showStatusPills = !_isAlarmRinging && !_isForecastVisible;
 
     // GlobalKey preserves WeatherPill state (including _isExpanded) across layout changes
     final weatherPill = WeatherPill(
@@ -1600,107 +1610,100 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
       },
     );
 
-    final alarmPill = SizedBox(
-      width: _statusPillWidth,
-      child: _buildStatusPill(
-        icon: Icons.alarm,
-        label: nearestAlarm ?? '',
-        onTap: () {
-          setState(() {
-            _showPill = true;
-            _isAlarmMode = true;
-            _isStopwatchMode = false;
-            _isTimerMode = false;
-            _isCalendarMode = false;
-            _isViewingEvents = false;
-            _selectedAlarmIndex = null;
-          });
-        },
-      ),
-    );
-
-    final timerPill = SizedBox(
-      width: _statusPillWidth,
-      child: _buildStatusPill(
-        icon: Icons.timer,
-        label: hasTimer ? _formatTimerTime(_appTimers[nearestTimer].remainingSeconds) : '',
-        textAlignment: Alignment.centerRight,
-        onTap: () {
-          setState(() {
-            _showPill = true;
-            _isTimerMode = true;
-            _isStopwatchMode = false;
-            _isAlarmMode = false;
-            _isCalendarMode = false;
-            _isViewingEvents = false;
-            _isCreatingTimer = false;
-            _isEditingTimer = false;
-            _selectedTimerIndex = nearestTimer;
-          });
-        },
-      ),
-    );
-
     final bool showAlarm = showStatusPills && hasAlarm;
     final bool showTimer = showStatusPills && hasTimer;
 
-    if (showAlarm && showTimer) {
-      // 3 pills: Expanded(alarm right-aligned) | Weather | Expanded(timer left-aligned)
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        child: Row(
-          children: [
-            Expanded(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [alarmPill],
-              ),
-            ),
-            const SizedBox(width: 4),
-            weatherPill,
-            const SizedBox(width: 4),
-            Expanded(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.start,
-                children: [timerPill],
-              ),
-            ),
-          ],
-        ),
-      );
-    } else if (showAlarm) {
-      // 2 pills: center the alarm+weather pair together
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            alarmPill,
-            const SizedBox(width: 4),
-            weatherPill,
-          ],
-        ),
-      );
-    } else if (showTimer) {
-      // 2 pills: center the weather+timer pair together
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            weatherPill,
-            const SizedBox(width: 4),
-            timerPill,
-          ],
-        ),
-      );
-    } else {
-      // Weather only (or expanded forecast) — no Row so expanded width: double.infinity works
-      return Padding(
-        padding: EdgeInsets.symmetric(horizontal: _isForecastVisible ? 40 : 20),
-        child: weatherPill,
-      );
-    }
+    // Centered row: visible pills group together and center as a unit.
+    // AnimatedSize collapses hidden pills to zero width; AnimatedOpacity fades them.
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: _isForecastVisible ? 40 : 20),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Alarm pill — collapses to zero width when hidden
+          AnimatedSize(
+            duration: CASIMotion.standard,
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.centerRight,
+            child: showAlarm
+                ? AnimatedOpacity(
+                    opacity: 1.0,
+                    duration: CASIMotion.standard,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          width: _statusPillWidth,
+                          child: _buildStatusPill(
+                            icon: Icons.alarm,
+                            label: nearestAlarm,
+                            onTap: () {
+                              setState(() {
+                                _showPill = true;
+                                _isAlarmMode = true;
+                                _isStopwatchMode = false;
+                                _isTimerMode = false;
+                                _isCalendarMode = false;
+                                _isViewingEvents = false;
+                                _selectedAlarmIndex = null;
+                              });
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                      ],
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
+          // Weather pill — Expanded only when forecast is open (needs bounded width
+          // for its double.infinity Container); unwrapped when collapsed so pills
+          // group tightly and center as a unit.
+          if (_isForecastVisible) Expanded(child: weatherPill)
+          else weatherPill,
+          // Timer pill — collapses to zero width when hidden
+          AnimatedSize(
+            duration: CASIMotion.standard,
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.centerLeft,
+            child: showTimer
+                ? AnimatedOpacity(
+                    opacity: 1.0,
+                    duration: CASIMotion.standard,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SizedBox(width: 4),
+                        SizedBox(
+                          width: _statusPillWidth,
+                          child: _buildStatusPill(
+                            icon: Icons.timer,
+                            label: _formatTimerTime(_appTimers[nearestTimer].remainingSeconds),
+                            textAlignment: Alignment.centerRight,
+                            onTap: () {
+                              setState(() {
+                                _showPill = true;
+                                _isTimerMode = true;
+                                _isStopwatchMode = false;
+                                _isAlarmMode = false;
+                                _isCalendarMode = false;
+                                _isViewingEvents = false;
+                                _isCreatingTimer = false;
+                                _isEditingTimer = false;
+                                _selectedTimerIndex = nearestTimer;
+                              });
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildStatusPill({
@@ -1748,9 +1751,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   }
 
   void _showHomescreenContextMenu(Offset position) {
-    // Only show on bare wallpaper — not when drawer, pill, forecast, etc. are active
+    // Only show on bare wallpaper — not when drawer, pill, alarm, etc. are active
+    // (allowed when forecast is visible so user can still show brief)
     if (_showMorningBrief || _showPill || _isAlarmRinging ||
-        _isForecastVisible ||
         _drawerProgress.value > 0.05) {
       return;
     }

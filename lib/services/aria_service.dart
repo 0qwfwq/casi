@@ -296,32 +296,34 @@ class ARIAService {
 
   // ---------- Inference ----------
 
-  Future<String> _runInference(
+  /// Streaming variant of inference — calls [onToken] with the accumulated
+  /// text each time a new word boundary (whitespace) is detected, so the UI
+  /// can reveal words one at a time.
+  Future<String> _runInferenceStreaming(
     String systemPrompt,
     String userPrompt, {
     int maxTokens = 120,
+    void Function(String accumulated)? onToken,
   }) async {
-    debugPrint('[ARIA] _runInference called. modelLoaded=$_modelLoaded, contextId=$_contextId');
+    debugPrint('[ARIA] _runInferenceStreaming called. modelLoaded=$_modelLoaded, contextId=$_contextId');
     if (!_modelLoaded || _contextId == null) {
-      debugPrint('[ARIA] _runInference bailing: model not loaded or no context.');
+      debugPrint('[ARIA] _runInferenceStreaming bailing: model not loaded or no context.');
       return '';
     }
     try {
       final fllama = Fllama.instance();
       if (fllama == null) {
-        debugPrint('[ARIA] _runInference: Fllama instance is null.');
+        debugPrint('[ARIA] _runInferenceStreaming: Fllama instance is null.');
         return '';
       }
 
-      // Qwen2.5 ChatML template
       final prompt = '<|im_start|>system\n$systemPrompt<|im_end|>\n'
           '<|im_start|>user\n$userPrompt<|im_end|>\n'
           '<|im_start|>assistant\n';
 
-      debugPrint('[ARIA] _runInference prompt: ${prompt.substring(0, prompt.length.clamp(0, 200))}...');
-
       final completer = Completer<String>();
       final buffer = StringBuffer();
+      int lastWordEnd = 0;
 
       late final StreamSubscription<Map<Object?, dynamic>> subscription;
       subscription = fllama.onTokenStream!.listen((data) {
@@ -331,11 +333,20 @@ class ARIAService {
           if (result is Map) {
             final token = result['token'] as String? ?? '';
             buffer.write(token);
+            // Emit each time a new word boundary appears
+            if (onToken != null) {
+              final text = buffer.toString();
+              final trimmed = text.trimRight();
+              // Check if we've accumulated a new word (whitespace after content)
+              if (text.length > lastWordEnd && (text.endsWith(' ') || text.endsWith('\n'))) {
+                lastWordEnd = text.length;
+                onToken(trimmed);
+              }
+            }
           }
         }
       });
 
-      debugPrint('[ARIA] Starting completion...');
       await fllama.completion(
         _contextId!,
         prompt: prompt,
@@ -347,15 +358,17 @@ class ARIAService {
       );
 
       subscription.cancel();
-      if (!completer.isCompleted) {
-        completer.complete(buffer.toString());
+      final output = buffer.toString().trim();
+      // Emit final text (last word may not have trailing space)
+      if (onToken != null && output.length > lastWordEnd) {
+        onToken(output);
       }
-
-      final output = await completer.future;
-      debugPrint('[ARIA] _runInference raw output: $output');
-      return output.trim();
+      if (!completer.isCompleted) {
+        completer.complete(output);
+      }
+      return await completer.future;
     } catch (e) {
-      debugPrint('[ARIA] _runInference error: $e');
+      debugPrint('[ARIA] _runInferenceStreaming error: $e');
       return '';
     }
   }
@@ -363,11 +376,14 @@ class ARIAService {
   // ---------- Brief message generation ----------
 
   /// Generates a short, friendly message for the Morning Brief ARIA panel.
-  /// Returns plain text (no JSON). Returns null if the model isn't loaded.
+  /// Streams words one at a time via [onWord] callback.
+  /// Returns the final cleaned text, or null if the model isn't loaded.
   bool _generating = false;
   bool get isGenerating => _generating;
 
-  Future<String?> generateBriefMessage() async {
+  Future<String?> generateBriefMessage({
+    void Function(String partialText)? onWord,
+  }) async {
     if (!_modelLoaded) {
       debugPrint('[ARIA] generateBriefMessage: model not loaded.');
       return null;
@@ -394,14 +410,28 @@ class ARIAService {
 
       final systemPrompt =
           'You are a helpful assistant. Write a short, encouraging message for one person. '
-          'Under 15 words. Just the message, nothing else.'
+          'Under 30 words. Just the message, nothing else.'
           '${userName.isNotEmpty ? ' Their name is $userName. You may use it.' : ''}';
 
       final userPrompt = 'It is $timeOfDay on $dayName.'
           '${facts.isNotEmpty ? ' About them: ${facts.join('; ')}.' : ''}'
           ' Write something encouraging for their day.';
 
-      final raw = await _runInference(systemPrompt, userPrompt, maxTokens: 60);
+      final raw = await _runInferenceStreaming(
+        systemPrompt,
+        userPrompt,
+        maxTokens: 60,
+        onToken: onWord != null
+            ? (tokenBuffer) {
+                // Clean leading quotes from the very first chunk
+                var cleaned = tokenBuffer;
+                if (cleaned.startsWith('"')) {
+                  cleaned = cleaned.substring(1);
+                }
+                onWord(cleaned);
+              }
+            : null,
+      );
       debugPrint('[ARIA] generateBriefMessage result: "$raw"');
 
       _generating = false;
@@ -412,6 +442,11 @@ class ARIAService {
       var cleaned = raw.trim();
       if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
         cleaned = cleaned.substring(1, cleaned.length - 1);
+      }
+      // Enforce 30-word limit
+      final words = cleaned.split(RegExp(r'\s+'));
+      if (words.length > 30) {
+        cleaned = words.take(30).join(' ');
       }
       return cleaned.isEmpty ? null : cleaned;
     } catch (e) {

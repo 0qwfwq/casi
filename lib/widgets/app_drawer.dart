@@ -118,6 +118,10 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
       if (_activeLetter != null) {
         setState(() => _activeLetter = null);
       }
+      // Reset scroll to top (letter A) when drawer closes
+      if (widget.scrollController.hasClients && widget.scrollController.offset > 0) {
+        widget.scrollController.jumpTo(0);
+      }
     }
   }
 
@@ -265,7 +269,7 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                               left: CASISpacing.md,
                               right: progress > 0.85 ? 36 : CASISpacing.md,
                             ),
-                            child: _searchQuery.isNotEmpty
+                            child: (_searchQuery.isNotEmpty && _isFullyExpanded)
                                 ? _buildSearchResults()
                                 : _buildAppList(),
                           ),
@@ -294,13 +298,15 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                       ),
                     ),
                   ),
-                // Search bar — glass.heavy spec (section 8.2)
+                // Search bar — only visible when fully expanded past pinned snap
+                if (_isFullyExpanded)
                 Positioned(
                   left: 0,
                   right: 0,
                   bottom: MediaQuery.of(context).viewInsets.bottom + CASISpacing.md,
-                  child: Opacity(
-                    opacity: contentOpacity,
+                  child: AnimatedOpacity(
+                    opacity: _isFullyExpanded ? contentOpacity : 0.0,
+                    duration: CASIMotion.fast,
                     child: Center(
                       child: SizedBox(
                         width: screenWidth * 0.6,
@@ -397,9 +403,14 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
 
   // ── App List (Pinned + Alphabetical) ──────────────────────────────────
 
+  /// Whether the drawer is expanded beyond the pinned-only halfway snap (0.50).
+  bool get _isFullyExpanded =>
+      widget.progressNotifier.value > 0.55;
+
   Widget _buildAppList() {
     final pinned = _pinnedApps;
     final grouped = _groupedApps;
+    final showFull = _isFullyExpanded;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -435,39 +446,41 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
               return _buildPinnedGridCell(pinned[index]);
             },
           ),
-          // Separator — color.surface.divider (5% white hairline)
-          Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: CASISpacing.md,
-              vertical: CASISpacing.sm,
-            ),
-            child: Container(
-              height: 0.5,
-              color: CASIColors.glassDivider,
-            ),
-          ),
-        ],
-        // Alphabetical sections
-        for (final entry in grouped.entries) ...[
-          Container(
-            key: _sectionKeys[entry.key],
-            padding: const EdgeInsets.only(
-              left: CASISpacing.md,
-              top: CASISpacing.md,
-              bottom: CASISpacing.xs,
-            ),
-            child: Text(
-              entry.key,
-              style: CASITypography.caption.copyWith(
-                color: CASIColors.textTertiary,
-                fontWeight: FontWeight.w400,
-                letterSpacing: 1.0,
+          // Separator — only when fully expanded
+          if (showFull)
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: CASISpacing.md,
+                vertical: CASISpacing.sm,
+              ),
+              child: Container(
+                height: 0.5,
+                color: CASIColors.glassDivider,
               ),
             ),
-          ),
-          for (final app in entry.value)
-            _buildAppRow(app, isPinned: false),
         ],
+        // Alphabetical sections — only when fully expanded
+        if (showFull)
+          for (final entry in grouped.entries) ...[
+            Container(
+              key: _sectionKeys[entry.key],
+              padding: const EdgeInsets.only(
+                left: CASISpacing.md,
+                top: CASISpacing.md,
+                bottom: CASISpacing.xs,
+              ),
+              child: Text(
+                entry.key,
+                style: CASITypography.caption.copyWith(
+                  color: CASIColors.textTertiary,
+                  fontWeight: FontWeight.w400,
+                  letterSpacing: 1.0,
+                ),
+              ),
+            ),
+            for (final app in entry.value)
+              _buildAppRow(app, isPinned: false),
+          ],
       ],
     );
   }

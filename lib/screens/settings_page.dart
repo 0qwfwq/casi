@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:casi/design_system.dart';
 import '../services/wallpaper_service.dart';
+import '../services/aria_service.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -16,6 +17,7 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   bool _immersiveMode = false;
+  bool _ariaModelLoaded = ARIAService.instance.isReady;
   final WallpaperService _wallpaperService = WallpaperService();
   final TextEditingController _nameController = TextEditingController();
 
@@ -136,6 +138,24 @@ class _SettingsPageState extends State<SettingsPage> {
                   value: _immersiveMode,
                   onChanged: _toggleImmersiveMode,
                   activeThumbColor: CASIColors.accentPrimary,
+                ),
+                ListTile(
+                  title: const Text("ARIA Model", style: TextStyle(color: Colors.white)),
+                  subtitle: Text(
+                    _ariaModelLoaded ? "Model loaded" : "No model imported",
+                    style: const TextStyle(color: CASIColors.textSecondary, fontSize: 12),
+                  ),
+                  leading: const Icon(Icons.auto_awesome, color: Colors.white),
+                  trailing: Text(
+                    _ariaModelLoaded ? 'Change' : 'Import',
+                    style: const TextStyle(color: CASIColors.accentPrimary, fontSize: 13),
+                  ),
+                  onTap: () async {
+                    final success = await ARIAService.instance.pickModelFile();
+                    if (success && mounted) {
+                      setState(() => _ariaModelLoaded = true);
+                    }
+                  },
                 ),
               ],
             ),
