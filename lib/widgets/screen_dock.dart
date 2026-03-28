@@ -19,6 +19,7 @@ class ScreenDock extends StatelessWidget {
   final void Function(AppInfo app)? onAppTap;
   final void Function(AppInfo app)? onDragStarted;
   final AppInfo? draggingApp;
+  final Widget? emptyDockWidget;
 
   const ScreenDock({
     super.key,
@@ -34,6 +35,7 @@ class ScreenDock extends StatelessWidget {
     this.onAppTap,
     this.onDragStarted,
     this.draggingApp,
+    this.emptyDockWidget,
   });
 
   Widget _buildAppIcon(AppInfo app, double iconSize) {
@@ -52,7 +54,7 @@ class ScreenDock extends StatelessWidget {
 
   Widget _buildHomeAppRow() {
     final appCount = homeApps.length;
-    if (appCount == 0) return const SizedBox.shrink();
+    if (appCount == 0) return emptyDockWidget ?? const SizedBox.shrink();
 
     double iconSize;
     double spacing;

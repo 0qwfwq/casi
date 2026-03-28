@@ -8,7 +8,10 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.database.Cursor
 import android.graphics.Bitmap
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
+import android.os.BatteryManager
 import android.provider.CalendarContract
 import android.provider.Settings
 import android.media.AudioManager
@@ -43,6 +46,7 @@ class MainActivity: FlutterFragmentActivity() {
     private val CALENDAR_CHANNEL = "casi.launcher/calendar"
     private val HEALTH_CHANNEL = "casi.launcher/health"
     private val WALLPAPER_CHANNEL = "casi.launcher/wallpaper"
+    private val DEVICE_CHANNEL = "casi.launcher/device"
     private val CALENDAR_PERMISSION_REQUEST = 100
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
@@ -246,6 +250,38 @@ class MainActivity: FlutterFragmentActivity() {
                     } catch (e: Exception) {
                         result.success(false)
                     }
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        // --- Device Context Channel (battery, network, charging) ---
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, DEVICE_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getDeviceContext" -> {
+                    val batteryManager = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+                    val batteryLevel = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+                    val isCharging = batteryManager.isCharging
+
+                    val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+                    val network = connectivityManager.activeNetwork
+                    var networkState = "offline"
+                    if (network != null) {
+                        val capabilities = connectivityManager.getNetworkCapabilities(network)
+                        if (capabilities != null) {
+                            networkState = when {
+                                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "wifi"
+                                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "cellular"
+                                else -> "other"
+                            }
+                        }
+                    }
+
+                    result.success(mapOf(
+                        "batteryLevel" to batteryLevel,
+                        "isCharging" to isCharging,
+                        "networkState" to networkState
+                    ))
                 }
                 else -> result.notImplemented()
             }

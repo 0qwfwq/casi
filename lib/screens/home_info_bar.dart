@@ -27,6 +27,8 @@ import '../morning_brief/calendar_brief_service.dart';
 import '../morning_brief/health_brief_service.dart';
 import '../services/wallpaper_service.dart';
 import 'package:casi/services/aria_service.dart';
+import 'package:casi/services/foresight_service.dart';
+import '../widgets/foresight_pill.dart';
 
 class AppTimer {
   int totalSeconds;
@@ -141,6 +143,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   bool _ariaGenerating = false;
   String? _lastLaunchedPackage;
 
+  // --- Foresight State ---
+  List<ForesightPrediction> _foresightPredictions = [];
+  bool _showForesight = true;
+
   // --- Settings ---
   final WallpaperService _wallpaperService = WallpaperService();
   bool _immersiveMode = false;
@@ -177,6 +183,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     _loadAlarms();
     _loadTimers();
     _loadMorningBriefState();
+    _loadForesightState();
     _refreshWeatherBrief();
     _refreshCalendarBrief();
     _refreshHealthBrief();
@@ -186,6 +193,31 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     });
 
     _initARIA();
+    _initForesight();
+  }
+
+  Future<void> _initForesight() async {
+    await ForesightService.instance.initialize();
+    _refreshForesightPredictions();
+  }
+
+  Future<void> _refreshForesightPredictions() async {
+    if (!ForesightService.instance.isInitialized || _apps.isEmpty) return;
+    final predictions = await ForesightService.instance.predict(_apps);
+    final dockPackages = _homeApps.values.map((a) => a.packageName).toSet();
+    final filtered = predictions
+        .where((p) => !dockPackages.contains(p.packageName))
+        .toList();
+    if (mounted) {
+      setState(() => _foresightPredictions = filtered);
+    }
+  }
+
+  void _onForesightAppTap(String packageName) {
+    _lastLaunchedPackage = packageName;
+    ForesightService.instance.recordLaunch(packageName);
+    setState(() => _foresightPredictions = []);
+    AppLauncher.launchApp(packageName);
   }
 
   Future<void> _initARIA() async {
@@ -248,11 +280,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
       if (_ariaReady && _lastLaunchedPackage != null) {
         ARIAService.instance.recordAppLaunch(_lastLaunchedPackage!);
       }
+      // Foresight: generate predictions on unlock
+      ForesightService.instance.onResume();
+      _refreshForesightPredictions();
       // Instantly close the drawer when returning to the launcher
       if (_drawerController.isAttached && _drawerController.size > 0.0) {
         _drawerController.jumpTo(0.0);
       }
     } else if (state == AppLifecycleState.paused) {
+      ForesightService.instance.onPause();
       // Instantly close the drawer when leaving the launcher (e.g. opening an app)
       if (_drawerController.isAttached && _drawerController.size > 0.0) {
         _drawerController.jumpTo(0.0);
@@ -676,6 +712,24 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     _refreshCalendarBrief();
     _refreshHealthBrief();
     _refreshARIA();
+  }
+
+  Future<void> _loadForesightState() async {
+    final prefs = await SharedPreferences.getInstance();
+    final hidden = prefs.getBool('foresight_hidden') ?? false;
+    if (mounted) setState(() => _showForesight = !hidden);
+  }
+
+  Future<void> _dismissForesight() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('foresight_hidden', true);
+    if (mounted) setState(() => _showForesight = false);
+  }
+
+  Future<void> _showForesightAgain() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('foresight_hidden', false);
+    if (mounted) setState(() => _showForesight = true);
   }
 
   Future<void> _refreshWeatherBrief() async {
@@ -1137,6 +1191,38 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                         child: Column(
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
+                                            // Foresight prediction pill — above dock
+                                            AnimatedSwitcher(
+                                              duration: CASIMotion.standard,
+                                              switchInCurve: Curves.easeOutCubic,
+                                              switchOutCurve: Curves.easeInCubic,
+                                              transitionBuilder: (child, animation) => FadeTransition(
+                                                opacity: animation,
+                                                child: SlideTransition(
+                                                  position: Tween<Offset>(
+                                                    begin: const Offset(0, 0.5),
+                                                    end: Offset.zero,
+                                                  ).animate(animation),
+                                                  child: child,
+                                                ),
+                                              ),
+                                              child: (_foresightPredictions.isNotEmpty &&
+                                                      _showForesight &&
+                                                      _homeApps.isNotEmpty &&
+                                                      !_showPill &&
+                                                      !_isAlarmRinging &&
+                                                      !_isDragging)
+                                                  ? Padding(
+                                                      key: const ValueKey('foresight_pill'),
+                                                      padding: const EdgeInsets.only(bottom: 12),
+                                                      child: ForesightPill(
+                                                        predictions: _foresightPredictions,
+                                                        onAppTap: _onForesightAppTap,
+                                                      ),
+                                                    )
+                                                  : const SizedBox.shrink(
+                                                      key: ValueKey('no_foresight')),
+                                            ),
                                             ScreenDock(
                                               isDragging: _isDragging,
                                               showApps: !_showPill && !_isAlarmRinging,
@@ -1168,6 +1254,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                               onAppDropped: (index, app) => _onAppDropped(index, app),
                                               onAppTap: (app) {
                                                 _lastLaunchedPackage = app.packageName;
+                                                ForesightService.instance.recordLaunch(app.packageName, appName: app.name);
+                                                setState(() => _foresightPredictions = []);
                                                 AppLauncher.launchApp(app.packageName);
                                               },
                                               onDragStarted: (app) => setState(() {
@@ -1175,6 +1263,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                                 _draggingApp = app;
                                               }),
                                               draggingApp: _draggingApp,
+                                              emptyDockWidget: (_foresightPredictions.isNotEmpty &&
+                                                      _showForesight &&
+                                                      !_showPill &&
+                                                      !_isAlarmRinging)
+                                                  ? ForesightPill(
+                                                      predictions: _foresightPredictions,
+                                                      onAppTap: _onForesightAppTap,
+                                                    )
+                                                  : null,
                                               activePill: _showPill
                                                   ? DynamicPill(
                                                       key: const ValueKey('main_dynamic_pill'),
@@ -1480,6 +1577,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                               controller: _drawerController,
                               onAppTap: (app) {
                                 _lastLaunchedPackage = app.packageName;
+                                ForesightService.instance.recordLaunch(app.packageName, appName: app.name);
+                                setState(() => _foresightPredictions = []);
                                 AppLauncher.launchApp(app.packageName);
                               },
                               onAddToHome: (app) => _addToHomeScreen(app),
@@ -1752,15 +1851,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
 
   void _showHomescreenContextMenu(Offset position) {
     // Only show on bare wallpaper — not when drawer, pill, alarm, etc. are active
-    // (allowed when forecast is visible so user can still show brief)
-    if (_showMorningBrief || _showPill || _isAlarmRinging ||
-        _drawerProgress.value > 0.05) {
+    if (_showPill || _isAlarmRinging || _drawerProgress.value > 0.05) {
       return;
     }
 
     final screenSize = MediaQuery.of(context).size;
     double left = (position.dx - 100).clamp(16.0, screenSize.width - 216.0);
     double top = (position.dy - 40).clamp(16.0, screenSize.height - 100.0);
+
+    final briefLabel = _showMorningBrief ? 'Hide Brief' : 'Show Brief';
+    final foresightLabel = _showForesight ? 'Hide Foresight' : 'Show Foresight';
 
     showDialog(
       context: context,
@@ -1793,22 +1893,57 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                           width: 1.0,
                         ),
                       ),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(CASIGlass.cornerStandard),
-                        onTap: () {
-                          Navigator.of(ctx).pop();
-                          _showMorningBriefAgain();
-                        },
-                        child: const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                          child: Row(
-                            children: [
-                              Icon(Icons.wb_sunny_outlined, color: CASIColors.textPrimary, size: 20),
-                              SizedBox(width: 12),
-                              Text('Show Brief', style: TextStyle(color: CASIColors.textPrimary, fontSize: 14)),
-                            ],
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          InkWell(
+                            borderRadius: BorderRadius.vertical(top: Radius.circular(CASIGlass.cornerStandard)),
+                            onTap: () {
+                              Navigator.of(ctx).pop();
+                              if (_showMorningBrief) {
+                                _dismissMorningBrief();
+                              } else {
+                                _showMorningBriefAgain();
+                              }
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.wb_sunny_outlined, color: CASIColors.textPrimary, size: 20),
+                                  const SizedBox(width: 12),
+                                  Text(briefLabel, style: const TextStyle(color: CASIColors.textPrimary, fontSize: 14)),
+                                ],
+                              ),
+                            ),
                           ),
-                        ),
+                          Divider(
+                            height: 1,
+                            thickness: 1,
+                            color: Colors.white.withValues(alpha: CASIElevation.card.borderAlpha),
+                          ),
+                          InkWell(
+                            borderRadius: BorderRadius.vertical(bottom: Radius.circular(CASIGlass.cornerStandard)),
+                            onTap: () {
+                              Navigator.of(ctx).pop();
+                              if (_showForesight) {
+                                _dismissForesight();
+                              } else {
+                                _showForesightAgain();
+                              }
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.auto_awesome_outlined, color: CASIColors.textPrimary, size: 20),
+                                  const SizedBox(width: 12),
+                                  Text(foresightLabel, style: const TextStyle(color: CASIColors.textPrimary, fontSize: 14)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
