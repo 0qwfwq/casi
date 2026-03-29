@@ -468,18 +468,20 @@ class ARIAService {
       }
 
       final systemPrompt =
-          'You are ARIA, a warm personal assistant. Write a short greeting for one person. '
-          'Under 50 words. Motivational and grounded in their real day. '
-          'DO NOT state the date, day name, weather, or temperature — the user already sees those. '
-          'Instead, use that context to shape your tone and energy. '
-          'If they have events today or tomorrow, reference them with encouragement — '
-          'like cheering them on for a quiz, wishing them fun at a hangout, etc. '
-          'Just the greeting, nothing else.'
-          '${userName.isNotEmpty ? ' Their name is $userName. You may use it.' : ''}';
+          'You are ARIA, a warm personal assistant built into a phone launcher. '
+          'Write a short, motivational greeting for one person. '
+          'HARD RULES: '
+          '1) Under 40 words. '
+          '2) DO NOT state the date, day name, weather, or temperature — the user already sees those on screen. '
+          '3) DO NOT invent events, facts, or plans the user does not have. Only reference events explicitly listed below. '
+          '4) If the user has calendar events, reference ONE with brief encouragement (e.g. "Good luck on your quiz!" or "Enjoy your hangout tonight!"). '
+          '5) If no events are listed, keep it simple and uplifting — do not fabricate activities. '
+          '6) Just output the greeting text, nothing else — no quotes, no labels, no preamble.'
+          '${userName.isNotEmpty ? ' The user\'s name is $userName. You may use it naturally.' : ''}';
 
-      final userPrompt = 'It is $timeOfDay on $dayName, $monthName ${now.day}.\n'
+      final userPrompt = 'RIGHT NOW: It is ${now.hour}:${now.minute.toString().padLeft(2, '0')} $timeOfDay on $dayName, $monthName ${now.day}, ${now.year}.\n'
           '${contextParts.join('\n')}\n'
-          'Write a warm, personalized greeting. Do not mention the date, day, or weather directly.';
+          'Write a warm, personalized greeting. Do not mention the date, day, or weather directly. Do not invent anything not listed above.';
 
       final raw = await _runInferenceStreaming(
         systemPrompt,
@@ -533,25 +535,25 @@ class ARIAService {
     debugPrint('[ARIA] generateOutfitNarrative: starting...');
 
     try {
-      final now = DateTime.now();
-      final timeOfDay = now.hour < 12
-          ? 'morning'
-          : now.hour < 17
-              ? 'afternoon'
-              : 'evening';
       final tempSpread = (weatherData.highTemp - weatherData.lowTemp).abs();
 
       final systemPrompt =
-          'You are ARIA, a personal style assistant. Write a confident, casual clothing '
-          'recommendation. Under 15 words. Short and punchy — like a friend, not a list. '
-          'Just the recommendation, nothing else.';
+          'You are ARIA, a practical clothing advisor. Recommend what WEIGHT and TYPE of clothing to wear based on the weather. '
+          'HARD RULES: '
+          '1) Under 25 words. One or two short sentences. '
+          '2) Focus ONLY on clothing weight and type: light/heavy, layers, shorts vs pants, jacket vs no jacket. '
+          '3) DO NOT suggest colors, patterns, styles, or brands. '
+          '4) If hot: suggest shorts, t-shirt, sunscreen or hat. '
+          '5) If cold: suggest heavy coat, layers, warm pants. '
+          '6) If mild: suggest light jacket or sweater, pants. '
+          '7) If rain: mention umbrella or rain jacket. '
+          '8) Just output the recommendation, nothing else — no quotes, no labels.';
 
-      final userPrompt = 'Time: $timeOfDay. '
-          'Weather: ${weatherData.overallCondition}, ${weatherData.currentTemp.round()}°C now. '
-          'High ${weatherData.highTemp.round()}°, low ${weatherData.lowTemp.round()}°. '
-          'Spread: ${tempSpread.round()}°. '
-          '${weatherData.hasPrecipitation ? 'Precipitation: ${weatherData.maxPrecipProbability}%.' : 'No precipitation.'} '
-          'Write a warm, specific outfit suggestion.';
+      final userPrompt = 'Weather right now: ${weatherData.overallCondition}, ${weatherData.currentTemp.round()}°C. '
+          'High ${weatherData.highTemp.round()}°C, low ${weatherData.lowTemp.round()}°C. '
+          'Temperature spread: ${tempSpread.round()}°C. '
+          '${weatherData.hasPrecipitation ? 'Rain chance: ${weatherData.maxPrecipProbability}%.' : 'No rain expected.'} '
+          'What weight and type of clothing should I wear?';
 
       final raw = await _runInferenceStreaming(
         systemPrompt,
@@ -575,7 +577,7 @@ class ARIAService {
         cleaned = cleaned.substring(1, cleaned.length - 1);
       }
       final words = cleaned.split(RegExp(r'\s+'));
-      if (words.length > 15) cleaned = words.take(15).join(' ');
+      if (words.length > 25) cleaned = words.take(25).join(' ');
       return cleaned.isEmpty ? null : cleaned;
     } catch (e) {
       debugPrint('[ARIA] generateOutfitNarrative error: $e');
@@ -608,8 +610,8 @@ class ARIAService {
       }).join('. ');
 
       final systemPrompt =
-          'You are ARIA, a personal weather narrator. Write a brief, natural summary of '
-          "how the day's weather will unfold. Under 35 words. Conversational — describe "
+          'You are ARIA, a personal weather narrator. Write a natural summary of '
+          "how the day's weather will unfold. Under 70 words. Conversational — describe "
           'the arc and feel, not raw numbers. Just the summary, nothing else.';
 
       final userPrompt = 'Current: ${weatherData.overallCondition} at ${weatherData.currentTemp.round()}°C.\n'
@@ -620,7 +622,7 @@ class ARIAService {
       final raw = await _runInferenceStreaming(
         systemPrompt,
         userPrompt,
-        maxTokens: 60,
+        maxTokens: 120,
         onToken: onWord != null
             ? (tokenBuffer) {
                 var cleaned = tokenBuffer;
@@ -639,7 +641,7 @@ class ARIAService {
         cleaned = cleaned.substring(1, cleaned.length - 1);
       }
       final words = cleaned.split(RegExp(r'\s+'));
-      if (words.length > 40) cleaned = words.take(40).join(' ');
+      if (words.length > 80) cleaned = words.take(80).join(' ');
       return cleaned.isEmpty ? null : cleaned;
     } catch (e) {
       debugPrint('[ARIA] generateWeatherNarrative error: $e');

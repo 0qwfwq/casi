@@ -4,6 +4,8 @@ import android.app.Notification
 import android.content.SharedPreferences
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
+import android.service.notification.NotificationListenerService.Ranking
+import android.service.notification.NotificationListenerService.RankingMap
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -82,6 +84,9 @@ class CasiNotificationListenerService : NotificationListenerService() {
             emptyArray<StatusBarNotification>()
         }
 
+        // Get current ranking map for importance levels
+        val rankingMap = try { getCurrentRanking() } catch (_: Exception) { null }
+
         val array = JSONArray()
         for (sbn in sbns) {
             val packageName = sbn.packageName ?: continue
@@ -98,6 +103,19 @@ class CasiNotificationListenerService : NotificationListenerService() {
 
             if (title.isBlank() && text.isBlank()) continue
 
+            // Determine importance from ranking
+            var importance = 3 // default IMPORTANCE_DEFAULT
+            if (rankingMap != null) {
+                val ranking = Ranking()
+                if (rankingMap.getRanking(sbn.key, ranking)) {
+                    importance = ranking.importance
+                }
+            }
+
+            val isOngoing = (notification.flags and Notification.FLAG_ONGOING_EVENT) != 0
+            val isForeground = (notification.flags and Notification.FLAG_FOREGROUND_SERVICE) != 0
+            val isGroupSummary = (notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0
+
             val obj = JSONObject().apply {
                 put("packageName", packageName)
                 put("title", title)
@@ -107,6 +125,10 @@ class CasiNotificationListenerService : NotificationListenerService() {
                 put("timestamp", sbn.postTime)
                 put("key", sbn.key ?: "")
                 put("category", notification.category ?: "")
+                put("importance", importance)
+                put("isOngoing", isOngoing)
+                put("isForeground", isForeground)
+                put("isGroupSummary", isGroupSummary)
             }
             array.put(obj)
         }

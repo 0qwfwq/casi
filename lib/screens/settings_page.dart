@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:casi/design_system.dart';
 import '../services/wallpaper_service.dart';
 import '../services/aria_service.dart';
+import '../services/notification_pill_service.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -138,6 +139,22 @@ class _SettingsPageState extends State<SettingsPage> {
                   value: _immersiveMode,
                   onChanged: _toggleImmersiveMode,
                   activeThumbColor: CASIColors.accentPrimary,
+                ),
+                ListTile(
+                  title: const Text("Notification Tiers", style: TextStyle(color: Colors.white)),
+                  subtitle: const Text("Customize app priority for notification pills", style: TextStyle(color: CASIColors.textSecondary, fontSize: 12)),
+                  leading: const Icon(Icons.notifications_active_outlined, color: Colors.white),
+                  trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 16),
+                  onTap: () {
+                    Navigator.push(context, PageRouteBuilder(
+                      pageBuilder: (context, animation, secondaryAnimation) => const NotificationTierSettingsPage(),
+                      transitionDuration: const Duration(milliseconds: 80),
+                      reverseTransitionDuration: const Duration(milliseconds: 60),
+                      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                        return FadeTransition(opacity: animation, child: child);
+                      },
+                    ));
+                  },
                 ),
                 ListTile(
                   title: const Text("ARIA Model", style: TextStyle(color: Colors.white)),
@@ -473,6 +490,222 @@ class _BackgroundSettingsPageState extends State<BackgroundSettingsPage> {
                 ],
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Notification Tier Settings Page
+// ---------------------------------------------------------------------------
+
+class NotificationTierSettingsPage extends StatefulWidget {
+  const NotificationTierSettingsPage({super.key});
+
+  @override
+  State<NotificationTierSettingsPage> createState() =>
+      _NotificationTierSettingsPageState();
+}
+
+class _NotificationTierSettingsPageState
+    extends State<NotificationTierSettingsPage> {
+  final WallpaperService _wallpaperService = WallpaperService();
+  Map<String, int> _overrides = {};
+
+  static const _tierLabels = {
+    0: 'Ignored',
+    1: 'T1 Critical',
+    2: 'T2 Personal',
+    3: 'T3 Professional',
+    4: 'T4 Social',
+    5: 'T5 Reminders',
+    6: 'T6 Utility',
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _wallpaperService.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    await _wallpaperService.initialize();
+    await NotificationPillService.loadUserOverrides();
+    if (mounted) {
+      setState(() {
+        _overrides = Map.from(NotificationPillService.userOverrides);
+      });
+    }
+  }
+
+  Future<void> _addOverride() async {
+    final controller = TextEditingController();
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (ctx) {
+        int selectedTier = 1;
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) => AlertDialog(
+            backgroundColor: CASIColors.void_,
+            title: const Text('Add Tier Override',
+                style: TextStyle(color: Colors.white)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: controller,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(
+                    labelText: 'Package name',
+                    labelStyle: TextStyle(color: CASIColors.textSecondary),
+                    hintText: 'com.example.app',
+                    hintStyle: TextStyle(color: CASIColors.textTertiary),
+                    enabledBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: CASIColors.textTertiary),
+                    ),
+                    focusedBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: CASIColors.accentPrimary),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                DropdownButton<int>(
+                  value: selectedTier,
+                  dropdownColor: CASIColors.void_,
+                  isExpanded: true,
+                  items: _tierLabels.entries.map((e) {
+                    return DropdownMenuItem(
+                      value: e.key,
+                      child: Text(e.value,
+                          style: const TextStyle(color: Colors.white)),
+                    );
+                  }).toList(),
+                  onChanged: (v) {
+                    if (v != null) setDialogState(() => selectedTier = v);
+                  },
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel',
+                    style: TextStyle(color: CASIColors.textSecondary)),
+              ),
+              TextButton(
+                onPressed: () {
+                  final pkg = controller.text.trim();
+                  if (pkg.isNotEmpty) {
+                    Navigator.pop(
+                        ctx, {'package': pkg, 'tier': selectedTier});
+                  }
+                },
+                child: const Text('Save',
+                    style: TextStyle(color: CASIColors.accentPrimary)),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    controller.dispose();
+
+    if (result != null) {
+      final pkg = result['package'] as String;
+      final tier = result['tier'] as int;
+      await NotificationPillService.setTierOverride(pkg, tier);
+      if (mounted) {
+        setState(() => _overrides[pkg] = tier);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        title: const Text('Notification Tiers'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.add),
+            onPressed: _addOverride,
+          ),
+        ],
+      ),
+      body: Stack(
+        children: [
+          Positioned.fill(child: _wallpaperService.buildBackground()),
+          Positioned.fill(
+            child: ColoredBox(color: Colors.black.withValues(alpha: 0.3)),
+          ),
+          SafeArea(
+            child: _overrides.isEmpty
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(32),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.tune,
+                              color: CASIColors.textTertiary, size: 48),
+                          const SizedBox(height: 16),
+                          const Text(
+                            'No custom overrides yet.\n'
+                            'Tap + to promote or demote an app\'s notification tier.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                                color: CASIColors.textSecondary, height: 1.5),
+                          ),
+                          const SizedBox(height: 24),
+                          Text(
+                            'Default tiers are assigned automatically based on app type.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                                color: CASIColors.textTertiary, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    itemCount: _overrides.length,
+                    itemBuilder: (context, index) {
+                      final pkg = _overrides.keys.elementAt(index);
+                      final tier = _overrides[pkg]!;
+                      return ListTile(
+                        title: Text(pkg,
+                            style: const TextStyle(
+                                color: Colors.white, fontSize: 13)),
+                        subtitle: Text(_tierLabels[tier] ?? 'Unknown',
+                            style: const TextStyle(
+                                color: CASIColors.textSecondary, fontSize: 12)),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete_outline,
+                              color: CASIColors.textTertiary, size: 20),
+                          onPressed: () async {
+                            await NotificationPillService.removeTierOverride(
+                                pkg);
+                            if (mounted) {
+                              setState(() => _overrides.remove(pkg));
+                            }
+                          },
+                        ),
+                      );
+                    },
+                  ),
           ),
         ],
       ),

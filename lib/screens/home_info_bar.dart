@@ -24,10 +24,10 @@ import '../widgets/notify_pill.dart';
 import '../morning_brief/morning_brief_panel.dart';
 import '../morning_brief/weather_brief_service.dart';
 import '../morning_brief/calendar_brief_service.dart';
-import '../morning_brief/health_brief_service.dart';
 import '../services/wallpaper_service.dart';
 import 'package:casi/services/aria_service.dart';
 import 'package:casi/services/foresight_service.dart';
+import 'package:casi/services/notification_pill_service.dart';
 import '../widgets/foresight_pill.dart';
 
 class AppTimer {
@@ -133,7 +133,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   int _morningBriefKey = 0; // incremented to force panel reset to page 0
   WeatherBriefData? _weatherBriefData;
   CalendarBriefData? _calendarBriefData;
-  HealthBriefData? _healthBriefData;
   bool _isForecastVisible = false;
   final GlobalKey _weatherPillKey = GlobalKey();
 
@@ -149,6 +148,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   // --- Foresight State ---
   List<ForesightPrediction> _foresightPredictions = [];
   bool _showForesight = true;
+
+  // --- Notification Pill State ---
+  List<NotificationPillEntry> _notificationPillApps = [];
 
   // --- Settings ---
   final WallpaperService _wallpaperService = WallpaperService();
@@ -189,7 +191,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     _loadForesightState();
     _refreshWeatherBrief();
     _refreshCalendarBrief();
-    _refreshHealthBrief();
+
 
     _alarmTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       _checkAlarms();
@@ -201,6 +203,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
 
   Future<void> _initForesight() async {
     await ForesightService.instance.initialize();
+    await NotificationPillService.loadUserOverrides();
+    await _refreshNotificationPill();
     _refreshForesightPredictions();
   }
 
@@ -208,15 +212,48 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     if (!ForesightService.instance.isInitialized || _apps.isEmpty) return;
     final predictions = await ForesightService.instance.predict(_apps);
     final dockPackages = _homeApps.values.map((a) => a.packageName).toSet();
+    // Exclude apps already shown in the notification pill
+    final notifPackages = _notificationPillApps.map((n) => n.packageName).toSet();
     final filtered = predictions
-        .where((p) => !dockPackages.contains(p.packageName))
+        .where((p) =>
+            !dockPackages.contains(p.packageName) &&
+            !notifPackages.contains(p.packageName))
         .toList();
     if (mounted) {
       setState(() => _foresightPredictions = filtered);
     }
   }
 
+  Future<void> _refreshNotificationPill() async {
+    final apps = await NotificationPillService.getNotificationPillApps();
+    // Resolve icons from installed apps list
+    final appMap = <String, AppInfo>{};
+    for (final app in _apps) {
+      appMap[app.packageName] = app;
+    }
+    final withIcons = apps.map((entry) {
+      final installed = appMap[entry.packageName];
+      return NotificationPillEntry(
+        packageName: entry.packageName,
+        tier: entry.tier,
+        timestamp: entry.timestamp,
+        icon: installed?.icon,
+        appName: installed?.name ?? entry.appName,
+      );
+    }).toList();
+    if (mounted) {
+      setState(() => _notificationPillApps = withIcons);
+    }
+  }
+
   void _onForesightAppTap(String packageName) {
+    _lastLaunchedPackage = packageName;
+    ForesightService.instance.recordLaunch(packageName);
+    setState(() => _foresightPredictions = []);
+    AppLauncher.launchApp(packageName);
+  }
+
+  void _onNotificationPillTap(String packageName) {
     _lastLaunchedPackage = packageName;
     ForesightService.instance.recordLaunch(packageName);
     setState(() => _foresightPredictions = []);
@@ -316,14 +353,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
       _syncTimersOnResume();
       _refreshWeatherBrief();
       _refreshCalendarBrief();
-      _refreshHealthBrief();
+  
       // ARIA: record last launched app
       if (_ariaReady && _lastLaunchedPackage != null) {
         ARIAService.instance.recordAppLaunch(_lastLaunchedPackage!);
       }
-      // Foresight: generate predictions on unlock
-      ForesightService.instance.onResume();
-      _refreshForesightPredictions();
+      // Notification pill: re-evaluate queue on return
+      _refreshNotificationPill().then((_) {
+        // Foresight: generate predictions on unlock (after pill so dedup works)
+        ForesightService.instance.onResume();
+        _refreshForesightPredictions();
+      });
       // Instantly close the drawer when returning to the launcher
       if (_drawerController.isAttached && _drawerController.size > 0.0) {
         _drawerController.jumpTo(0.0);
@@ -411,7 +451,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
         _showMorningBrief = true;
         _refreshWeatherBrief();
         _refreshCalendarBrief();
-        _refreshHealthBrief();
+    
         _refreshARIA();
       }
     }
@@ -751,7 +791,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     });
     _refreshWeatherBrief();
     _refreshCalendarBrief();
-    _refreshHealthBrief();
+
     _refreshARIA();
   }
 
@@ -787,15 +827,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     if (mounted) {
       setState(() {
         _calendarBriefData = data;
-      });
-    }
-  }
-
-  Future<void> _refreshHealthBrief() async {
-    final data = await HealthBriefService.getTodayData();
-    if (mounted) {
-      setState(() {
-        _healthBriefData = data;
       });
     }
   }
@@ -1067,10 +1098,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                                 key: ValueKey(_morningBriefKey),
                                                 weatherData: _weatherBriefData,
                                                 calendarData: _calendarBriefData,
-                                                healthData: _healthBriefData,
                                                 launcherEvents: _calendarEvents,
                                                 onDismiss: _dismissMorningBrief,
-                                                onRefreshHealth: _refreshHealthBrief,
                                                 ariaSuggestion: _ariaSuggestion,
                                                 ariaReady: _ariaReady,
                                                 ariaGenerating: _ariaGenerating,
@@ -1138,7 +1167,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                                   child: child,
                                                 ),
                                               ),
-                                              child: (_foresightPredictions.isNotEmpty &&
+                                              child: ((_foresightPredictions.isNotEmpty || _notificationPillApps.isNotEmpty) &&
                                                       _showForesight &&
                                                       _homeApps.isNotEmpty &&
                                                       !_showPill &&
@@ -1150,6 +1179,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                                       child: ForesightPill(
                                                         predictions: _foresightPredictions,
                                                         onAppTap: _onForesightAppTap,
+                                                        notificationApps: _notificationPillApps,
+                                                        onNotificationTap: _onNotificationPillTap,
                                                       ),
                                                     )
                                                   : const SizedBox.shrink(
@@ -1195,13 +1226,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                                 _draggingApp = app;
                                               }),
                                               draggingApp: _draggingApp,
-                                              emptyDockWidget: (_foresightPredictions.isNotEmpty &&
+                                              emptyDockWidget: ((_foresightPredictions.isNotEmpty || _notificationPillApps.isNotEmpty) &&
                                                       _showForesight &&
                                                       !_showPill &&
                                                       !_isAlarmRinging)
                                                   ? ForesightPill(
                                                       predictions: _foresightPredictions,
                                                       onAppTap: _onForesightAppTap,
+                                                      notificationApps: _notificationPillApps,
+                                                      onNotificationTap: _onNotificationPillTap,
                                                     )
                                                   : null,
                                               activePill: _showPill
