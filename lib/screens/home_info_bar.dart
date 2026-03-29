@@ -242,6 +242,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
       },
       weatherData: _weatherBriefData,
       calendarData: _calendarBriefData,
+      upcomingEvents: _calendarEvents,
     );
     if (mounted) {
       setState(() {
@@ -946,126 +947,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   }
 
   // --- Glassmorphism Dialog to Add Events ---
-  void _showAddEventDialog() {
-    final titleController = TextEditingController();
-    final descController = TextEditingController();
-
-    showDialog(
-      context: context,
-      barrierColor: Colors.black54,
-      builder: (context) {
-        return Dialog(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          insetPadding: const EdgeInsets.symmetric(horizontal: CASISpacing.lg),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(CASIGlass.cornerSheet),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: CASIGlass.blurHeavy, sigmaY: CASIGlass.blurHeavy),
-              child: Container(
-                padding: const EdgeInsets.all(CASISpacing.lg),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: CASIElevation.card.bgAlpha),
-                  borderRadius: BorderRadius.circular(CASIGlass.cornerSheet),
-                  border: Border.all(color: Colors.white.withValues(alpha: CASIElevation.card.borderAlpha), width: 1.0),
-                  boxShadow: [
-                    BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 20, spreadRadius: 5)
-                  ]
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text(
-                      'New Event',
-                      style: TextStyle(color: CASIColors.textPrimary, fontSize: 22, fontWeight: FontWeight.bold)
-                    ),
-                    const SizedBox(height: CASISpacing.lg),
-                    TextField(
-                      controller: titleController,
-                      style: const TextStyle(color: CASIColors.textPrimary, fontSize: 16),
-                      autofocus: true,
-                      textCapitalization: TextCapitalization.sentences,
-                      decoration: InputDecoration(
-                        hintText: 'Event Title',
-                        hintStyle: const TextStyle(color: CASIColors.textTertiary),
-                        filled: true,
-                        fillColor: Colors.white.withValues(alpha: CASIElevation.card.bgAlpha),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(20),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: descController,
-                      style: const TextStyle(color: CASIColors.textPrimary, fontSize: 16),
-                      maxLines: 3,
-                      textCapitalization: TextCapitalization.sentences,
-                      decoration: InputDecoration(
-                        hintText: 'Description (Optional)',
-                        hintStyle: const TextStyle(color: CASIColors.textTertiary),
-                        filled: true,
-                        fillColor: Colors.white.withValues(alpha: CASIElevation.card.bgAlpha),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(20),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 28),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextButton(
-                            onPressed: () => Navigator.pop(context),
-                            style: TextButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-                            ),
-                            child: const Text('Cancel', style: TextStyle(color: CASIColors.textSecondary, fontSize: 16, fontWeight: FontWeight.w600)),
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: () {
-                              if (titleController.text.trim().isNotEmpty) {
-                                setState(() {
-                                  final date = DateTime(_calendarFocusedDay.year, _calendarFocusedDay.month, _calendarFocusedDay.day);
-                                  final eventsList = _calendarEvents[date] ?? [];
-                                  eventsList.add(CalendarEvent(
-                                    title: titleController.text.trim(),
-                                    description: descController.text.trim(),
-                                  ));
-                                  _calendarEvents[date] = eventsList;
-                                });
-                                _saveCalendarEvents();
-                                Navigator.pop(context);
-                              }
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: CASIColors.accentPrimary.withValues(alpha: 0.8),
-                              foregroundColor: CASIColors.textPrimary,
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-                              elevation: 0,
-                            ),
-                            child: const Text('Save', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                          ),
-                        ),
-                      ],
-                    )
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
+  void _addCalendarEvent(String title) {
+    setState(() {
+      final date = DateTime(_calendarFocusedDay.year, _calendarFocusedDay.month, _calendarFocusedDay.day);
+      final eventsList = _calendarEvents[date] ?? [];
+      eventsList.add(CalendarEvent(title: title));
+      _calendarEvents[date] = eventsList;
+    });
+    _saveCalendarEvents();
   }
 
   @override
@@ -1336,7 +1225,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                                               });
                                                             },
                                                             onViewEvents: () => setState(() => _isViewingEvents = true),
-                                                            onAddEvent: _showAddEventDialog,
+                                                            onSaveEvent: _addCalendarEvent,
                                                             onDeleteEvent: () {
                                                               if (_selectedEventIndex != null) {
                                                                 setState(() {

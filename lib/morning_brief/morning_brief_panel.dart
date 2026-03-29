@@ -312,69 +312,64 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
                   child: Icon(icon, color: iconColor, size: 24),
                 ),
                 const SizedBox(width: 12),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '${weather.highTemp.round()}°',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w300,
+                          ),
+                        ),
+                        Text(
+                          ' / ${weather.lowTemp.round()}°C',
+                          style: TextStyle(
+                            color: CASIColors.textTertiary,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w400,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      weather.overallCondition,
+                      style: TextStyle(
+                        color: iconColor,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Row(
-                        children: [
-                          Text(
-                            '${weather.highTemp.round()}°',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 22,
-                              fontWeight: FontWeight.w300,
-                            ),
-                          ),
-                          Text(
-                            ' / ${weather.lowTemp.round()}°C',
-                            style: TextStyle(
-                              color: CASIColors.textTertiary,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w400,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 2),
                       Text(
-                        weather.overallCondition,
+                        widget.ariaOutfitNarrative ?? weather.clothingSuggestion,
+                        textAlign: TextAlign.right,
                         style: TextStyle(
-                          color: iconColor,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
+                          color: CASIColors.textSecondary,
+                          fontSize: 11,
+                          fontWeight: widget.ariaOutfitNarrative != null
+                              ? FontWeight.w300
+                              : FontWeight.w400,
+                          fontStyle: widget.ariaOutfitNarrative != null
+                              ? FontStyle.italic
+                              : FontStyle.normal,
+                          height: 1.3,
                         ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                Icon(
-                  Icons.checkroom,
-                  color: CASIColors.textTertiary,
-                  size: 14,
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    widget.ariaOutfitNarrative ?? weather.clothingSuggestion,
-                    style: TextStyle(
-                      color: CASIColors.textSecondary,
-                      fontSize: 12,
-                      fontWeight: widget.ariaOutfitNarrative != null
-                          ? FontWeight.w300
-                          : FontWeight.w400,
-                      fontStyle: widget.ariaOutfitNarrative != null
-                          ? FontStyle.italic
-                          : FontStyle.normal,
-                      height: 1.4,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ],

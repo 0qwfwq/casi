@@ -388,6 +388,7 @@ class ARIAService {
     void Function(String partialText)? onWord,
     WeatherBriefData? weatherData,
     CalendarBriefData? calendarData,
+    Map<DateTime, List<dynamic>>? upcomingEvents,
   }) async {
     if (!_modelLoaded) {
       debugPrint('[ARIA] generateBriefMessage: model not loaded.');
@@ -428,12 +429,37 @@ class ARIAService {
         contextParts.add('Weather: $weatherCtx');
       }
 
-      // Calendar context
+      // Calendar context — today's device events
       if (calendarData != null && calendarData.events.isNotEmpty) {
         final eventSummaries = calendarData.events.take(4).map(_formatEventForPrompt).join('; ');
-        contextParts.add('Schedule: $eventSummaries.');
+        contextParts.add("Today's events: $eventSummaries.");
       } else {
         contextParts.add('Schedule: clear today.');
+      }
+
+      // Upcoming launcher events (next 1-2 days)
+      if (upcomingEvents != null && upcomingEvents.isNotEmpty) {
+        final now = DateTime.now();
+        final upcomingParts = <String>[];
+        for (final entry in upcomingEvents.entries) {
+          final date = entry.key;
+          final events = entry.value;
+          if (events.isEmpty) continue;
+          final daysAway = date.difference(DateTime(now.year, now.month, now.day)).inDays;
+          if (daysAway < 0 || daysAway > 2) continue;
+          final label = daysAway == 0
+              ? 'Today'
+              : daysAway == 1
+                  ? 'Tomorrow'
+                  : _dayName(date.weekday);
+          for (final e in events) {
+            final title = e is String ? e : (e.title ?? '');
+            if (title.isNotEmpty) upcomingParts.add('$label: $title');
+          }
+        }
+        if (upcomingParts.isNotEmpty) {
+          contextParts.add('Upcoming: ${upcomingParts.take(4).join('; ')}.');
+        }
       }
 
       // Memory facts
@@ -445,7 +471,10 @@ class ARIAService {
           'You are ARIA, a warm personal assistant. Write a short greeting for one person. '
           'Under 50 words. Motivational and grounded in their real day. '
           'DO NOT state the date, day name, weather, or temperature — the user already sees those. '
-          'Instead, use that context to shape your tone and energy. Just the greeting, nothing else.'
+          'Instead, use that context to shape your tone and energy. '
+          'If they have events today or tomorrow, reference them with encouragement — '
+          'like cheering them on for a quiz, wishing them fun at a hangout, etc. '
+          'Just the greeting, nothing else.'
           '${userName.isNotEmpty ? ' Their name is $userName. You may use it.' : ''}';
 
       final userPrompt = 'It is $timeOfDay on $dayName, $monthName ${now.day}.\n'
@@ -514,7 +543,7 @@ class ARIAService {
 
       final systemPrompt =
           'You are ARIA, a personal style assistant. Write a confident, casual clothing '
-          'recommendation. Under 25 words. Conversational — like a friend, not a list. '
+          'recommendation. Under 15 words. Short and punchy — like a friend, not a list. '
           'Just the recommendation, nothing else.';
 
       final userPrompt = 'Time: $timeOfDay. '
@@ -546,7 +575,7 @@ class ARIAService {
         cleaned = cleaned.substring(1, cleaned.length - 1);
       }
       final words = cleaned.split(RegExp(r'\s+'));
-      if (words.length > 30) cleaned = words.take(30).join(' ');
+      if (words.length > 15) cleaned = words.take(15).join(' ');
       return cleaned.isEmpty ? null : cleaned;
     } catch (e) {
       debugPrint('[ARIA] generateOutfitNarrative error: $e');

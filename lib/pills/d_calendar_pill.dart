@@ -34,7 +34,7 @@ class DCalendarPill extends StatefulWidget {
   final ValueChanged<int>? onEventSelected;
   
   // Action Callbacks
-  final VoidCallback? onAddEvent;
+  final ValueChanged<String>? onSaveEvent;
   final VoidCallback? onViewEvents;
   final VoidCallback? onDeleteEvent;
   final VoidCallback? onCloseEvents;
@@ -47,7 +47,7 @@ class DCalendarPill extends StatefulWidget {
     required this.onDateSelected,
     this.selectedEventIndex,
     this.onEventSelected,
-    this.onAddEvent,
+    this.onSaveEvent,
     this.onViewEvents,
     this.onDeleteEvent,
     this.onCloseEvents,
@@ -60,14 +60,41 @@ class DCalendarPill extends StatefulWidget {
 class _DCalendarPillState extends State<DCalendarPill> {
   // Increased width to 272.0 to perfectly fit 7 items of 32px + 6 gaps of 4px + 24px padding
   static const double _fixedPillWidth = 272.0;
-  
+
   late DateTime _displayMonth;
+  bool _isAddingEvent = false;
+  final TextEditingController _addController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     // Initialize the calendar view to the currently focused day's month
     _displayMonth = DateTime(widget.focusedDay.year, widget.focusedDay.month);
+  }
+
+  @override
+  void didUpdateWidget(DCalendarPill oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Cancel adding mode when leaving events view
+    if (!widget.isViewingEvents && oldWidget.isViewingEvents) {
+      _isAddingEvent = false;
+      _addController.clear();
+    }
+  }
+
+  @override
+  void dispose() {
+    _addController.dispose();
+    super.dispose();
+  }
+
+  void _submitEvent() {
+    final title = _addController.text.trim();
+    if (title.isNotEmpty) {
+      widget.onSaveEvent?.call(title);
+      _addController.clear();
+    }
+    setState(() => _isAddingEvent = false);
   }
 
   void _prevMonth() {
@@ -107,7 +134,7 @@ class _DCalendarPillState extends State<DCalendarPill> {
     // Normalize date to ignore time specifics when fetching from map
     final normalizedFocused = DateTime(widget.focusedDay.year, widget.focusedDay.month, widget.focusedDay.day);
     final dayEvents = widget.events[normalizedFocused] ?? [];
-    
+
     // Dynamically size based on number of events and if they have descriptions
     double listHeight = 0.0;
     if (dayEvents.isEmpty) {
@@ -117,11 +144,12 @@ class _DCalendarPillState extends State<DCalendarPill> {
         listHeight += e.description.isNotEmpty ? 60.0 : 44.0;
       }
     }
-    // Added extra height buffer to accommodate the new action button row
-    final double totalHeight = (listHeight + 110.0).clamp(150.0, 360.0);
+    // Extra height when adding (inline field at top)
+    final addingExtra = _isAddingEvent ? 44.0 : 0.0;
+    final double totalHeight = (listHeight + 110.0 + addingExtra).clamp(150.0, 360.0);
 
     const List<String> monthNames = [
-      "Jan", "Feb", "Mar", "Apr", "May", "Jun", 
+      "Jan", "Feb", "Mar", "Apr", "May", "Jun",
       "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
     ];
 
@@ -145,8 +173,66 @@ class _DCalendarPillState extends State<DCalendarPill> {
             ],
           ),
           const SizedBox(height: 12),
+          // --- INLINE ADD (at top, visible above keyboard) ---
+          if (_isAddingEvent) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _addController,
+                    autofocus: true,
+                    style: const TextStyle(color: Colors.white, fontSize: 13),
+                    textCapitalization: TextCapitalization.sentences,
+                    onSubmitted: (_) => _submitEvent(),
+                    decoration: InputDecoration(
+                      hintText: 'Event title',
+                      hintStyle: const TextStyle(color: CASIColors.textTertiary, fontSize: 13),
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      filled: true,
+                      fillColor: CASIColors.glassCard,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                InkWell(
+                  onTap: _submitEvent,
+                  borderRadius: BorderRadius.circular(16),
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: CASIColors.confirm.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Icon(Icons.check, color: CASIColors.confirm, size: 18),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                InkWell(
+                  onTap: () => setState(() {
+                    _isAddingEvent = false;
+                    _addController.clear();
+                  }),
+                  borderRadius: BorderRadius.circular(16),
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: CASIColors.glassDivider,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Icon(Icons.close, color: CASIColors.textSecondary, size: 18),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+          ],
           Expanded(
-            child: dayEvents.isEmpty
+            child: dayEvents.isEmpty && !_isAddingEvent
                 ? const Center(
                     child: Text("No events", style: TextStyle(color: CASIColors.textSecondary, fontSize: 13, fontWeight: FontWeight.w500))
                   )
@@ -156,7 +242,7 @@ class _DCalendarPillState extends State<DCalendarPill> {
                     itemBuilder: (context, index) {
                       final event = dayEvents[index];
                       final isSelected = widget.selectedEventIndex == index;
-                      
+
                       return GestureDetector(
                         onTap: () => widget.onEventSelected?.call(index),
                         child: AnimatedContainer(
@@ -169,7 +255,7 @@ class _DCalendarPillState extends State<DCalendarPill> {
                             color: isSelected ? CASIColors.alert.withValues(alpha:0.3) : CASIColors.alert.withValues(alpha:0.15),
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
-                              color: isSelected ? CASIColors.alert : CASIColors.alert.withValues(alpha:0.4), 
+                              color: isSelected ? CASIColors.alert : CASIColors.alert.withValues(alpha:0.4),
                               width: isSelected ? 2 : 1
                             ),
                           ),
@@ -200,12 +286,20 @@ class _DCalendarPillState extends State<DCalendarPill> {
                   ),
           ),
           const SizedBox(height: 12),
-          // --- ACTION BUTTONS (Events List) ---
+          // --- ACTION BUTTONS ---
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
               InkWell(
-                onTap: widget.onCloseEvents,
+                onTap: () {
+                  if (_isAddingEvent) {
+                    setState(() {
+                      _isAddingEvent = false;
+                      _addController.clear();
+                    });
+                  }
+                  widget.onCloseEvents?.call();
+                },
                 borderRadius: BorderRadius.circular(20),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -220,11 +314,11 @@ class _DCalendarPillState extends State<DCalendarPill> {
                 ),
               ),
               InkWell(
-                onTap: widget.onAddEvent,
+                onTap: () => setState(() => _isAddingEvent = true),
                 borderRadius: BorderRadius.circular(20),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(color: CASIColors.confirm.withValues(alpha:0.2), borderRadius: BorderRadius.circular(20)),
+                  decoration: BoxDecoration(color: CASIColors.confirm.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(20)),
                   child: const Row(
                     children: [
                       Icon(Icons.add, color: CASIColors.confirm, size: 16),
@@ -240,8 +334,8 @@ class _DCalendarPillState extends State<DCalendarPill> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
-                    color: widget.selectedEventIndex != null ? CASIColors.alert.withValues(alpha:0.2) : CASIColors.glassCard, 
-                    borderRadius: BorderRadius.circular(20)
+                    color: widget.selectedEventIndex != null ? CASIColors.alert.withValues(alpha: 0.2) : CASIColors.glassCard,
+                    borderRadius: BorderRadius.circular(20),
                   ),
                   child: Row(
                     children: [
@@ -395,12 +489,15 @@ class _DCalendarPillState extends State<DCalendarPill> {
                 ),
               ),
               InkWell(
-                onTap: widget.onAddEvent,
+                onTap: () {
+                  setState(() => _isAddingEvent = true);
+                  widget.onViewEvents?.call();
+                },
                 borderRadius: BorderRadius.circular(20),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   decoration: BoxDecoration(
-                    color: CASIColors.confirm.withValues(alpha:0.2),
+                    color: CASIColors.confirm.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: const Row(
