@@ -38,6 +38,7 @@ class _WeatherPillState extends State<WeatherPill> with WidgetsBindingObserver {
 
   bool _isLoadingWeather = false;
   bool _isExpanded = false;
+  bool _isCollapsing = false;
 
   Timer? _hourlySyncTimer;
 
@@ -349,8 +350,18 @@ class _WeatherPillState extends State<WeatherPill> with WidgetsBindingObserver {
   // --- Expand / Collapse ---
 
   void _collapse() {
-    setState(() => _isExpanded = false);
-    widget.onExpandedChanged?.call(false);
+    if (_isCollapsing) return;
+    setState(() => _isCollapsing = true);
+    // Phase 1: fade out content (150ms), then Phase 2: shrink to pill
+    Future.delayed(const Duration(milliseconds: 150), () {
+      if (mounted) {
+        setState(() {
+          _isExpanded = false;
+          _isCollapsing = false;
+        });
+        widget.onExpandedChanged?.call(false);
+      }
+    });
   }
 
   void _expand() {
@@ -469,19 +480,23 @@ class _WeatherPillState extends State<WeatherPill> with WidgetsBindingObserver {
             filter: ImageFilter.blur(sigmaX: CASIGlass.blurSheet, sigmaY: CASIGlass.blurSheet),
             child: Container(
               color: Colors.white.withValues(alpha: CASIGlass.tintSheet),
-              child: WeatherForecastWidget(
-                forecastData: _forecastData,
-                hourlyData: _hourlyData,
-                currentTemp: "${_temperature ?? '--'}°C",
-                currentDescription: _currentDescription,
-                currentIcon: _currentIcon,
-                currentIconColor: _currentIconColor,
-                feelsLike: _feelsLike,
-                wind: _wind,
-                precipitation: _precipitation,
-                humidity: _humidity,
-                uvIndex: _uvIndex,
-                sunrise: _sunrise,
+              child: AnimatedOpacity(
+                opacity: _isCollapsing ? 0.0 : 1.0,
+                duration: const Duration(milliseconds: 150),
+                child: WeatherForecastWidget(
+                  forecastData: _forecastData,
+                  hourlyData: _hourlyData,
+                  currentTemp: "${_temperature ?? '--'}°C",
+                  currentDescription: _currentDescription,
+                  currentIcon: _currentIcon,
+                  currentIconColor: _currentIconColor,
+                  feelsLike: _feelsLike,
+                  wind: _wind,
+                  precipitation: _precipitation,
+                  humidity: _humidity,
+                  uvIndex: _uvIndex,
+                  sunrise: _sunrise,
+                ),
               ),
             ),
           ),

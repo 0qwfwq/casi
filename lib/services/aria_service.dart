@@ -15,6 +15,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 
+import '../morning_brief/weather_brief_service.dart';
+import '../morning_brief/calendar_brief_service.dart';
+
 // ---------------------------------------------------------------------------
 // ARIAMemory — SQLite-backed persistent memory
 // ---------------------------------------------------------------------------
@@ -375,14 +378,16 @@ class ARIAService {
 
   // ---------- Brief message generation ----------
 
-  /// Generates a short, friendly message for the Morning Brief ARIA panel.
-  /// Streams words one at a time via [onWord] callback.
-  /// Returns the final cleaned text, or null if the model isn't loaded.
   bool _generating = false;
   bool get isGenerating => _generating;
 
+  /// Generates a context-aware greeting for Panel 1.
+  /// Accepts weather, calendar, and upcoming event data so the greeting
+  /// feels genuinely aware of the user's world.
   Future<String?> generateBriefMessage({
     void Function(String partialText)? onWord,
+    WeatherBriefData? weatherData,
+    CalendarBriefData? calendarData,
   }) async {
     if (!_modelLoaded) {
       debugPrint('[ARIA] generateBriefMessage: model not loaded.');
@@ -404,26 +409,55 @@ class ARIAService {
               ? 'afternoon'
               : 'evening';
       final dayName = _dayName(now.weekday);
+      final monthName = _monthName(now.month);
       final facts = await _memory.getRelevantFacts('today focus');
       final prefs = await SharedPreferences.getInstance();
       final userName = prefs.getString('user_name') ?? '';
 
+      // -- Build context sections --
+      final contextParts = <String>[];
+
+      // Weather context
+      if (weatherData != null) {
+        var weatherCtx = '${weatherData.overallCondition}, '
+            '${weatherData.currentTemp.round()}°C now, '
+            'high ${weatherData.highTemp.round()}° low ${weatherData.lowTemp.round()}°.';
+        if (weatherData.hasPrecipitation && weatherData.maxPrecipProbability >= 40) {
+          weatherCtx += ' ${weatherData.maxPrecipProbability}% chance of precipitation.';
+        }
+        contextParts.add('Weather: $weatherCtx');
+      }
+
+      // Calendar context
+      if (calendarData != null && calendarData.events.isNotEmpty) {
+        final eventSummaries = calendarData.events.take(4).map(_formatEventForPrompt).join('; ');
+        contextParts.add('Schedule: $eventSummaries.');
+      } else {
+        contextParts.add('Schedule: clear today.');
+      }
+
+      // Memory facts
+      if (facts.isNotEmpty) {
+        contextParts.add('About them: ${facts.join('; ')}.');
+      }
+
       final systemPrompt =
-          'You are a helpful assistant. Write a short, encouraging message for one person. '
-          'Under 30 words. Just the message, nothing else.'
+          'You are ARIA, a warm personal assistant. Write a short greeting for one person. '
+          'Under 50 words. Motivational and grounded in their real day. '
+          'DO NOT state the date, day name, weather, or temperature — the user already sees those. '
+          'Instead, use that context to shape your tone and energy. Just the greeting, nothing else.'
           '${userName.isNotEmpty ? ' Their name is $userName. You may use it.' : ''}';
 
-      final userPrompt = 'It is $timeOfDay on $dayName.'
-          '${facts.isNotEmpty ? ' About them: ${facts.join('; ')}.' : ''}'
-          ' Write something encouraging for their day.';
+      final userPrompt = 'It is $timeOfDay on $dayName, $monthName ${now.day}.\n'
+          '${contextParts.join('\n')}\n'
+          'Write a warm, personalized greeting. Do not mention the date, day, or weather directly.';
 
       final raw = await _runInferenceStreaming(
         systemPrompt,
         userPrompt,
-        maxTokens: 60,
+        maxTokens: 80,
         onToken: onWord != null
             ? (tokenBuffer) {
-                // Clean leading quotes from the very first chunk
                 var cleaned = tokenBuffer;
                 if (cleaned.startsWith('"')) {
                   cleaned = cleaned.substring(1);
@@ -438,19 +472,148 @@ class ARIAService {
 
       if (raw.isEmpty) return null;
 
-      // Clean up: remove any leading/trailing quotes or whitespace
       var cleaned = raw.trim();
       if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
         cleaned = cleaned.substring(1, cleaned.length - 1);
       }
-      // Enforce 30-word limit
       final words = cleaned.split(RegExp(r'\s+'));
-      if (words.length > 30) {
-        cleaned = words.take(30).join(' ');
+      if (words.length > 50) {
+        cleaned = words.take(50).join(' ');
       }
       return cleaned.isEmpty ? null : cleaned;
     } catch (e) {
       debugPrint('[ARIA] generateBriefMessage error: $e');
+      _generating = false;
+      return null;
+    }
+  }
+
+  // ---------- Panel 2: Outfit & Weather Narratives ----------
+
+  /// Generates a natural-language clothing recommendation from weather data.
+  /// The decision model data is piped through ARIA so the output feels like
+  /// a thoughtful suggestion, not a logic-tree readout.
+  Future<String?> generateOutfitNarrative({
+    required WeatherBriefData weatherData,
+    void Function(String partialText)? onWord,
+  }) async {
+    if (!_modelLoaded) return null;
+    if (_generating) return null;
+
+    _generating = true;
+    debugPrint('[ARIA] generateOutfitNarrative: starting...');
+
+    try {
+      final now = DateTime.now();
+      final timeOfDay = now.hour < 12
+          ? 'morning'
+          : now.hour < 17
+              ? 'afternoon'
+              : 'evening';
+      final tempSpread = (weatherData.highTemp - weatherData.lowTemp).abs();
+
+      final systemPrompt =
+          'You are ARIA, a personal style assistant. Write a confident, casual clothing '
+          'recommendation. Under 25 words. Conversational — like a friend, not a list. '
+          'Just the recommendation, nothing else.';
+
+      final userPrompt = 'Time: $timeOfDay. '
+          'Weather: ${weatherData.overallCondition}, ${weatherData.currentTemp.round()}°C now. '
+          'High ${weatherData.highTemp.round()}°, low ${weatherData.lowTemp.round()}°. '
+          'Spread: ${tempSpread.round()}°. '
+          '${weatherData.hasPrecipitation ? 'Precipitation: ${weatherData.maxPrecipProbability}%.' : 'No precipitation.'} '
+          'Write a warm, specific outfit suggestion.';
+
+      final raw = await _runInferenceStreaming(
+        systemPrompt,
+        userPrompt,
+        maxTokens: 50,
+        onToken: onWord != null
+            ? (tokenBuffer) {
+                var cleaned = tokenBuffer;
+                if (cleaned.startsWith('"')) cleaned = cleaned.substring(1);
+                onWord(cleaned);
+              }
+            : null,
+      );
+      debugPrint('[ARIA] generateOutfitNarrative result: "$raw"');
+
+      _generating = false;
+      if (raw.isEmpty) return null;
+
+      var cleaned = raw.trim();
+      if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
+        cleaned = cleaned.substring(1, cleaned.length - 1);
+      }
+      final words = cleaned.split(RegExp(r'\s+'));
+      if (words.length > 30) cleaned = words.take(30).join(' ');
+      return cleaned.isEmpty ? null : cleaned;
+    } catch (e) {
+      debugPrint('[ARIA] generateOutfitNarrative error: $e');
+      _generating = false;
+      return null;
+    }
+  }
+
+  /// Generates a natural-language weather narrative from forecast data.
+  /// Communicates the arc of the day: what it feels like now, what's coming,
+  /// and roughly when — something you'd actually want to read.
+  Future<String?> generateWeatherNarrative({
+    required WeatherBriefData weatherData,
+    void Function(String partialText)? onWord,
+  }) async {
+    if (!_modelLoaded) return null;
+    if (_generating) return null;
+
+    _generating = true;
+    debugPrint('[ARIA] generateWeatherNarrative: starting...');
+
+    try {
+      // Build period descriptions for the prompt
+      final periodDescriptions = weatherData.periods.take(3).map((p) {
+        final timeLabel = p.startHour == DateTime.now().hour
+            ? 'Now'
+            : _hourLabel(p.startHour);
+        return '$timeLabel: ${p.condition}, ${p.avgTemp.round()}°C'
+            '${p.maxPrecipProb > 30 ? ', ${p.maxPrecipProb}% precip' : ''}';
+      }).join('. ');
+
+      final systemPrompt =
+          'You are ARIA, a personal weather narrator. Write a brief, natural summary of '
+          "how the day's weather will unfold. Under 35 words. Conversational — describe "
+          'the arc and feel, not raw numbers. Just the summary, nothing else.';
+
+      final userPrompt = 'Current: ${weatherData.overallCondition} at ${weatherData.currentTemp.round()}°C.\n'
+          'High: ${weatherData.highTemp.round()}°, Low: ${weatherData.lowTemp.round()}°.\n'
+          '${periodDescriptions.isNotEmpty ? 'Periods: $periodDescriptions.\n' : ''}'
+          'Write a natural weather narrative for today.';
+
+      final raw = await _runInferenceStreaming(
+        systemPrompt,
+        userPrompt,
+        maxTokens: 60,
+        onToken: onWord != null
+            ? (tokenBuffer) {
+                var cleaned = tokenBuffer;
+                if (cleaned.startsWith('"')) cleaned = cleaned.substring(1);
+                onWord(cleaned);
+              }
+            : null,
+      );
+      debugPrint('[ARIA] generateWeatherNarrative result: "$raw"');
+
+      _generating = false;
+      if (raw.isEmpty) return null;
+
+      var cleaned = raw.trim();
+      if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
+        cleaned = cleaned.substring(1, cleaned.length - 1);
+      }
+      final words = cleaned.split(RegExp(r'\s+'));
+      if (words.length > 40) cleaned = words.take(40).join(' ');
+      return cleaned.isEmpty ? null : cleaned;
+    } catch (e) {
+      debugPrint('[ARIA] generateWeatherNarrative error: $e');
       _generating = false;
       return null;
     }
@@ -484,5 +647,25 @@ class ARIAService {
       'Friday', 'Saturday', 'Sunday',
     ];
     return days[weekday - 1];
+  }
+
+  String _monthName(int month) {
+    const months = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December',
+    ];
+    return months[month - 1];
+  }
+
+  String _hourLabel(int hour) {
+    if (hour == 0) return '12 AM';
+    if (hour < 12) return '$hour AM';
+    if (hour == 12) return '12 PM';
+    return '${hour - 12} PM';
+  }
+
+  String _formatEventForPrompt(DeviceCalendarEvent event) {
+    final time = event.allDay ? 'all day' : event.timeString;
+    return '${event.title} ($time)';
   }
 }

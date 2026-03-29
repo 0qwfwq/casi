@@ -141,6 +141,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   String? _ariaSuggestion;
   bool _ariaReady = false;
   bool _ariaGenerating = false;
+  String? _ariaOutfitNarrative;
+  String? _ariaWeatherNarrative;
+  bool _ariaWeatherGenerating = false;
   String? _lastLaunchedPackage;
 
   // --- Foresight State ---
@@ -237,11 +240,48 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
           setState(() => _ariaSuggestion = partialText);
         }
       },
+      weatherData: _weatherBriefData,
+      calendarData: _calendarBriefData,
     );
     if (mounted) {
       setState(() {
         _ariaGenerating = false;
         if (message != null) _ariaSuggestion = message;
+      });
+    }
+    // After greeting, generate outfit + weather narratives for Panel 2
+    if (_weatherBriefData != null) {
+      await _refreshARIAWeatherPanel();
+    }
+  }
+
+  Future<void> _refreshARIAWeatherPanel() async {
+    if (!_ariaReady || _weatherBriefData == null) return;
+    if (ARIAService.instance.isGenerating) return;
+    if (mounted) setState(() => _ariaWeatherGenerating = true);
+
+    // Generate outfit narrative
+    final outfit = await ARIAService.instance.generateOutfitNarrative(
+      weatherData: _weatherBriefData!,
+      onWord: (partialText) {
+        if (mounted) setState(() => _ariaOutfitNarrative = partialText);
+      },
+    );
+    if (mounted && outfit != null) {
+      setState(() => _ariaOutfitNarrative = outfit);
+    }
+
+    // Generate weather narrative
+    final weather = await ARIAService.instance.generateWeatherNarrative(
+      weatherData: _weatherBriefData!,
+      onWord: (partialText) {
+        if (mounted) setState(() => _ariaWeatherNarrative = partialText);
+      },
+    );
+    if (mounted) {
+      setState(() {
+        _ariaWeatherGenerating = false;
+        if (weather != null) _ariaWeatherNarrative = weather;
       });
     }
   }
@@ -1145,6 +1185,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                                 ariaSuggestion: _ariaSuggestion,
                                                 ariaReady: _ariaReady,
                                                 ariaGenerating: _ariaGenerating,
+                                                ariaOutfitNarrative: _ariaOutfitNarrative,
+                                                ariaWeatherNarrative: _ariaWeatherNarrative,
+                                                ariaWeatherGenerating: _ariaWeatherGenerating,
                                                 onImportARIAModel: _importARIAModel,
                                               ),
                                             ),

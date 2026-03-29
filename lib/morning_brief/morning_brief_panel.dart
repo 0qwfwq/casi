@@ -17,6 +17,9 @@ class MorningBriefPanel extends StatefulWidget {
   final String? ariaSuggestion;
   final bool ariaReady;
   final bool ariaGenerating;
+  final String? ariaOutfitNarrative;
+  final String? ariaWeatherNarrative;
+  final bool ariaWeatherGenerating;
   final VoidCallback? onImportARIAModel;
 
   const MorningBriefPanel({
@@ -30,6 +33,9 @@ class MorningBriefPanel extends StatefulWidget {
     this.ariaSuggestion,
     this.ariaReady = false,
     this.ariaGenerating = false,
+    this.ariaOutfitNarrative,
+    this.ariaWeatherNarrative,
+    this.ariaWeatherGenerating = false,
     this.onImportARIAModel,
   });
 
@@ -355,11 +361,16 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
-                    weather.clothingSuggestion,
+                    widget.ariaOutfitNarrative ?? weather.clothingSuggestion,
                     style: TextStyle(
                       color: CASIColors.textSecondary,
                       fontSize: 12,
-                      fontWeight: FontWeight.w400,
+                      fontWeight: widget.ariaOutfitNarrative != null
+                          ? FontWeight.w300
+                          : FontWeight.w400,
+                      fontStyle: widget.ariaOutfitNarrative != null
+                          ? FontStyle.italic
+                          : FontStyle.normal,
                       height: 1.4,
                     ),
                     maxLines: 2,
@@ -376,17 +387,33 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
                 color: CASIColors.glassCard,
                 borderRadius: BorderRadius.circular(14),
               ),
-              child: Text(
-                weather.weatherSummary,
-                style: TextStyle(
-                  color: CASIColors.textSecondary,
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w400,
-                  height: 1.5,
-                ),
-                maxLines: 4,
-                overflow: TextOverflow.ellipsis,
-              ),
+              child: widget.ariaWeatherGenerating && widget.ariaWeatherNarrative == null
+                  ? Center(
+                      child: SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 1.5,
+                          color: CASIColors.accentPrimary,
+                        ),
+                      ),
+                    )
+                  : Text(
+                      widget.ariaWeatherNarrative ?? weather.weatherSummary,
+                      style: TextStyle(
+                        color: CASIColors.textSecondary,
+                        fontSize: 11.5,
+                        fontWeight: widget.ariaWeatherNarrative != null
+                            ? FontWeight.w300
+                            : FontWeight.w400,
+                        fontStyle: widget.ariaWeatherNarrative != null
+                            ? FontStyle.italic
+                            : FontStyle.normal,
+                        height: 1.5,
+                      ),
+                      maxLines: 4,
+                      overflow: TextOverflow.ellipsis,
+                    ),
             ),
           ],
         ),

@@ -49,6 +49,9 @@ class WeatherBriefData {
   final double highTemp;
   final double lowTemp;
   final String overallCondition;
+  final List<WeatherPeriod> periods;
+  final int maxPrecipProbability;
+  final bool hasPrecipitation;
 
   WeatherBriefData({
     required this.clothingSuggestion,
@@ -57,6 +60,9 @@ class WeatherBriefData {
     required this.highTemp,
     required this.lowTemp,
     required this.overallCondition,
+    this.periods = const [],
+    this.maxPrecipProbability = 0,
+    this.hasPrecipitation = false,
   });
 }
 
@@ -140,6 +146,9 @@ class WeatherBriefService {
       highTemp: highTemp,
       lowTemp: lowTemp,
       overallCondition: overallCondition,
+      periods: periods,
+      maxPrecipProbability: maxPrecipProb,
+      hasPrecipitation: hasRain || hasSnow || hasStorm,
     );
   }
 
