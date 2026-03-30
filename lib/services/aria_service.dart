@@ -193,6 +193,8 @@ class ARIAService {
 
   bool get isReady => _modelLoaded;
 
+  bool _validated = false;
+
   // ---------- Lifecycle ----------
 
   Future<void> initialize() async {
@@ -210,9 +212,39 @@ class ARIAService {
 
     if (ggufFiles.isNotEmpty) {
       final modelFile = ggufFiles.first.path;
-      debugPrint('[ARIA] Found model: ${modelFile.split('/').last}');
+
+      // Crash guard: if previous attempts to load/use this model caused crashes
+      final prefs = await SharedPreferences.getInstance();
+      final validated = prefs.getBool('aria_model_validated') ?? false;
+      final attempts = prefs.getInt('aria_load_attempts') ?? 0;
+
+      if (!validated && attempts >= 2) {
+        debugPrint('[ARIA] Model failed after $attempts attempts — removing bad model.');
+        for (final f in ariaDir.listSync()) {
+          if (f is File && f.path.endsWith('.gguf')) {
+            try { f.deleteSync(); } catch (_) {}
+          }
+        }
+        await prefs.remove('aria_load_attempts');
+        await prefs.remove('aria_model_validated');
+        debugPrint('[ARIA] Bad model removed. Running in limited mode.');
+        return;
+      }
+
+      // Increment attempt counter before loading (survives native crashes)
+      await prefs.setInt('aria_load_attempts', attempts + 1);
+
+      debugPrint('[ARIA] Found model: ${modelFile.split('/').last} (attempt ${attempts + 1})');
       _modelPath = modelFile;
       await _loadModel(modelFile);
+
+      if (_modelLoaded) {
+        _validated = validated;
+        if (validated) {
+          // Model was already proven to work — reset counter
+          await prefs.setInt('aria_load_attempts', 0);
+        }
+      }
     } else {
       debugPrint('[ARIA] Model not found — running in limited mode.');
       debugPrint('[ARIA] Call pickModelFile() to import the .gguf via file picker.');
@@ -279,6 +311,12 @@ class ARIAService {
       // Reset state before loading new model
       _modelLoaded = false;
       _contextId = null;
+      _validated = false;
+
+      // Reset crash guard for new model
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('aria_model_validated', false);
+      await prefs.setInt('aria_load_attempts', 0);
 
       final fileName = pickedPath.split('/').last;
       final destPath = '${ariaDir.path}/$fileName';
@@ -324,7 +362,6 @@ class ARIAService {
           '<|im_start|>user\n$userPrompt<|im_end|>\n'
           '<|im_start|>assistant\n';
 
-      final completer = Completer<String>();
       final buffer = StringBuffer();
       int lastWordEnd = 0;
 
@@ -358,7 +395,7 @@ class ARIAService {
         penaltyPresent: 1.2,
         emitRealtimeCompletion: true,
         stop: ['<|im_end|>', '<|endoftext|>', '<eos>'],
-      );
+      ).timeout(const Duration(seconds: 60));
 
       subscription.cancel();
       final output = buffer.toString().trim();
@@ -366,10 +403,18 @@ class ARIAService {
       if (onToken != null && output.length > lastWordEnd) {
         onToken(output);
       }
-      if (!completer.isCompleted) {
-        completer.complete(output);
+
+      // Mark model as validated after first successful inference
+      if (!_validated) {
+        _validated = true;
+        SharedPreferences.getInstance().then((prefs) {
+          prefs.setBool('aria_model_validated', true);
+          prefs.setInt('aria_load_attempts', 0);
+          debugPrint('[ARIA] Model validated after successful inference.');
+        });
       }
-      return await completer.future;
+
+      return output;
     } catch (e) {
       debugPrint('[ARIA] _runInferenceStreaming error: $e');
       return '';

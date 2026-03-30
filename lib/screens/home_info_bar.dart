@@ -86,6 +86,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   bool _isAlarmRinging = false;
   int? _selectedAlarmIndex;
   Timer? _alarmTimer;
+  Timer? _notificationPollTimer;
   String? _lastRungAlarmTime;
 
   // --- Audio States ---
@@ -206,6 +207,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     await NotificationPillService.loadUserOverrides();
     await _refreshNotificationPill();
     _refreshForesightPredictions();
+    // Poll notifications every 3 seconds for real-time updates
+    _notificationPollTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      _refreshNotificationPill().then((_) => _refreshForesightPredictions());
+    });
   }
 
   Future<void> _refreshForesightPredictions() async {
@@ -249,14 +254,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   void _onForesightAppTap(String packageName) {
     _lastLaunchedPackage = packageName;
     ForesightService.instance.recordLaunch(packageName);
-    setState(() => _foresightPredictions = []);
     AppLauncher.launchApp(packageName);
   }
 
   void _onNotificationPillTap(String packageName) {
     _lastLaunchedPackage = packageName;
     ForesightService.instance.recordLaunch(packageName);
-    setState(() => _foresightPredictions = []);
     AppLauncher.launchApp(packageName);
   }
 
@@ -336,6 +339,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _alarmTimer?.cancel();
+    _notificationPollTimer?.cancel();
     _stopwatchTimer?.cancel();
     _countdownTimer?.cancel();
     _stopAlarmSound();
@@ -1084,32 +1088,40 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                           // Pill row: Alarm > Weather > Timer (clipped to prevent transient overflow)
                                           ClipRect(child: _buildPillRow()),
                                           // Morning Brief panel — animated show/hide
-                                          AnimatedCrossFade(
-                                            duration: const Duration(milliseconds: 120),
-                                            sizeCurve: Curves.easeOutCubic,
-                                            firstCurve: Curves.easeOutCubic,
-                                            secondCurve: Curves.easeInCubic,
-                                            crossFadeState: (_showMorningBrief && !_showPill && !_isAlarmRinging)
-                                                ? CrossFadeState.showFirst
-                                                : CrossFadeState.showSecond,
-                                            firstChild: Padding(
-                                              padding: const EdgeInsets.only(top: 12),
-                                              child: MorningBriefPanel(
-                                                key: ValueKey(_morningBriefKey),
-                                                weatherData: _weatherBriefData,
-                                                calendarData: _calendarBriefData,
-                                                launcherEvents: _calendarEvents,
-                                                onDismiss: _dismissMorningBrief,
-                                                ariaSuggestion: _ariaSuggestion,
-                                                ariaReady: _ariaReady,
-                                                ariaGenerating: _ariaGenerating,
-                                                ariaOutfitNarrative: _ariaOutfitNarrative,
-                                                ariaWeatherNarrative: _ariaWeatherNarrative,
-                                                ariaWeatherGenerating: _ariaWeatherGenerating,
-                                                onImportARIAModel: _importARIAModel,
-                                              ),
-                                            ),
-                                            secondChild: const SizedBox(width: double.infinity),
+                                          AnimatedSwitcher(
+                                            duration: const Duration(milliseconds: 400),
+                                            reverseDuration: const Duration(milliseconds: 350),
+                                            switchInCurve: Curves.easeOutCubic,
+                                            switchOutCurve: Curves.easeInCubic,
+                                            transitionBuilder: (child, animation) {
+                                              return FadeTransition(
+                                                opacity: animation,
+                                                child: SizeTransition(
+                                                  sizeFactor: animation,
+                                                  axisAlignment: -1.0,
+                                                  child: child,
+                                                ),
+                                              );
+                                            },
+                                            child: (_showMorningBrief && !_showPill && !_isAlarmRinging)
+                                                ? Padding(
+                                                    key: ValueKey('morning_brief_$_morningBriefKey'),
+                                                    padding: const EdgeInsets.only(top: 12),
+                                                    child: MorningBriefPanel(
+                                                      weatherData: _weatherBriefData,
+                                                      calendarData: _calendarBriefData,
+                                                      launcherEvents: _calendarEvents,
+                                                      onDismiss: _dismissMorningBrief,
+                                                      ariaSuggestion: _ariaSuggestion,
+                                                      ariaReady: _ariaReady,
+                                                      ariaGenerating: _ariaGenerating,
+                                                      ariaOutfitNarrative: _ariaOutfitNarrative,
+                                                      ariaWeatherNarrative: _ariaWeatherNarrative,
+                                                      ariaWeatherGenerating: _ariaWeatherGenerating,
+                                                      onImportARIAModel: _importARIAModel,
+                                                    ),
+                                                  )
+                                                : const SizedBox.shrink(key: ValueKey('no_brief')),
                                           ),
                                           // Music Player
                                           Offstage(
@@ -1135,7 +1147,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                       bottom: 0,
                                       left: 0,
                                       right: 0,
-                                      child: TapRegion(
+                                      child: Padding(
+                                        padding: EdgeInsets.only(
+                                          bottom: MediaQuery.of(context).viewInsets.bottom,
+                                        ),
+                                        child: TapRegion(
                                         groupId: 'dock_region',
                                         onTapOutside: (event) {
                                           if (_isAlarmRinging) {
@@ -1170,7 +1186,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                               child: ((_foresightPredictions.isNotEmpty || _notificationPillApps.isNotEmpty) &&
                                                       _showForesight &&
                                                       _homeApps.isNotEmpty &&
-                                                      !_showPill &&
                                                       !_isAlarmRinging &&
                                                       !_isDragging)
                                                   ? Padding(
@@ -1218,7 +1233,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                               onAppTap: (app) {
                                                 _lastLaunchedPackage = app.packageName;
                                                 ForesightService.instance.recordLaunch(app.packageName, appName: app.name);
-                                                setState(() => _foresightPredictions = []);
                                                 AppLauncher.launchApp(app.packageName);
                                               },
                                               onDragStarted: (app) => setState(() {
@@ -1228,7 +1242,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                               draggingApp: _draggingApp,
                                               emptyDockWidget: ((_foresightPredictions.isNotEmpty || _notificationPillApps.isNotEmpty) &&
                                                       _showForesight &&
-                                                      !_showPill &&
                                                       !_isAlarmRinging)
                                                   ? ForesightPill(
                                                       predictions: _foresightPredictions,
@@ -1530,6 +1543,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                             ),
                                           ],
                                         ),
+                                      ),
                                       ),
                                     ),
                                   ],
