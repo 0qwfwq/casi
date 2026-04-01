@@ -19,6 +19,7 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   bool _immersiveMode = false;
   bool _ariaModelLoaded = ARIAService.instance.isReady;
+  String _temperatureUnit = 'C'; // 'C' or 'F'
   final WallpaperService _wallpaperService = WallpaperService();
   final TextEditingController _nameController = TextEditingController();
 
@@ -40,6 +41,7 @@ class _SettingsPageState extends State<SettingsPage> {
     await _wallpaperService.initialize();
     setState(() {
       _immersiveMode = prefs.getBool('immersive_mode') ?? false;
+      _temperatureUnit = prefs.getString('temperature_unit') ?? 'C';
       _nameController.text = prefs.getString('user_name') ?? '';
     });
   }
@@ -141,6 +143,34 @@ class _SettingsPageState extends State<SettingsPage> {
                   activeThumbColor: CASIColors.accentPrimary,
                 ),
                 ListTile(
+                  title: const Text("Temperature Unit", style: TextStyle(color: Colors.white)),
+                  subtitle: Text(
+                    _temperatureUnit == 'C' ? 'Celsius (°C)' : 'Fahrenheit (°F)',
+                    style: const TextStyle(color: CASIColors.textSecondary, fontSize: 12),
+                  ),
+                  leading: const Icon(Icons.thermostat, color: Colors.white),
+                  trailing: ToggleButtons(
+                    isSelected: [_temperatureUnit == 'C', _temperatureUnit == 'F'],
+                    onPressed: (index) async {
+                      final unit = index == 0 ? 'C' : 'F';
+                      setState(() => _temperatureUnit = unit);
+                      final prefs = await SharedPreferences.getInstance();
+                      await prefs.setString('temperature_unit', unit);
+                    },
+                    borderRadius: BorderRadius.circular(8),
+                    selectedColor: Colors.white,
+                    fillColor: CASIColors.accentPrimary.withValues(alpha: 0.3),
+                    color: CASIColors.textSecondary,
+                    borderColor: CASIColors.textTertiary,
+                    selectedBorderColor: CASIColors.accentPrimary,
+                    constraints: const BoxConstraints(minWidth: 44, minHeight: 32),
+                    children: const [
+                      Text('°C', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                      Text('°F', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ),
+                ListTile(
                   title: const Text("Notification Tiers", style: TextStyle(color: Colors.white)),
                   subtitle: const Text("Customize app priority for notification pills", style: TextStyle(color: CASIColors.textSecondary, fontSize: 12)),
                   leading: const Icon(Icons.notifications_active_outlined, color: Colors.white),
@@ -169,8 +199,21 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                   onTap: () async {
                     final success = await ARIAService.instance.pickModelFile();
-                    if (success && mounted) {
-                      setState(() => _ariaModelLoaded = true);
+                    if (mounted) {
+                      if (success) {
+                        setState(() => _ariaModelLoaded = true);
+                      } else {
+                        final error = ARIAService.instance.modelError;
+                        if (error != null) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(error),
+                              backgroundColor: CASIColors.alert,
+                              duration: const Duration(seconds: 5),
+                            ),
+                          );
+                        }
+                      }
                     }
                   },
                 ),

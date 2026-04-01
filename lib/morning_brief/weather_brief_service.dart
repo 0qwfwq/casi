@@ -71,16 +71,22 @@ class WeatherBriefService {
     final prefs = await SharedPreferences.getInstance();
     final cachedJson = prefs.getString('weather_json_cache');
     if (cachedJson == null) return null;
+    final unit = prefs.getString('temperature_unit') ?? 'C';
 
     try {
       final data = jsonDecode(cachedJson);
-      return _analyzeWeather(data);
+      return _analyzeWeather(data, unit);
     } catch (e) {
       return null;
     }
   }
 
-  static WeatherBriefData _analyzeWeather(Map<String, dynamic> data) {
+  static String _tempStr(double celsius, String unit) {
+    final val = unit == 'F' ? (celsius * 9 / 5 + 32).round() : celsius.round();
+    return '$val°$unit';
+  }
+
+  static WeatherBriefData _analyzeWeather(Map<String, dynamic> data, String unit) {
     final hourly = data['hourly'];
     final times = hourly['time'] as List;
     final temps = hourly['temperature_2m'] as List;
@@ -113,7 +119,7 @@ class WeatherBriefService {
       final condition = _codeToCondition(code);
       return WeatherBriefData(
         clothingSuggestion: _getClothingSuggestion(maxTemp, minTemp, condition, false, 0),
-        weatherSummary: "Today's high is ${maxTemp.round()}°C with a low of ${minTemp.round()}°C. Expect ${condition.toLowerCase()} skies.",
+        weatherSummary: "Today's high is ${_tempStr(maxTemp, unit)} with a low of ${_tempStr(minTemp, unit)}. Expect ${condition.toLowerCase()} skies.",
         currentTemp: maxTemp,
         highTemp: maxTemp,
         lowTemp: minTemp,
@@ -133,7 +139,7 @@ class WeatherBriefService {
     final maxPrecipProb = todayHours.map((h) => h.precipProbability).reduce((a, b) => a > b ? a : b);
 
     final overallCondition = _determineOverallCondition(todayHours);
-    final weatherSummary = _buildWeatherSummary(periods, todayHours, highTemp, lowTemp);
+    final weatherSummary = _buildWeatherSummary(periods, todayHours, highTemp, lowTemp, unit);
     final clothingSuggestion = _getClothingSuggestion(
       highTemp, lowTemp, overallCondition,
       hasRain || hasSnow || hasStorm, maxPrecipProb,
@@ -201,12 +207,13 @@ class WeatherBriefService {
     List<HourlyWeather> hours,
     double highTemp,
     double lowTemp,
+    String unit,
   ) {
     if (periods.length == 1) {
       final p = periods.first;
       final tempRange = (highTemp - lowTemp).abs() < 3
-          ? "around ${highTemp.round()}°C"
-          : "between ${lowTemp.round()}°C and ${highTemp.round()}°C";
+          ? "around ${_tempStr(highTemp, unit)}"
+          : "between ${_tempStr(lowTemp, unit)} and ${_tempStr(highTemp, unit)}";
 
       if (p.condition == 'Clear') {
         return "It's going to be clear and ${_tempFeeling(highTemp)} all day, with temperatures $tempRange.";
@@ -230,19 +237,20 @@ class WeatherBriefService {
       final timeStr = i == 0
           ? "Currently"
           : "Around ${_hourLabel(p.startHour)}";
+      final tempDisplay = _tempStr(p.avgTemp, unit);
 
       if (p.condition == 'Clear') {
-        parts.add("$timeStr, it will be ${_tempFeeling(p.avgTemp)} and clear at ${p.avgTemp.round()}°C.");
+        parts.add("$timeStr, it will be ${_tempFeeling(p.avgTemp)} and clear at $tempDisplay.");
       } else if (p.condition == 'Rainy') {
-        parts.add("$timeStr, rain is expected with a ${p.maxPrecipProb}% chance and temperatures near ${p.avgTemp.round()}°C.");
+        parts.add("$timeStr, rain is expected with a ${p.maxPrecipProb}% chance and temperatures near $tempDisplay.");
       } else if (p.condition == 'Cloudy') {
-        parts.add("$timeStr, skies will be cloudy at ${p.avgTemp.round()}°C.");
+        parts.add("$timeStr, skies will be cloudy at $tempDisplay.");
       } else if (p.condition == 'Snowy') {
-        parts.add("$timeStr, expect snow with temperatures around ${p.avgTemp.round()}°C.");
+        parts.add("$timeStr, expect snow with temperatures around $tempDisplay.");
       } else if (p.condition == 'Stormy') {
-        parts.add("$timeStr, thunderstorms are expected around ${p.avgTemp.round()}°C.");
+        parts.add("$timeStr, thunderstorms are expected around $tempDisplay.");
       } else {
-        parts.add("$timeStr, expect ${p.condition.toLowerCase()} conditions at ${p.avgTemp.round()}°C.");
+        parts.add("$timeStr, expect ${p.condition.toLowerCase()} conditions at $tempDisplay.");
       }
     }
 

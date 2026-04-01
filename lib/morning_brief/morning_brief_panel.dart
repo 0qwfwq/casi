@@ -18,6 +18,7 @@ class MorningBriefPanel extends StatefulWidget {
   final String? ariaWeatherNarrative;
   final bool ariaWeatherGenerating;
   final VoidCallback? onImportARIAModel;
+  final String temperatureUnit;
 
   const MorningBriefPanel({
     super.key,
@@ -32,6 +33,7 @@ class MorningBriefPanel extends StatefulWidget {
     this.ariaWeatherNarrative,
     this.ariaWeatherGenerating = false,
     this.onImportARIAModel,
+    this.temperatureUnit = 'C',
   });
 
   @override
@@ -47,6 +49,12 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
   void dispose() {
     _pageController.dispose();
     super.dispose();
+  }
+
+  String _tempStr(double celsius) {
+    final u = widget.temperatureUnit;
+    final val = u == 'F' ? (celsius * 9 / 5 + 32).round() : celsius.round();
+    return '$val°$u';
   }
 
   String _getGreeting() {
@@ -307,7 +315,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          '${weather.highTemp.round()}°',
+                          _tempStr(weather.highTemp),
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 22,
@@ -315,7 +323,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
                           ),
                         ),
                         Text(
-                          ' / ${weather.lowTemp.round()}°C',
+                          ' / ${_tempStr(weather.lowTemp)}',
                           style: TextStyle(
                             color: CASIColors.textTertiary,
                             fontSize: 14,

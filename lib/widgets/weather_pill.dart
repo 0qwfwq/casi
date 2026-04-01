@@ -21,6 +21,7 @@ class WeatherPill extends StatefulWidget {
 class _WeatherPillState extends State<WeatherPill> with WidgetsBindingObserver {
   int? _temperature;
   int? _weatherCode;
+  String _unit = 'C'; // 'C' or 'F'
 
   List<DailyForecastData> _forecastData = [];
   List<HourlyForecastData> _hourlyData = [];
@@ -29,7 +30,7 @@ class _WeatherPillState extends State<WeatherPill> with WidgetsBindingObserver {
   IconData _currentIcon = CupertinoIcons.question;
   Color _currentIconColor = Colors.white;
 
-  String _feelsLike = "--°C";
+  String _feelsLike = "--°";
   String _wind = "-- mph";
   String _precipitation = "--%";
   String _humidity = "--%";
@@ -41,6 +42,13 @@ class _WeatherPillState extends State<WeatherPill> with WidgetsBindingObserver {
   bool _isCollapsing = false;
 
   Timer? _hourlySyncTimer;
+
+  String get _unitLabel => '°$_unit';
+
+  int _toDisplay(num celsius) {
+    if (_unit == 'F') return (celsius * 9 / 5 + 32).round();
+    return celsius.round();
+  }
 
   @override
   void initState() {
@@ -60,14 +68,31 @@ class _WeatherPillState extends State<WeatherPill> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _checkAndFetchWeather();
+      _reloadUnitAndRefresh();
     }
+  }
+
+  Future<void> _reloadUnitAndRefresh() async {
+    final prefs = await SharedPreferences.getInstance();
+    final newUnit = prefs.getString('temperature_unit') ?? 'C';
+    if (newUnit != _unit) {
+      _unit = newUnit;
+      // Re-parse cached data with new unit
+      final cachedJson = prefs.getString('weather_json_cache');
+      if (cachedJson != null) {
+        try {
+          _parseWeatherData(jsonDecode(cachedJson));
+        } catch (_) {}
+      }
+    }
+    _checkAndFetchWeather();
   }
 
   // --- Weather Logic ---
 
   Future<void> _initWeather() async {
     final prefs = await SharedPreferences.getInstance();
+    _unit = prefs.getString('temperature_unit') ?? 'C';
 
     final String? cachedWeatherJson = prefs.getString('weather_json_cache');
     if (cachedWeatherJson != null) {
@@ -124,7 +149,7 @@ class _WeatherPillState extends State<WeatherPill> with WidgetsBindingObserver {
 
   void _parseWeatherData(Map<String, dynamic> data) {
     final current = data['current'];
-    final temp = (current['temperature_2m'] as num).round();
+    final tempC = (current['temperature_2m'] as num);
     final code = (current['weathercode'] as num).toInt();
     final currentIsDay = (current['is_day'] as num).toInt() == 1;
 
@@ -132,7 +157,7 @@ class _WeatherPillState extends State<WeatherPill> with WidgetsBindingObserver {
     final IconData curIcon = _getWeatherIcon(code, currentIsDay);
     final Color curIconColor = _getWeatherIconColor(code, currentIsDay);
 
-    final feelsLikeNum = (current['apparent_temperature'] as num).round();
+    final feelsLikeC = (current['apparent_temperature'] as num);
     final humidityNum = (current['relative_humidity_2m'] as num).round();
     final windSpeedNum = (current['wind_speed_10m'] as num).round();
     final windDirDegrees = (current['wind_direction_10m'] as num).toInt();
@@ -155,8 +180,8 @@ class _WeatherPillState extends State<WeatherPill> with WidgetsBindingObserver {
       for (int i = 0; i < times.length && i < 5; i++) {
         DateTime date = DateTime.parse(times[i]);
         int dCode = (codes[i] as num).toInt();
-        int dMax = (maxs[i] as num).round();
-        int dMin = (mins[i] as num).round();
+        int dMax = _toDisplay(maxs[i] as num);
+        int dMin = _toDisplay(mins[i] as num);
 
         dailyList.add(DailyForecastData(
           day: _getDayName(date.weekday),
@@ -194,27 +219,27 @@ class _WeatherPillState extends State<WeatherPill> with WidgetsBindingObserver {
       for (int i = currentIndex; i < currentIndex + 6 && i < times.length; i++) {
         DateTime t = DateTime.parse(times[i]);
         int hCode = (codes[i] as num).toInt();
-        int hTemp = (temps[i] as num).round();
+        int hTemp = _toDisplay(temps[i] as num);
         bool hIsDay = (isDays[i] as num).toInt() == 1;
 
         hourlyList.add(HourlyForecastData(
           time: _getFormattedHour(t),
           icon: _getWeatherIcon(hCode, hIsDay),
           iconColor: _getWeatherIconColor(hCode, hIsDay),
-          temp: "$hTemp°C",
+          temp: "$hTemp$_unitLabel",
         ));
       }
     }
 
     if (mounted) {
       setState(() {
-        _temperature = temp;
+        _temperature = _toDisplay(tempC);
         _weatherCode = code;
         _currentDescription = currentDesc;
         _currentIcon = curIcon;
         _currentIconColor = curIconColor;
 
-        _feelsLike = "$feelsLikeNum°C";
+        _feelsLike = "${_toDisplay(feelsLikeC)}$_unitLabel";
         _humidity = "$humidityNum%";
         _wind = "$windSpeedNum mph $windDir";
         _precipitation = "$precipProbNum%";
@@ -429,7 +454,7 @@ class _WeatherPillState extends State<WeatherPill> with WidgetsBindingObserver {
                   Icon(_currentIcon, color: _currentIconColor, size: 16),
                   const SizedBox(width: 6),
                   Text(
-                    "${_temperature ?? '--'}°C",
+                    "${_temperature ?? '--'}$_unitLabel",
                     style: const TextStyle(
                       color: CASIColors.textPrimary,
                       fontSize: 13,
@@ -486,7 +511,7 @@ class _WeatherPillState extends State<WeatherPill> with WidgetsBindingObserver {
                 child: WeatherForecastWidget(
                   forecastData: _forecastData,
                   hourlyData: _hourlyData,
-                  currentTemp: "${_temperature ?? '--'}°C",
+                  currentTemp: "${_temperature ?? '--'}$_unitLabel",
                   currentDescription: _currentDescription,
                   currentIcon: _currentIcon,
                   currentIconColor: _currentIconColor,

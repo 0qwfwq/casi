@@ -176,6 +176,115 @@ class ARIAMemory {
 }
 
 // ---------------------------------------------------------------------------
+// GGUF architecture validation
+// ---------------------------------------------------------------------------
+
+/// Architectures supported by the llama.cpp bundled in fllama 0.0.1
+/// (commit 54ef9cfc, Nov 2024). Models using newer architectures (e.g. qwen3)
+/// will cause native crashes — we reject them before loading.
+const _supportedArchitectures = <String>{
+  'llama', 'gpt2', 'gptj', 'gptneox', 'falcon', 'bloom', 'mpt',
+  'starcoder', 'refact', 'bert', 'nomic-bert', 'jina-bert-v2',
+  'stablelm', 'qwen', 'qwen2', 'phi2', 'phi3', 'plamo', 'codeshell',
+  'orion', 'internlm2', 'minicpm', 'gemma', 'gemma2', 'starcoder2',
+  'mamba', 'xverse', 'command-r', 'dbrx', 'olmo', 'openelm', 'arctic',
+  'deepseek', 'deepseek2', 'chatglm', 'bitnet', 't5', 't5encoder',
+  'jais', 'nemotron', 'exaone', 'rwkv6',
+};
+
+/// Reads a GGUF file's `general.architecture` metadata value.
+/// Returns `null` if the file isn't valid GGUF or the key isn't found.
+Future<String?> _readGgufArchitecture(String path) async {
+  RandomAccessFile? raf;
+  try {
+    raf = await File(path).open();
+
+    // --- Header ---
+    // 4B magic  |  4B version  |  8B tensor_count  |  8B kv_count
+    final header = Uint8List(24);
+    await raf.readInto(header);
+    final bd = ByteData.sublistView(header);
+
+    final magic = String.fromCharCodes(header.sublist(0, 4));
+    if (magic != 'GGUF') return null;
+
+    final kvCount = bd.getUint64(16, Endian.little);
+
+    // --- Iterate KV pairs looking for general.architecture ---
+    for (int i = 0; i < kvCount; i++) {
+      // Key: uint64 length + UTF-8 bytes
+      final keyLenBytes = Uint8List(8);
+      await raf.readInto(keyLenBytes);
+      final keyLen = ByteData.sublistView(keyLenBytes).getUint64(0, Endian.little);
+      final keyBytes = Uint8List(keyLen);
+      await raf.readInto(keyBytes);
+      final key = String.fromCharCodes(keyBytes);
+
+      // Value type: uint32
+      final vtBytes = Uint8List(4);
+      await raf.readInto(vtBytes);
+      final vType = ByteData.sublistView(vtBytes).getUint32(0, Endian.little);
+
+      if (key == 'general.architecture' && vType == 8 /* STRING */) {
+        final sLenBytes = Uint8List(8);
+        await raf.readInto(sLenBytes);
+        final sLen = ByteData.sublistView(sLenBytes).getUint64(0, Endian.little);
+        final sBytes = Uint8List(sLen);
+        await raf.readInto(sBytes);
+        return String.fromCharCodes(sBytes);
+      }
+
+      // Skip value we don't care about
+      await _skipGgufValue(raf, vType);
+    }
+    return null;
+  } catch (e) {
+    debugPrint('[ARIA] _readGgufArchitecture error: $e');
+    return null;
+  } finally {
+    raf?.close();
+  }
+}
+
+/// Skip over a GGUF metadata value in the file stream.
+Future<void> _skipGgufValue(RandomAccessFile raf, int vType) async {
+  switch (vType) {
+    case 0: // UINT8
+    case 1: // INT8
+    case 7: // BOOL
+      await raf.setPosition(await raf.position() + 1);
+    case 2: // UINT16
+    case 3: // INT16
+      await raf.setPosition(await raf.position() + 2);
+    case 4: // UINT32
+    case 5: // INT32
+    case 6: // FLOAT32
+      await raf.setPosition(await raf.position() + 4);
+    case 10: // UINT64
+    case 11: // INT64
+    case 12: // FLOAT64
+      await raf.setPosition(await raf.position() + 8);
+    case 8: // STRING — uint64 len + bytes
+      final lb = Uint8List(8);
+      await raf.readInto(lb);
+      final len = ByteData.sublistView(lb).getUint64(0, Endian.little);
+      await raf.setPosition(await raf.position() + len);
+    case 9: // ARRAY — uint32 elemType + uint64 count + elements
+      final ab = Uint8List(12);
+      await raf.readInto(ab);
+      final abd = ByteData.sublistView(ab);
+      final elemType = abd.getUint32(0, Endian.little);
+      final count = abd.getUint64(4, Endian.little);
+      for (int j = 0; j < count; j++) {
+        await _skipGgufValue(raf, elemType);
+      }
+    default:
+      // Unknown type — can't continue safely
+      throw StateError('Unknown GGUF value type $vType');
+  }
+}
+
+// ---------------------------------------------------------------------------
 // ARIAService — singleton, main interface
 // ---------------------------------------------------------------------------
 
@@ -190,8 +299,10 @@ class ARIAService {
   bool _modelLoaded = false;
   double? _contextId;
   String? _modelPath;
+  String? _modelError; // non-null if model was rejected (e.g. unsupported arch)
 
   bool get isReady => _modelLoaded;
+  String? get modelError => _modelError;
 
   bool _validated = false;
 
@@ -213,6 +324,22 @@ class ARIAService {
     if (ggufFiles.isNotEmpty) {
       final modelFile = ggufFiles.first.path;
 
+      // Validate architecture before loading — prevents native crashes
+      // from unsupported model architectures (e.g. qwen3 on old llama.cpp)
+      final arch = await _readGgufArchitecture(modelFile);
+      if (arch != null && !_supportedArchitectures.contains(arch)) {
+        debugPrint('[ARIA] Unsupported architecture "$arch" — removing model.');
+        _modelError = 'Unsupported model architecture: "$arch". '
+            'This version of CASI supports: qwen2, llama, gemma2, phi3, and similar. '
+            'Qwen 3.x models require a newer inference engine.';
+        for (final f in ariaDir.listSync()) {
+          if (f is File && f.path.endsWith('.gguf')) {
+            try { f.deleteSync(); } catch (_) {}
+          }
+        }
+        return;
+      }
+
       // Crash guard: if previous attempts to load/use this model caused crashes
       final prefs = await SharedPreferences.getInstance();
       final validated = prefs.getBool('aria_model_validated') ?? false;
@@ -227,6 +354,7 @@ class ARIAService {
         }
         await prefs.remove('aria_load_attempts');
         await prefs.remove('aria_model_validated');
+        _modelError = 'Model crashed repeatedly and was removed. Try a different model.';
         debugPrint('[ARIA] Bad model removed. Running in limited mode.');
         return;
       }
@@ -234,7 +362,8 @@ class ARIAService {
       // Increment attempt counter before loading (survives native crashes)
       await prefs.setInt('aria_load_attempts', attempts + 1);
 
-      debugPrint('[ARIA] Found model: ${modelFile.split('/').last} (attempt ${attempts + 1})');
+      debugPrint('[ARIA] Found model: ${modelFile.split('/').last} '
+          '(arch: ${arch ?? 'unknown'}, attempt ${attempts + 1})');
       _modelPath = modelFile;
       await _loadModel(modelFile);
 
@@ -257,8 +386,8 @@ class ARIAService {
       if (fllama != null) {
         final result = await fllama.initContext(
           modelFile,
-          nCtx: 2048,
-          nGpuLayers: 99,
+          nCtx: 512,
+          nGpuLayers: 0,  // CPU-only — safest across all devices
         );
         if (result != null && result['contextId'] != null) {
           _contextId = double.parse(result['contextId'].toString());
@@ -293,6 +422,17 @@ class ARIAService {
       final pickedPath = result.files.single.path!;
       if (!pickedPath.endsWith('.gguf')) {
         debugPrint('[ARIA] Selected file is not a .gguf model.');
+        _modelError = 'Selected file is not a .gguf model.';
+        return false;
+      }
+
+      // Validate architecture before copying (avoids wasting time + storage)
+      final arch = await _readGgufArchitecture(pickedPath);
+      if (arch != null && !_supportedArchitectures.contains(arch)) {
+        debugPrint('[ARIA] Rejected model: unsupported architecture "$arch"');
+        _modelError = 'Unsupported model architecture: "$arch". '
+            'This version of CASI supports: qwen2, llama, gemma2, phi3, and similar. '
+            'Qwen 3.x models require a newer inference engine.';
         return false;
       }
 
@@ -312,6 +452,7 @@ class ARIAService {
       _modelLoaded = false;
       _contextId = null;
       _validated = false;
+      _modelError = null;
 
       // Reset crash guard for new model
       final prefs = await SharedPreferences.getInstance();
@@ -358,12 +499,15 @@ class ARIAService {
         return '';
       }
 
-      final prompt = '<|im_start|>system\n$systemPrompt<|im_end|>\n'
+      // Qwen 3.5 models support /no_think to suppress <think> reasoning blocks.
+      // Prepend it to the system prompt so the model outputs text directly.
+      final prompt = '<|im_start|>system\n/no_think\n$systemPrompt<|im_end|>\n'
           '<|im_start|>user\n$userPrompt<|im_end|>\n'
           '<|im_start|>assistant\n';
 
       final buffer = StringBuffer();
       int lastWordEnd = 0;
+      bool insideThink = false;
 
       late final StreamSubscription<Map<Object?, dynamic>> subscription;
       subscription = fllama.onTokenStream!.listen((data) {
@@ -372,6 +516,14 @@ class ARIAService {
           final result = data['result'];
           if (result is Map) {
             final token = result['token'] as String? ?? '';
+
+            // Filter out <think>...</think> blocks in case the model still emits them
+            if (token.contains('<think>')) { insideThink = true; return; }
+            if (insideThink) {
+              if (token.contains('</think>')) { insideThink = false; }
+              return;
+            }
+
             buffer.write(token);
             // Emit each time a new word boundary appears
             if (onToken != null) {
@@ -392,13 +544,14 @@ class ARIAService {
         prompt: prompt,
         nPredict: maxTokens,
         temperature: 0.7,
-        penaltyPresent: 1.2,
+        penaltyPresent: 0.3,
         emitRealtimeCompletion: true,
-        stop: ['<|im_end|>', '<|endoftext|>', '<eos>'],
+        stop: ['<|im_end|>', '<|endoftext|>', '<eos>', '<|end|>', '</s>', '<think>'],
       ).timeout(const Duration(seconds: 60));
 
       subscription.cancel();
-      final output = buffer.toString().trim();
+      // Strip any residual <think>...</think> blocks from the output
+      var output = buffer.toString().replaceAll(RegExp(r'<think>[\s\S]*?</think>'), '').trim();
       // Emit final text (last word may not have trailing space)
       if (onToken != null && output.length > lastWordEnd) {
         onToken(output);
@@ -459,6 +612,7 @@ class ARIAService {
       final facts = await _memory.getRelevantFacts('today focus');
       final prefs = await SharedPreferences.getInstance();
       final userName = prefs.getString('user_name') ?? '';
+      final unit = prefs.getString('temperature_unit') ?? 'C';
 
       // -- Build context sections --
       final contextParts = <String>[];
@@ -466,8 +620,8 @@ class ARIAService {
       // Weather context
       if (weatherData != null) {
         var weatherCtx = '${weatherData.overallCondition}, '
-            '${weatherData.currentTemp.round()}°C now, '
-            'high ${weatherData.highTemp.round()}° low ${weatherData.lowTemp.round()}°.';
+            '${_tempStr(weatherData.currentTemp, unit)} now, '
+            'high ${_tempStr(weatherData.highTemp, unit)} low ${_tempStr(weatherData.lowTemp, unit)}.';
         if (weatherData.hasPrecipitation && weatherData.maxPrecipProbability >= 40) {
           weatherCtx += ' ${weatherData.maxPrecipProbability}% chance of precipitation.';
         }
@@ -580,6 +734,8 @@ class ARIAService {
     debugPrint('[ARIA] generateOutfitNarrative: starting...');
 
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final unit = prefs.getString('temperature_unit') ?? 'C';
       final tempSpread = (weatherData.highTemp - weatherData.lowTemp).abs();
 
       final systemPrompt =
@@ -594,9 +750,9 @@ class ARIAService {
           '7) If rain: mention umbrella or rain jacket. '
           '8) Just output the recommendation, nothing else — no quotes, no labels.';
 
-      final userPrompt = 'Weather right now: ${weatherData.overallCondition}, ${weatherData.currentTemp.round()}°C. '
-          'High ${weatherData.highTemp.round()}°C, low ${weatherData.lowTemp.round()}°C. '
-          'Temperature spread: ${tempSpread.round()}°C. '
+      final userPrompt = 'Weather right now: ${weatherData.overallCondition}, ${_tempStr(weatherData.currentTemp, unit)}. '
+          'High ${_tempStr(weatherData.highTemp, unit)}, low ${_tempStr(weatherData.lowTemp, unit)}. '
+          'Temperature spread: ${_tempStr(tempSpread, unit)}. '
           '${weatherData.hasPrecipitation ? 'Rain chance: ${weatherData.maxPrecipProbability}%.' : 'No rain expected.'} '
           'What weight and type of clothing should I wear?';
 
@@ -645,12 +801,15 @@ class ARIAService {
     debugPrint('[ARIA] generateWeatherNarrative: starting...');
 
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final unit = prefs.getString('temperature_unit') ?? 'C';
+
       // Build period descriptions for the prompt
       final periodDescriptions = weatherData.periods.take(3).map((p) {
         final timeLabel = p.startHour == DateTime.now().hour
             ? 'Now'
             : _hourLabel(p.startHour);
-        return '$timeLabel: ${p.condition}, ${p.avgTemp.round()}°C'
+        return '$timeLabel: ${p.condition}, ${_tempStr(p.avgTemp, unit)}'
             '${p.maxPrecipProb > 30 ? ', ${p.maxPrecipProb}% precip' : ''}';
       }).join('. ');
 
@@ -659,8 +818,8 @@ class ARIAService {
           "how the day's weather will unfold. Under 70 words. Conversational — describe "
           'the arc and feel, not raw numbers. Just the summary, nothing else.';
 
-      final userPrompt = 'Current: ${weatherData.overallCondition} at ${weatherData.currentTemp.round()}°C.\n'
-          'High: ${weatherData.highTemp.round()}°, Low: ${weatherData.lowTemp.round()}°.\n'
+      final userPrompt = 'Current: ${weatherData.overallCondition} at ${_tempStr(weatherData.currentTemp, unit)}.\n'
+          'High: ${_tempStr(weatherData.highTemp, unit)}, Low: ${_tempStr(weatherData.lowTemp, unit)}.\n'
           '${periodDescriptions.isNotEmpty ? 'Periods: $periodDescriptions.\n' : ''}'
           'Write a natural weather narrative for today.';
 
@@ -716,6 +875,11 @@ class ARIAService {
   }
 
   // ---------- Helpers ----------
+
+  String _tempStr(double celsius, String unit) {
+    final val = unit == 'F' ? (celsius * 9 / 5 + 32).round() : celsius.round();
+    return '$val°$unit';
+  }
 
   String _dayName(int weekday) {
     const days = [

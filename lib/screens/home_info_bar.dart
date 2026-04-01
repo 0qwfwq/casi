@@ -137,6 +137,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   bool _isForecastVisible = false;
   final GlobalKey _weatherPillKey = GlobalKey();
 
+  String _temperatureUnit = 'C';
+
   // --- ARIA State ---
   String? _ariaSuggestion;
   bool _ariaReady = false;
@@ -354,6 +356,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
       _applyImmersiveMode();
       _wallpaperService.reload();
       _checkAppChangesOnResume();
+      // Reload temperature unit in case it was changed in settings
+      SharedPreferences.getInstance().then((prefs) {
+        final newUnit = prefs.getString('temperature_unit') ?? 'C';
+        if (newUnit != _temperatureUnit && mounted) {
+          setState(() => _temperatureUnit = newUnit);
+        }
+      });
       _syncTimersOnResume();
       _refreshWeatherBrief();
       _refreshCalendarBrief();
@@ -742,6 +751,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _immersiveMode = prefs.getBool('immersive_mode') ?? false;
+      _temperatureUnit = prefs.getString('temperature_unit') ?? 'C';
     });
     _applyImmersiveMode();
     await _wallpaperService.initialize();
@@ -1119,6 +1129,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                                       ariaWeatherNarrative: _ariaWeatherNarrative,
                                                       ariaWeatherGenerating: _ariaWeatherGenerating,
                                                       onImportARIAModel: _importARIAModel,
+                                                      temperatureUnit: _temperatureUnit,
                                                     ),
                                                   )
                                                 : const SizedBox.shrink(key: ValueKey('no_brief')),

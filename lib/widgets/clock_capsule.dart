@@ -22,6 +22,7 @@ class _ClockCapsuleState extends State<ClockCapsule> {
 
   DateTime _now = DateTime.now();
   String? _clockPackage;
+  String? _calendarPackage;
 
   @override
   void initState() {
@@ -60,6 +61,13 @@ class _ClockCapsuleState extends State<ClockCapsule> {
         'com.sec.android.app.clockpackage',
         'com.oneplus.deskclock',
       ], 'clock');
+
+      _calendarPackage = findPackage([
+        'com.google.android.calendar',
+        'com.samsung.android.calendar',
+        'com.android.calendar',
+        'com.oneplus.calendar',
+      ], 'calendar');
 
     } catch (e) {
       debugPrint("Error finding clock app: $e");
@@ -102,6 +110,7 @@ class _ClockCapsuleState extends State<ClockCapsule> {
         // 1. The Date — type.body2 equivalent (Inter, 14sp would be too small here; using body1 at 20sp)
         GestureDetector(
           onTap: () => CalendarTapNotification().dispatch(context),
+          onLongPress: () => _launchApp(_calendarPackage),
           child: Padding(
             padding: const EdgeInsets.only(bottom: CASISpacing.sm),
             child: Text(
