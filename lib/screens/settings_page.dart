@@ -1,8 +1,10 @@
 import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:casi/design_system.dart';
 import '../services/wallpaper_service.dart';
@@ -303,12 +305,28 @@ class _BackgroundSettingsPageState extends State<BackgroundSettingsPage> {
     final ImagePicker picker = ImagePicker();
     final XFile? image = await picker.pickImage(source: ImageSource.gallery);
 
-    if (image != null) {
-      setState(() {
-        _backgroundImagePath = image.path;
-        _backgroundType = 'image';
-      });
-      _saveSettings();
+    if (image != null && mounted) {
+      // Navigate to the crop/adjust screen
+      final croppedPath = await Navigator.push<String>(
+        context,
+        PageRouteBuilder(
+          pageBuilder: (context, animation, secondaryAnimation) =>
+              WallpaperAdjustPage(imagePath: image.path),
+          transitionDuration: const Duration(milliseconds: 80),
+          reverseTransitionDuration: const Duration(milliseconds: 60),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            return FadeTransition(opacity: animation, child: child);
+          },
+        ),
+      );
+
+      if (croppedPath != null) {
+        setState(() {
+          _backgroundImagePath = croppedPath;
+          _backgroundType = 'image';
+        });
+        _saveSettings();
+      }
     }
   }
 
@@ -753,5 +771,241 @@ class _NotificationTierSettingsPageState
         ],
       ),
     );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Wallpaper Adjust Page — crop, resize, and reposition
+// ---------------------------------------------------------------------------
+
+class WallpaperAdjustPage extends StatefulWidget {
+  final String imagePath;
+
+  const WallpaperAdjustPage({super.key, required this.imagePath});
+
+  @override
+  State<WallpaperAdjustPage> createState() => _WallpaperAdjustPageState();
+}
+
+class _WallpaperAdjustPageState extends State<WallpaperAdjustPage> {
+  double _scale = 1.0;
+  double _previousScale = 1.0;
+  Offset _offset = Offset.zero;
+  Offset _previousOffset = Offset.zero;
+  Offset _focalStart = Offset.zero;
+  bool _saving = false;
+
+  final GlobalKey _repaintKey = GlobalKey();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: CASIColors.void_,
+      appBar: AppBar(
+        title: const Text('Adjust Wallpaper'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.close),
+          onPressed: () => Navigator.pop(context),
+        ),
+        actions: [
+          TextButton(
+            onPressed: _saving ? null : _saveAndReturn,
+            child: _saving
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 1.5,
+                      color: CASIColors.accentPrimary,
+                    ),
+                  )
+                : const Text(
+                    'Done',
+                    style: TextStyle(
+                      color: CASIColors.accentPrimary,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
+                    ),
+                  ),
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          // Instructions
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+            child: Text(
+              'Pinch to resize · Drag to reposition',
+              style: TextStyle(
+                color: CASIColors.textTertiary,
+                fontSize: 13,
+                fontWeight: FontWeight.w400,
+              ),
+            ),
+          ),
+          // Interactive image area — fills remaining space
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return ClipRect(
+                  child: RepaintBoundary(
+                    key: _repaintKey,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onScaleStart: (details) {
+                        _previousScale = _scale;
+                        _previousOffset = _offset;
+                        _focalStart = details.focalPoint;
+                      },
+                      onScaleUpdate: (details) {
+                        setState(() {
+                          _scale = (_previousScale * details.scale)
+                              .clamp(0.3, 5.0);
+                          _offset = _previousOffset +
+                              (details.focalPoint - _focalStart);
+                        });
+                      },
+                      child: Container(
+                        width: constraints.maxWidth,
+                        height: constraints.maxHeight,
+                        color: Colors.black,
+                        child: Transform(
+                          transform: Matrix4.identity()
+                            ..translate(_offset.dx, _offset.dy)
+                            ..scale(_scale),
+                          alignment: Alignment.center,
+                          child: Image.file(
+                            File(widget.imagePath),
+                            fit: BoxFit.contain,
+                            filterQuality: FilterQuality.medium,
+                            errorBuilder: (context, error, stack) {
+                              debugPrint('[WallpaperAdjust] Image load error: $error');
+                              return Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.broken_image,
+                                        color: CASIColors.textTertiary, size: 48),
+                                    const SizedBox(height: 12),
+                                    Text(
+                                      'Could not load image',
+                                      style: TextStyle(
+                                          color: CASIColors.textSecondary,
+                                          fontSize: 13),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          // Reset button
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+            child: GestureDetector(
+              onTap: () {
+                setState(() {
+                  _scale = 1.0;
+                  _offset = Offset.zero;
+                });
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: CASIColors.glassCard,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: CASIColors.glassDivider),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.restart_alt,
+                        color: CASIColors.textSecondary, size: 16),
+                    SizedBox(width: 6),
+                    Text(
+                      'Reset',
+                      style: TextStyle(
+                        color: CASIColors.textSecondary,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _saveAndReturn() async {
+    setState(() => _saving = true);
+
+    try {
+      // Persistent storage directory (survives cache clears)
+      final appDir = await getApplicationSupportDirectory();
+      final wallpaperDir = Directory('${appDir.path}/wallpapers');
+      if (!wallpaperDir.existsSync()) wallpaperDir.createSync(recursive: true);
+
+      // If no adjustments were made, copy the original to persistent storage
+      if (_scale == 1.0 && _offset == Offset.zero) {
+        final ext = widget.imagePath.split('.').last;
+        final destPath =
+            '${wallpaperDir.path}/wallpaper_${DateTime.now().millisecondsSinceEpoch}.$ext';
+        await File(widget.imagePath).copy(destPath);
+        if (mounted) Navigator.pop(context, destPath);
+        return;
+      }
+
+      // Capture the adjusted image from the RepaintBoundary
+      final boundary = _repaintKey.currentContext?.findRenderObject()
+          as RenderRepaintBoundary?;
+      if (boundary == null) {
+        // Fallback: copy original
+        final ext = widget.imagePath.split('.').last;
+        final destPath =
+            '${wallpaperDir.path}/wallpaper_${DateTime.now().millisecondsSinceEpoch}.$ext';
+        await File(widget.imagePath).copy(destPath);
+        if (mounted) Navigator.pop(context, destPath);
+        return;
+      }
+
+      final image = await boundary.toImage(pixelRatio: 2.0);
+      final byteData =
+          await image.toByteData(format: ImageByteFormat.png);
+      image.dispose();
+
+      if (byteData == null) {
+        final ext = widget.imagePath.split('.').last;
+        final destPath =
+            '${wallpaperDir.path}/wallpaper_${DateTime.now().millisecondsSinceEpoch}.$ext';
+        await File(widget.imagePath).copy(destPath);
+        if (mounted) Navigator.pop(context, destPath);
+        return;
+      }
+
+      final destPath =
+          '${wallpaperDir.path}/wallpaper_${DateTime.now().millisecondsSinceEpoch}.png';
+      final file = File(destPath);
+      await file.writeAsBytes(byteData.buffer.asUint8List());
+
+      if (mounted) Navigator.pop(context, destPath);
+    } catch (e) {
+      debugPrint('[WallpaperAdjust] Save error: $e');
+      if (mounted) Navigator.pop(context, widget.imagePath);
+    }
   }
 }

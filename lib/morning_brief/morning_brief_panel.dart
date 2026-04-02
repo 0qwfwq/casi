@@ -148,7 +148,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
     );
   }
 
-  double get _panelHeight => 200.0;
+  double get _panelHeight => 220.0;
 
   Widget _buildPageIndicator() {
     return Row(
@@ -190,7 +190,10 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
               // ARIA-generated encouragement — takes remaining space
               Expanded(
                 child: Center(
-                  child: _buildAriaContent(suggestion),
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    child: _buildAriaContent(suggestion),
+                  ),
                 ),
               ),
               // Bottom nav hint
@@ -291,87 +294,84 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
-      child: SingleChildScrollView(
-        physics: const NeverScrollableScrollPhysics(),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: iconColor.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(icon, color: iconColor, size: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: iconColor.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                const SizedBox(width: 12),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          _tempStr(weather.highTemp),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 22,
-                            fontWeight: FontWeight.w300,
-                          ),
+                child: Icon(icon, color: iconColor, size: 24),
+              ),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _tempStr(weather.highTemp),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w300,
                         ),
-                        Text(
-                          ' / ${_tempStr(weather.lowTemp)}',
-                          style: TextStyle(
-                            color: CASIColors.textTertiary,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w400,
-                          ),
+                      ),
+                      Text(
+                        ' / ${_tempStr(weather.lowTemp)}',
+                        style: TextStyle(
+                          color: CASIColors.textTertiary,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w400,
                         ),
-                      ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    weather.overallCondition,
+                    style: TextStyle(
+                      color: iconColor,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
                     ),
-                    const SizedBox(height: 2),
+                  ),
+                ],
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
                     Text(
-                      weather.overallCondition,
+                      widget.ariaOutfitNarrative ?? weather.clothingSuggestion,
+                      textAlign: TextAlign.right,
                       style: TextStyle(
-                        color: iconColor,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
+                        color: CASIColors.textSecondary,
+                        fontSize: 11,
+                        fontWeight: widget.ariaOutfitNarrative != null
+                            ? FontWeight.w300
+                            : FontWeight.w400,
+                        fontStyle: widget.ariaOutfitNarrative != null
+                            ? FontStyle.italic
+                            : FontStyle.normal,
+                        height: 1.3,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        widget.ariaOutfitNarrative ?? weather.clothingSuggestion,
-                        textAlign: TextAlign.right,
-                        style: TextStyle(
-                          color: CASIColors.textSecondary,
-                          fontSize: 11,
-                          fontWeight: widget.ariaOutfitNarrative != null
-                              ? FontWeight.w300
-                              : FontWeight.w400,
-                          fontStyle: widget.ariaOutfitNarrative != null
-                              ? FontStyle.italic
-                              : FontStyle.normal,
-                          height: 1.3,
-                        ),
-                        maxLines: 4,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Container(
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Expanded(
+            child: Container(
               width: double.infinity,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -389,25 +389,26 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
                         ),
                       ),
                     )
-                  : Text(
-                      widget.ariaWeatherNarrative ?? weather.weatherSummary,
-                      style: TextStyle(
-                        color: CASIColors.textSecondary,
-                        fontSize: 11.5,
-                        fontWeight: widget.ariaWeatherNarrative != null
-                            ? FontWeight.w300
-                            : FontWeight.w400,
-                        fontStyle: widget.ariaWeatherNarrative != null
-                            ? FontStyle.italic
-                            : FontStyle.normal,
-                        height: 1.5,
+                  : SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      child: Text(
+                        widget.ariaWeatherNarrative ?? weather.weatherSummary,
+                        style: TextStyle(
+                          color: CASIColors.textSecondary,
+                          fontSize: 11.5,
+                          fontWeight: widget.ariaWeatherNarrative != null
+                              ? FontWeight.w300
+                              : FontWeight.w400,
+                          fontStyle: widget.ariaWeatherNarrative != null
+                              ? FontStyle.italic
+                              : FontStyle.normal,
+                          height: 1.5,
+                        ),
                       ),
-                      maxLines: 4,
-                      overflow: TextOverflow.ellipsis,
                     ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

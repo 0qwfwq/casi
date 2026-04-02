@@ -685,7 +685,7 @@ class ARIAService {
       final raw = await _runInferenceStreaming(
         systemPrompt,
         userPrompt,
-        maxTokens: 80,
+        maxTokens: 150,
         onToken: onWord != null
             ? (tokenBuffer) {
                 var cleaned = tokenBuffer;
@@ -705,10 +705,6 @@ class ARIAService {
       var cleaned = raw.trim();
       if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
         cleaned = cleaned.substring(1, cleaned.length - 1);
-      }
-      final words = cleaned.split(RegExp(r'\s+'));
-      if (words.length > 50) {
-        cleaned = words.take(50).join(' ');
       }
       return cleaned.isEmpty ? null : cleaned;
     } catch (e) {
@@ -815,7 +811,7 @@ class ARIAService {
 
       final systemPrompt =
           'You are ARIA, a personal weather narrator. Write a natural summary of '
-          "how the day's weather will unfold. Under 70 words. Conversational — describe "
+          "how the day's weather will unfold. Conversational — describe "
           'the arc and feel, not raw numbers. Just the summary, nothing else.';
 
       final userPrompt = 'Current: ${weatherData.overallCondition} at ${_tempStr(weatherData.currentTemp, unit)}.\n'
@@ -826,7 +822,7 @@ class ARIAService {
       final raw = await _runInferenceStreaming(
         systemPrompt,
         userPrompt,
-        maxTokens: 120,
+        maxTokens: 200,
         onToken: onWord != null
             ? (tokenBuffer) {
                 var cleaned = tokenBuffer;
@@ -844,8 +840,6 @@ class ARIAService {
       if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
         cleaned = cleaned.substring(1, cleaned.length - 1);
       }
-      final words = cleaned.split(RegExp(r'\s+'));
-      if (words.length > 80) cleaned = words.take(80).join(' ');
       return cleaned.isEmpty ? null : cleaned;
     } catch (e) {
       debugPrint('[ARIA] generateWeatherNarrative error: $e');
@@ -872,6 +866,79 @@ class ARIAService {
     } catch (e) {
       debugPrint('[ARIA] rememberFact error: $e');
     }
+  }
+
+  // ---------- Pre-generation cache ----------
+
+  static const _cacheKeyGreeting = 'aria_cached_greeting';
+  static const _cacheKeyOutfit = 'aria_cached_outfit';
+  static const _cacheKeyWeather = 'aria_cached_weather';
+  static const _cacheKeyDate = 'aria_cached_date';
+
+  /// Returns the date string for today (YYYY-MM-DD).
+  static String _todayKey() {
+    final now = DateTime.now();
+    return '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+  }
+
+  /// Save generated responses to SharedPreferences with today's date.
+  Future<void> cacheResponses({
+    String? greeting,
+    String? outfit,
+    String? weather,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final today = _todayKey();
+    if (greeting != null) await prefs.setString(_cacheKeyGreeting, greeting);
+    if (outfit != null) await prefs.setString(_cacheKeyOutfit, outfit);
+    if (weather != null) await prefs.setString(_cacheKeyWeather, weather);
+    await prefs.setString(_cacheKeyDate, today);
+    debugPrint('[ARIA] Cached responses for $today');
+  }
+
+  /// Load cached responses if they are from today.
+  /// Returns null values if cache is stale (different day).
+  Future<({String? greeting, String? outfit, String? weather})> loadCachedResponses() async {
+    final prefs = await SharedPreferences.getInstance();
+    final cachedDate = prefs.getString(_cacheKeyDate);
+    final today = _todayKey();
+    if (cachedDate != today) {
+      debugPrint('[ARIA] Cache is stale (cached: $cachedDate, today: $today)');
+      return (greeting: null, outfit: null, weather: null);
+    }
+    return (
+      greeting: prefs.getString(_cacheKeyGreeting),
+      outfit: prefs.getString(_cacheKeyOutfit),
+      weather: prefs.getString(_cacheKeyWeather),
+    );
+  }
+
+  /// Pre-generate all brief responses and cache them.
+  /// Called at midnight or when the day changes.
+  Future<void> preGenerateForDay({
+    WeatherBriefData? weatherData,
+    CalendarBriefData? calendarData,
+    Map<DateTime, List<dynamic>>? upcomingEvents,
+  }) async {
+    if (!_modelLoaded) return;
+    debugPrint('[ARIA] Pre-generating responses for ${_todayKey()}...');
+
+    // Generate greeting
+    final greeting = await generateBriefMessage(
+      weatherData: weatherData,
+      calendarData: calendarData,
+      upcomingEvents: upcomingEvents,
+    );
+
+    String? outfit;
+    String? weather;
+    if (weatherData != null) {
+      outfit = await generateOutfitNarrative(weatherData: weatherData);
+      weather = await generateWeatherNarrative(weatherData: weatherData);
+    }
+
+    await cacheResponses(greeting: greeting, outfit: outfit, weather: weather);
+    debugPrint('[ARIA] Pre-generation complete.');
   }
 
   // ---------- Helpers ----------

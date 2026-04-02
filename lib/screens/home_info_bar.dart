@@ -147,6 +147,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   String? _ariaWeatherNarrative;
   bool _ariaWeatherGenerating = false;
   String? _lastLaunchedPackage;
+  Timer? _midnightTimer;
 
   // --- Foresight State ---
   List<ForesightPrediction> _foresightPredictions = [];
@@ -269,8 +270,57 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     await ARIAService.instance.initialize();
     if (mounted) {
       setState(() => _ariaReady = ARIAService.instance.isReady);
-      if (_ariaReady && _showMorningBrief) _refreshARIA();
+      if (_ariaReady && _showMorningBrief) {
+        // Try loading cached responses first for instant display
+        final cached = await ARIAService.instance.loadCachedResponses();
+        if (cached.greeting != null || cached.outfit != null || cached.weather != null) {
+          if (mounted) {
+            setState(() {
+              if (cached.greeting != null) _ariaSuggestion = cached.greeting;
+              if (cached.outfit != null) _ariaOutfitNarrative = cached.outfit;
+              if (cached.weather != null) _ariaWeatherNarrative = cached.weather;
+            });
+          }
+          debugPrint('[ARIA] Loaded cached responses for today.');
+        } else {
+          // No cache for today — generate fresh
+          _refreshARIA();
+        }
+      }
+      _scheduleMidnightRegeneration();
     }
+  }
+
+  void _scheduleMidnightRegeneration() {
+    _midnightTimer?.cancel();
+    final now = DateTime.now();
+    final midnight = DateTime(now.year, now.month, now.day + 1);
+    final timeUntilMidnight = midnight.difference(now);
+    debugPrint('[ARIA] Scheduling midnight pre-generation in ${timeUntilMidnight.inMinutes} minutes');
+    _midnightTimer = Timer(timeUntilMidnight, () async {
+      // Refresh weather and calendar data first
+      await _refreshWeatherBrief();
+      await _refreshCalendarBrief();
+      // Pre-generate and cache for the new day
+      if (_ariaReady) {
+        await ARIAService.instance.preGenerateForDay(
+          weatherData: _weatherBriefData,
+          calendarData: _calendarBriefData,
+          upcomingEvents: _calendarEvents,
+        );
+        // Load the freshly cached responses
+        final cached = await ARIAService.instance.loadCachedResponses();
+        if (mounted) {
+          setState(() {
+            if (cached.greeting != null) _ariaSuggestion = cached.greeting;
+            if (cached.outfit != null) _ariaOutfitNarrative = cached.outfit;
+            if (cached.weather != null) _ariaWeatherNarrative = cached.weather;
+          });
+        }
+      }
+      // Schedule the next midnight
+      _scheduleMidnightRegeneration();
+    });
   }
 
   Future<void> _refreshARIA() async {
@@ -296,6 +346,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     if (_weatherBriefData != null) {
       await _refreshARIAWeatherPanel();
     }
+    // Cache all responses for instant loading next time
+    ARIAService.instance.cacheResponses(
+      greeting: _ariaSuggestion,
+      outfit: _ariaOutfitNarrative,
+      weather: _ariaWeatherNarrative,
+    );
   }
 
   Future<void> _refreshARIAWeatherPanel() async {
@@ -341,6 +397,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _alarmTimer?.cancel();
+    _midnightTimer?.cancel();
     _notificationPollTimer?.cancel();
     _stopwatchTimer?.cancel();
     _countdownTimer?.cancel();
@@ -370,6 +427,25 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
       // ARIA: record last launched app
       if (_ariaReady && _lastLaunchedPackage != null) {
         ARIAService.instance.recordAppLaunch(_lastLaunchedPackage!);
+      }
+      // ARIA: check if the day changed — reload cache or regenerate
+      final today = DateTime.now().day;
+      if (today != _lastCheckedDay && _ariaReady) {
+        _lastCheckedDay = today;
+        _scheduleMidnightRegeneration();
+        ARIAService.instance.loadCachedResponses().then((cached) {
+          if (cached.greeting != null || cached.outfit != null || cached.weather != null) {
+            if (mounted) {
+              setState(() {
+                if (cached.greeting != null) _ariaSuggestion = cached.greeting;
+                if (cached.outfit != null) _ariaOutfitNarrative = cached.outfit;
+                if (cached.weather != null) _ariaWeatherNarrative = cached.weather;
+              });
+            }
+          } else {
+            _refreshARIA();
+          }
+        });
       }
       // Notification pill: re-evaluate queue on return
       _refreshNotificationPill().then((_) {
@@ -842,6 +918,41 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
       setState(() {
         _calendarBriefData = data;
       });
+      // Auto-sync device calendar events into launcher events for today
+      if (data.hasPermission && data.events.isNotEmpty) {
+        _syncDeviceEventsToLauncher(data.events);
+      }
+    }
+  }
+
+  /// Copies device calendar events into the launcher's local calendar storage
+  /// so they appear in the calendar pill alongside user-created events.
+  void _syncDeviceEventsToLauncher(List<DeviceCalendarEvent> deviceEvents) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final existing = _calendarEvents[today] ?? [];
+    final existingTitles = existing.map((e) => e.title).toSet();
+
+    bool changed = false;
+    for (final de in deviceEvents) {
+      // Skip if an event with the same title already exists (avoid duplicates)
+      if (existingTitles.contains(de.title)) continue;
+      final launcherEvent = CalendarEvent(
+        title: de.title,
+        description: de.allDay
+            ? 'All day'
+            : '${de.timeString}${de.location.isNotEmpty ? ' · ${de.location}' : ''}',
+      );
+      existing.add(launcherEvent);
+      existingTitles.add(de.title);
+      changed = true;
+    }
+
+    if (changed) {
+      setState(() {
+        _calendarEvents[today] = existing;
+      });
+      _saveCalendarEvents();
     }
   }
 
