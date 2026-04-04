@@ -11,13 +11,6 @@ class MorningBriefPanel extends StatefulWidget {
   final WeatherBriefData? weatherData;
   final CalendarBriefData? calendarData;
   final Map<DateTime, List<CalendarEvent>> launcherEvents;
-  final String? imriSuggestion;
-  final bool imriReady;
-  final bool imriGenerating;
-  final String? imriOutfitNarrative;
-  final String? imriWeatherNarrative;
-  final bool imriWeatherGenerating;
-  final VoidCallback? onImportImriModel;
   final String temperatureUnit;
 
   const MorningBriefPanel({
@@ -26,13 +19,6 @@ class MorningBriefPanel extends StatefulWidget {
     this.weatherData,
     this.calendarData,
     this.launcherEvents = const {},
-    this.imriSuggestion,
-    this.imriReady = false,
-    this.imriGenerating = false,
-    this.imriOutfitNarrative,
-    this.imriWeatherNarrative,
-    this.imriWeatherGenerating = false,
-    this.onImportImriModel,
     this.temperatureUnit = 'C',
   });
 
@@ -170,7 +156,6 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
   }
 
   Widget _buildGreetingPage() {
-    final suggestion = widget.imriSuggestion;
     return Padding(
           padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
           child: Column(
@@ -186,16 +171,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
                   letterSpacing: 0.3,
                 ),
               ),
-              const SizedBox(height: 12),
-              // Imri-generated encouragement — takes remaining space
-              Expanded(
-                child: Center(
-                  child: SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
-                    child: _buildImriContent(suggestion),
-                  ),
-                ),
-              ),
+              const Spacer(),
               // Bottom nav hint
               Center(
                 child: Row(
@@ -221,58 +197,6 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
             ],
           ),
         );
-  }
-
-  Widget _buildImriContent(String? suggestion) {
-    if (suggestion != null && widget.imriReady) {
-      return Text(
-        suggestion,
-        textAlign: TextAlign.center,
-        style: TextStyle(
-          color: CASIColors.textSecondary,
-          fontSize: 13,
-          fontWeight: FontWeight.w300,
-          fontStyle: FontStyle.italic,
-          height: 1.4,
-        ),
-      );
-    }
-    if (widget.imriGenerating) {
-      return SizedBox(
-        width: 16,
-        height: 16,
-        child: CircularProgressIndicator(
-          strokeWidth: 1.5,
-          color: CASIColors.accentPrimary,
-        ),
-      );
-    }
-    if (!widget.imriReady) {
-      return GestureDetector(
-        onTap: widget.onImportImriModel,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.auto_awesome,
-              color: CASIColors.textTertiary,
-              size: 14,
-            ),
-            const SizedBox(width: 6),
-            Text(
-              'Set up Imri',
-              style: TextStyle(
-                color: CASIColors.textTertiary,
-                fontSize: 12,
-                fontWeight: FontWeight.w400,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-    return const SizedBox.shrink();
   }
 
   Widget _buildWeatherPage() {
@@ -350,17 +274,12 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      widget.imriOutfitNarrative ?? weather.clothingSuggestion,
+                      weather.clothingSuggestion,
                       textAlign: TextAlign.right,
                       style: TextStyle(
                         color: CASIColors.textSecondary,
                         fontSize: 11,
-                        fontWeight: widget.imriOutfitNarrative != null
-                            ? FontWeight.w300
-                            : FontWeight.w400,
-                        fontStyle: widget.imriOutfitNarrative != null
-                            ? FontStyle.italic
-                            : FontStyle.normal,
+                        fontWeight: FontWeight.w400,
                         height: 1.3,
                       ),
                     ),
@@ -378,30 +297,14 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
                 color: CASIColors.glassCard,
                 borderRadius: BorderRadius.circular(14),
               ),
-              child: widget.imriWeatherGenerating && widget.imriWeatherNarrative == null
-                  ? Center(
-                      child: SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 1.5,
-                          color: CASIColors.accentPrimary,
-                        ),
-                      ),
-                    )
-                  : SingleChildScrollView(
+              child: SingleChildScrollView(
                       physics: const BouncingScrollPhysics(),
                       child: Text(
-                        widget.imriWeatherNarrative ?? weather.weatherSummary,
+                        weather.weatherSummary,
                         style: TextStyle(
                           color: CASIColors.textSecondary,
                           fontSize: 11.5,
-                          fontWeight: widget.imriWeatherNarrative != null
-                              ? FontWeight.w300
-                              : FontWeight.w400,
-                          fontStyle: widget.imriWeatherNarrative != null
-                              ? FontStyle.italic
-                              : FontStyle.normal,
+                          fontWeight: FontWeight.w400,
                           height: 1.5,
                         ),
                       ),

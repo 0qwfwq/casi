@@ -8,7 +8,6 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:casi/design_system.dart';
 import '../services/wallpaper_service.dart';
-import '../services/imri_service.dart';
 import '../services/notification_pill_service.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -20,9 +19,6 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   bool _immersiveMode = false;
-  bool _imriModelLoaded = ImriService.instance.isReady;
-  bool _isImporting = false;
-  String? _importStatus;
   String _temperatureUnit = 'C'; // 'C' or 'F'
   final WallpaperService _wallpaperService = WallpaperService();
   final TextEditingController _nameController = TextEditingController();
@@ -107,7 +103,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           decoration: const InputDecoration(
                             labelText: 'Your Name',
                             labelStyle: TextStyle(color: CASIColors.textSecondary),
-                            hintText: 'How should Imri greet you?',
+                            hintText: 'Enter your name',
                             hintStyle: TextStyle(color: CASIColors.textTertiary, fontSize: 13),
                             enabledBorder: UnderlineInputBorder(
                               borderSide: BorderSide(color: CASIColors.textTertiary),
@@ -189,93 +185,6 @@ class _SettingsPageState extends State<SettingsPage> {
                       },
                     ));
                   },
-                ),
-                ListTile(
-                  title: const Text("Imri Model", style: TextStyle(color: Colors.white)),
-                  subtitle: _isImporting
-                      ? Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const SizedBox(height: 4),
-                            Text(
-                              _importStatus ?? 'Importing...',
-                              style: const TextStyle(color: CASIColors.accentPrimary, fontSize: 12),
-                            ),
-                            const SizedBox(height: 6),
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(2),
-                              child: const LinearProgressIndicator(
-                                minHeight: 3,
-                                backgroundColor: CASIColors.glassCard,
-                                valueColor: AlwaysStoppedAnimation<Color>(CASIColors.accentPrimary),
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                          ],
-                        )
-                      : Text(
-                          _imriModelLoaded ? "Model loaded" : "No model imported",
-                          style: const TextStyle(color: CASIColors.textSecondary, fontSize: 12),
-                        ),
-                  leading: _isImporting
-                      ? const SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: CASIColors.accentPrimary,
-                          ),
-                        )
-                      : const Icon(Icons.auto_awesome, color: Colors.white),
-                  trailing: _isImporting
-                      ? null
-                      : Text(
-                          _imriModelLoaded ? 'Change' : 'Import',
-                          style: const TextStyle(color: CASIColors.accentPrimary, fontSize: 13),
-                        ),
-                  onTap: _isImporting
-                      ? null
-                      : () async {
-                          setState(() {
-                            _isImporting = true;
-                            _importStatus = 'Opening file picker...';
-                          });
-
-                          // pickModelFile handles picker + validation + copy + load
-                          final success = await ImriService.instance.pickModelFile(
-                            onStatus: (status) {
-                              if (mounted) setState(() => _importStatus = status);
-                            },
-                          );
-
-                          if (mounted) {
-                            setState(() {
-                              _isImporting = false;
-                              _importStatus = null;
-                            });
-                            if (success) {
-                              setState(() => _imriModelLoaded = true);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Model imported successfully'),
-                                  backgroundColor: CASIColors.confirm,
-                                  duration: Duration(seconds: 3),
-                                ),
-                              );
-                            } else {
-                              final error = ImriService.instance.modelError;
-                              if (error != null) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(error),
-                                    backgroundColor: CASIColors.alert,
-                                    duration: const Duration(seconds: 5),
-                                  ),
-                                );
-                              }
-                            }
-                          }
-                        },
                 ),
               ],
             ),

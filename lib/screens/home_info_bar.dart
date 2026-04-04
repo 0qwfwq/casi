@@ -25,7 +25,6 @@ import '../morning_brief/morning_brief_panel.dart';
 import '../morning_brief/weather_brief_service.dart';
 import '../morning_brief/calendar_brief_service.dart';
 import '../services/wallpaper_service.dart';
-import 'package:casi/services/imri_service.dart';
 import 'package:casi/services/foresight_service.dart';
 import 'package:casi/services/notification_pill_service.dart';
 import '../widgets/foresight_pill.dart';
@@ -139,16 +138,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
 
   String _temperatureUnit = 'C';
 
-  // --- Imri State ---
-  String? _imriSuggestion;
-  bool _imriReady = false;
-  bool _imriGenerating = false;
-  String? _imriOutfitNarrative;
-  String? _imriWeatherNarrative;
-  bool _imriWeatherGenerating = false;
-  String? _lastLaunchedPackage;
-  Timer? _midnightTimer;
-
   // --- Foresight State ---
   List<ForesightPrediction> _foresightPredictions = [];
   bool _showForesight = true;
@@ -170,7 +159,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   final DraggableScrollableController _drawerController = DraggableScrollableController();
   double _dragStartY = 0.0;
 
-  // --- ARIA Models / Settings ---
   @override
   void initState() {
     super.initState();
@@ -201,7 +189,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
       _checkAlarms();
     });
 
-    _initImri();
     _initForesight();
   }
 
@@ -255,149 +242,19 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   }
 
   void _onForesightAppTap(String packageName) {
-    _lastLaunchedPackage = packageName;
     ForesightService.instance.recordLaunch(packageName);
     AppLauncher.launchApp(packageName);
   }
 
   void _onNotificationPillTap(String packageName) {
-    _lastLaunchedPackage = packageName;
     ForesightService.instance.recordLaunch(packageName);
     AppLauncher.launchApp(packageName);
-  }
-
-  Future<void> _initImri() async {
-    await ImriService.instance.initialize();
-    if (mounted) {
-      setState(() => _imriReady = ImriService.instance.isReady);
-      if (_imriReady && _showMorningBrief) {
-        // Try loading cached responses first for instant display
-        final cached = await ImriService.instance.loadCachedResponses();
-        if (cached.greeting != null || cached.outfit != null || cached.weather != null) {
-          if (mounted) {
-            setState(() {
-              if (cached.greeting != null) _imriSuggestion = cached.greeting;
-              if (cached.outfit != null) _imriOutfitNarrative = cached.outfit;
-              if (cached.weather != null) _imriWeatherNarrative = cached.weather;
-            });
-          }
-          debugPrint('[Imri] Loaded cached responses for today.');
-        } else {
-          // No cache for today — generate fresh
-          _refreshImri();
-        }
-      }
-      _scheduleMidnightRegeneration();
-    }
-  }
-
-  void _scheduleMidnightRegeneration() {
-    _midnightTimer?.cancel();
-    final now = DateTime.now();
-    final midnight = DateTime(now.year, now.month, now.day + 1);
-    final timeUntilMidnight = midnight.difference(now);
-    debugPrint('[Imri] Scheduling midnight pre-generation in ${timeUntilMidnight.inMinutes} minutes');
-    _midnightTimer = Timer(timeUntilMidnight, () async {
-      // Refresh weather and calendar data first
-      await _refreshWeatherBrief();
-      await _refreshCalendarBrief();
-      // Pre-generate and cache for the new day
-      if (_imriReady) {
-        await ImriService.instance.preGenerateForDay(
-          weatherData: _weatherBriefData,
-          calendarData: _calendarBriefData,
-          upcomingEvents: _calendarEvents,
-        );
-        // Load the freshly cached responses
-        final cached = await ImriService.instance.loadCachedResponses();
-        if (mounted) {
-          setState(() {
-            if (cached.greeting != null) _imriSuggestion = cached.greeting;
-            if (cached.outfit != null) _imriOutfitNarrative = cached.outfit;
-            if (cached.weather != null) _imriWeatherNarrative = cached.weather;
-          });
-        }
-      }
-      // Schedule the next midnight
-      _scheduleMidnightRegeneration();
-    });
-  }
-
-  Future<void> _refreshImri() async {
-    if (!_imriReady || ImriService.instance.isGenerating) return;
-    if (mounted) setState(() => _imriGenerating = true);
-    final message = await ImriService.instance.generateBriefMessage(
-      onWord: (partialText) {
-        if (mounted) {
-          setState(() => _imriSuggestion = partialText);
-        }
-      },
-      weatherData: _weatherBriefData,
-      calendarData: _calendarBriefData,
-      upcomingEvents: _calendarEvents,
-    );
-    if (mounted) {
-      setState(() {
-        _imriGenerating = false;
-        if (message != null) _imriSuggestion = message;
-      });
-    }
-    // After greeting, generate outfit + weather narratives for Panel 2
-    if (_weatherBriefData != null) {
-      await _refreshImriWeatherPanel();
-    }
-    // Cache all responses for instant loading next time
-    ImriService.instance.cacheResponses(
-      greeting: _imriSuggestion,
-      outfit: _imriOutfitNarrative,
-      weather: _imriWeatherNarrative,
-    );
-  }
-
-  Future<void> _refreshImriWeatherPanel() async {
-    if (!_imriReady || _weatherBriefData == null) return;
-    if (ImriService.instance.isGenerating) return;
-    if (mounted) setState(() => _imriWeatherGenerating = true);
-
-    // Generate outfit narrative
-    final outfit = await ImriService.instance.generateOutfitNarrative(
-      weatherData: _weatherBriefData!,
-      onWord: (partialText) {
-        if (mounted) setState(() => _imriOutfitNarrative = partialText);
-      },
-    );
-    if (mounted && outfit != null) {
-      setState(() => _imriOutfitNarrative = outfit);
-    }
-
-    // Generate weather narrative
-    final weather = await ImriService.instance.generateWeatherNarrative(
-      weatherData: _weatherBriefData!,
-      onWord: (partialText) {
-        if (mounted) setState(() => _imriWeatherNarrative = partialText);
-      },
-    );
-    if (mounted) {
-      setState(() {
-        _imriWeatherGenerating = false;
-        if (weather != null) _imriWeatherNarrative = weather;
-      });
-    }
-  }
-
-  Future<void> _importImriModel() async {
-    final success = await ImriService.instance.pickModelFile();
-    if (success && mounted) {
-      setState(() => _imriReady = true);
-      _refreshImri();
-    }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _alarmTimer?.cancel();
-    _midnightTimer?.cancel();
     _notificationPollTimer?.cancel();
     _stopwatchTimer?.cancel();
     _countdownTimer?.cancel();
@@ -423,30 +280,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
       _syncTimersOnResume();
       _refreshWeatherBrief();
       _refreshCalendarBrief();
-  
-      // Imri: record last launched app
-      if (_imriReady && _lastLaunchedPackage != null) {
-        ImriService.instance.recordAppLaunch(_lastLaunchedPackage!);
-      }
-      // Imri: check if the day changed — reload cache or regenerate
-      final today = DateTime.now().day;
-      if (today != _lastCheckedDay && _imriReady) {
-        _lastCheckedDay = today;
-        _scheduleMidnightRegeneration();
-        ImriService.instance.loadCachedResponses().then((cached) {
-          if (cached.greeting != null || cached.outfit != null || cached.weather != null) {
-            if (mounted) {
-              setState(() {
-                if (cached.greeting != null) _imriSuggestion = cached.greeting;
-                if (cached.outfit != null) _imriOutfitNarrative = cached.outfit;
-                if (cached.weather != null) _imriWeatherNarrative = cached.weather;
-              });
-            }
-          } else {
-            _refreshImri();
-          }
-        });
-      }
+
       // Notification pill: re-evaluate queue on return
       _refreshNotificationPill().then((_) {
         // Foresight: generate predictions on unlock (after pill so dedup works)
@@ -540,8 +374,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
         _showMorningBrief = true;
         _refreshWeatherBrief();
         _refreshCalendarBrief();
-    
-        _refreshImri();
       }
     }
 
@@ -887,8 +719,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     });
     _refreshWeatherBrief();
     _refreshCalendarBrief();
-
-    _refreshImri();
   }
 
   Future<void> _loadForesightState() async {
@@ -1239,13 +1069,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                                       calendarData: _calendarBriefData,
                                                       launcherEvents: _calendarEvents,
                                                       onDismiss: _dismissMorningBrief,
-                                                      imriSuggestion: _imriSuggestion,
-                                                      imriReady: _imriReady,
-                                                      imriGenerating: _imriGenerating,
-                                                      imriOutfitNarrative: _imriOutfitNarrative,
-                                                      imriWeatherNarrative: _imriWeatherNarrative,
-                                                      imriWeatherGenerating: _imriWeatherGenerating,
-                                                      onImportImriModel: _importImriModel,
                                                       temperatureUnit: _temperatureUnit,
                                                     ),
                                                   )
@@ -1360,7 +1183,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                               maxHomeApps: _maxHomeApps,
                                               onAppDropped: (index, app) => _onAppDropped(index, app),
                                               onAppTap: (app) {
-                                                _lastLaunchedPackage = app.packageName;
                                                 ForesightService.instance.recordLaunch(app.packageName, appName: app.name);
                                                 AppLauncher.launchApp(app.packageName);
                                               },
@@ -1684,7 +1506,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                               progressNotifier: _drawerProgress,
                               controller: _drawerController,
                               onAppTap: (app) {
-                                _lastLaunchedPackage = app.packageName;
                                 ForesightService.instance.recordLaunch(app.packageName, appName: app.name);
                                 setState(() => _foresightPredictions = []);
                                 AppLauncher.launchApp(app.packageName);
