@@ -1,14 +1,15 @@
-// ARIA — on-device AI assistant for the CASI launcher.
+// Imri — on-device AI assistant for the CASI launcher.
+// Imri (pronounced "eem-ree") means 'my words spoken' / 'Eloquent'.
 //
 // Everything runs locally inside Flutter — no Python backend.
-// LLM inference: fllama (llama.cpp via FFI)
+// LLM inference: llama_cpp_dart (llama.cpp via FFI)
 // Persistent memory: sqflite (SQLite)
 
 import 'dart:async';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
-import 'package:fllama/fllama.dart';
+import 'package:llama_cpp_dart/llama_cpp_dart.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -19,16 +20,16 @@ import '../morning_brief/weather_brief_service.dart';
 import '../morning_brief/calendar_brief_service.dart';
 
 // ---------------------------------------------------------------------------
-// ARIAMemory — SQLite-backed persistent memory
+// ImriMemory — SQLite-backed persistent memory
 // ---------------------------------------------------------------------------
 
-class ARIAMemory {
+class ImriMemory {
   Database? _db;
 
   Future<void> initialize() async {
     try {
       final documentsDir = await getApplicationDocumentsDirectory();
-      final dbPath = p.join(documentsDir.path, 'aria', 'aria_memory.db');
+      final dbPath = p.join(documentsDir.path, 'imri', 'aria_memory.db');
       _db = await openDatabase(
         dbPath,
         version: 1,
@@ -60,9 +61,9 @@ class ARIAMemory {
           ''');
         },
       );
-      debugPrint('[ARIA] Memory database initialized.');
+      debugPrint('[Imri] Memory database initialized.');
     } catch (e) {
-      debugPrint('[ARIA] Memory initialization error: $e');
+      debugPrint('[Imri] Memory initialization error: $e');
     }
   }
 
@@ -86,17 +87,17 @@ class ARIAMemory {
           where: 'id = ?',
           whereArgs: [existing.first['id']],
         );
-        debugPrint('[ARIA] Fact updated: $content');
+        debugPrint('[Imri] Fact updated: $content');
       } else {
         await _db!.insert('explicit_facts', {
           'content': content,
           'importance': importance,
           'created_at': DateTime.now().toIso8601String(),
         });
-        debugPrint('[ARIA] Fact stored: $content');
+        debugPrint('[Imri] Fact stored: $content');
       }
     } catch (e) {
-      debugPrint('[ARIA] storeFact error: $e');
+      debugPrint('[Imri] storeFact error: $e');
     }
   }
 
@@ -119,7 +120,7 @@ class ARIAMemory {
       );
       return results.map((r) => r['content'] as String).toList();
     } catch (e) {
-      debugPrint('[ARIA] getRelevantFacts error: $e');
+      debugPrint('[Imri] getRelevantFacts error: $e');
       return [];
     }
   }
@@ -135,7 +136,7 @@ class ARIAMemory {
         'timestamp': now.toIso8601String(),
       });
     } catch (e) {
-      debugPrint('[ARIA] recordAppLaunch error: $e');
+      debugPrint('[Imri] recordAppLaunch error: $e');
     }
   }
 
@@ -156,7 +157,7 @@ class ARIAMemory {
 
       return results.map((r) => r['package_name'] as String).toList();
     } catch (e) {
-      debugPrint('[ARIA] getLikelyApps error: $e');
+      debugPrint('[Imri] getLikelyApps error: $e');
       return [];
     }
   }
@@ -170,7 +171,7 @@ class ARIAMemory {
         'timestamp': DateTime.now().toIso8601String(),
       });
     } catch (e) {
-      debugPrint('[ARIA] recordFeedback error: $e');
+      debugPrint('[Imri] recordFeedback error: $e');
     }
   }
 }
@@ -179,30 +180,33 @@ class ARIAMemory {
 // GGUF architecture validation
 // ---------------------------------------------------------------------------
 
-/// Architectures supported by the llama.cpp bundled in fllama 0.0.1
-/// (commit 54ef9cfc, Nov 2024). Models using newer architectures (e.g. qwen3)
-/// will cause native crashes — we reject them before loading.
+/// Architectures supported by the llama.cpp bundled in llama_cpp_dart.
+/// Models using unknown architectures are rejected before loading to
+/// prevent native crashes.
 const _supportedArchitectures = <String>{
   'llama', 'gpt2', 'gptj', 'gptneox', 'falcon', 'bloom', 'mpt',
   'starcoder', 'refact', 'bert', 'nomic-bert', 'jina-bert-v2',
-  'stablelm', 'qwen', 'qwen2', 'phi2', 'phi3', 'plamo', 'codeshell',
-  'orion', 'internlm2', 'minicpm', 'gemma', 'gemma2', 'starcoder2',
-  'mamba', 'xverse', 'command-r', 'dbrx', 'olmo', 'openelm', 'arctic',
-  'deepseek', 'deepseek2', 'chatglm', 'bitnet', 't5', 't5encoder',
-  'jais', 'nemotron', 'exaone', 'rwkv6',
+  'stablelm', 'qwen', 'qwen2', 'qwen3', 'phi2', 'phi3', 'phi4',
+  'plamo', 'codeshell', 'orion', 'internlm2', 'minicpm', 'minicpm3',
+  'gemma', 'gemma2', 'gemma3', 'gemma4', 'starcoder2',
+  'mamba', 'mamba2', 'xverse', 'command-r', 'dbrx', 'olmo', 'olmo2',
+  'openelm', 'arctic', 'deepseek', 'deepseek2', 'deepseek3', 'chatglm',
+  'bitnet', 't5', 't5encoder', 'jais', 'nemotron', 'exaone', 'rwkv6',
+  'granite', 'chameleon', 'wavtokenizer',
 };
 
 /// Reads a GGUF file's `general.architecture` metadata value.
 /// Returns `null` if the file isn't valid GGUF or the key isn't found.
 Future<String?> _readGgufArchitecture(String path) async {
+  // Run synchronously to avoid massive event loop hangs when skipping arrays
   RandomAccessFile? raf;
   try {
     raf = await File(path).open();
 
     // --- Header ---
     // 4B magic  |  4B version  |  8B tensor_count  |  8B kv_count
-    final header = Uint8List(24);
-    await raf.readInto(header);
+    final header = raf.readSync(24);
+    if (header.length < 24) return null;
     final bd = ByteData.sublistView(header);
 
     final magic = String.fromCharCodes(header.sublist(0, 4));
@@ -213,91 +217,97 @@ Future<String?> _readGgufArchitecture(String path) async {
     // --- Iterate KV pairs looking for general.architecture ---
     for (int i = 0; i < kvCount; i++) {
       // Key: uint64 length + UTF-8 bytes
-      final keyLenBytes = Uint8List(8);
-      await raf.readInto(keyLenBytes);
+      final keyLenBytes = raf.readSync(8);
+      if (keyLenBytes.length < 8) break;
       final keyLen = ByteData.sublistView(keyLenBytes).getUint64(0, Endian.little);
-      final keyBytes = Uint8List(keyLen);
-      await raf.readInto(keyBytes);
+      final keyBytes = raf.readSync(keyLen);
       final key = String.fromCharCodes(keyBytes);
 
       // Value type: uint32
-      final vtBytes = Uint8List(4);
-      await raf.readInto(vtBytes);
+      final vtBytes = raf.readSync(4);
+      if (vtBytes.length < 4) break;
       final vType = ByteData.sublistView(vtBytes).getUint32(0, Endian.little);
 
       if (key == 'general.architecture' && vType == 8 /* STRING */) {
-        final sLenBytes = Uint8List(8);
-        await raf.readInto(sLenBytes);
+        final sLenBytes = raf.readSync(8);
         final sLen = ByteData.sublistView(sLenBytes).getUint64(0, Endian.little);
-        final sBytes = Uint8List(sLen);
-        await raf.readInto(sBytes);
+        final sBytes = raf.readSync(sLen);
         return String.fromCharCodes(sBytes);
       }
 
       // Skip value we don't care about
-      await _skipGgufValue(raf, vType);
+      _skipGgufValueSync(raf, vType);
     }
     return null;
   } catch (e) {
-    debugPrint('[ARIA] _readGgufArchitecture error: $e');
+    debugPrint('[Imri] _readGgufArchitecture error: $e');
     return null;
   } finally {
-    raf?.close();
+    raf?.closeSync();
   }
 }
 
-/// Skip over a GGUF metadata value in the file stream.
-Future<void> _skipGgufValue(RandomAccessFile raf, int vType) async {
+int _ggufValueSize(int vType) {
   switch (vType) {
-    case 0: // UINT8
-    case 1: // INT8
-    case 7: // BOOL
-      await raf.setPosition(await raf.position() + 1);
-    case 2: // UINT16
-    case 3: // INT16
-      await raf.setPosition(await raf.position() + 2);
-    case 4: // UINT32
-    case 5: // INT32
-    case 6: // FLOAT32
-      await raf.setPosition(await raf.position() + 4);
-    case 10: // UINT64
-    case 11: // INT64
-    case 12: // FLOAT64
-      await raf.setPosition(await raf.position() + 8);
+    case 0: case 1: case 7: return 1;
+    case 2: case 3: return 2;
+    case 4: case 5: case 6: return 4;
+    case 10: case 11: case 12: return 8;
+    default: return -1;
+  }
+}
+
+/// Skip over a GGUF metadata value in the file stream synchronously.
+void _skipGgufValueSync(RandomAccessFile raf, int vType) {
+  final fixedSize = _ggufValueSize(vType);
+  if (fixedSize > 0) {
+    raf.setPositionSync(raf.positionSync() + fixedSize);
+    return;
+  }
+
+  switch (vType) {
     case 8: // STRING — uint64 len + bytes
-      final lb = Uint8List(8);
-      await raf.readInto(lb);
+      final lb = raf.readSync(8);
       final len = ByteData.sublistView(lb).getUint64(0, Endian.little);
-      await raf.setPosition(await raf.position() + len);
+      raf.setPositionSync(raf.positionSync() + len);
+      break;
     case 9: // ARRAY — uint32 elemType + uint64 count + elements
-      final ab = Uint8List(12);
-      await raf.readInto(ab);
+      final ab = raf.readSync(12);
       final abd = ByteData.sublistView(ab);
       final elemType = abd.getUint32(0, Endian.little);
       final count = abd.getUint64(4, Endian.little);
-      for (int j = 0; j < count; j++) {
-        await _skipGgufValue(raf, elemType);
+      
+      final elemSize = _ggufValueSize(elemType);
+      if (elemSize > 0) {
+        // Fast path for massive arrays of primitive types
+        raf.setPositionSync(raf.positionSync() + (count * elemSize));
+      } else {
+        // Fallback for arrays of strings or nested arrays
+        for (int j = 0; j < count; j++) {
+          _skipGgufValueSync(raf, elemType);
+        }
       }
+      break;
     default:
-      // Unknown type — can't continue safely
       throw StateError('Unknown GGUF value type $vType');
   }
 }
 
 // ---------------------------------------------------------------------------
-// ARIAService — singleton, main interface
+// ImriService — singleton, main interface
 // ---------------------------------------------------------------------------
 
-class ARIAService {
-  static final ARIAService instance = ARIAService._internal();
+class ImriService {
+  static final ImriService instance = ImriService._internal();
 
-  factory ARIAService() => instance;
+  factory ImriService() => instance;
 
-  ARIAService._internal();
+  ImriService._internal();
 
-  final ARIAMemory _memory = ARIAMemory();
+  final ImriMemory _memory = ImriMemory();
   bool _modelLoaded = false;
-  double? _contextId;
+  LlamaParent? _llamaParent;
+  StreamSubscription<String>? _streamSub;
   String? _modelPath;
   String? _modelError; // non-null if model was rejected (e.g. unsupported arch)
 
@@ -313,11 +323,11 @@ class ARIAService {
 
     // Use internal storage — always writable, no permissions needed
     final internalDir = await getApplicationSupportDirectory();
-    final ariaDir = Directory('${internalDir.path}/aria');
-    if (!ariaDir.existsSync()) ariaDir.createSync(recursive: true);
+    final imriDir = Directory('${internalDir.path}/imri');
+    if (!imriDir.existsSync()) imriDir.createSync(recursive: true);
 
-    // Find any .gguf model in the aria directory
-    final ggufFiles = ariaDir.listSync().whereType<File>().where(
+    // Find any .gguf model in the imri directory
+    final ggufFiles = imriDir.listSync().whereType<File>().where(
           (f) => f.path.endsWith('.gguf'),
         );
 
@@ -328,11 +338,10 @@ class ARIAService {
       // from unsupported model architectures (e.g. qwen3 on old llama.cpp)
       final arch = await _readGgufArchitecture(modelFile);
       if (arch != null && !_supportedArchitectures.contains(arch)) {
-        debugPrint('[ARIA] Unsupported architecture "$arch" — removing model.');
+        debugPrint('[Imri] Unsupported architecture "$arch" — removing model.');
         _modelError = 'Unsupported model architecture: "$arch". '
-            'This version of CASI supports: qwen2, llama, gemma2, phi3, and similar. '
-            'Qwen 3.x models require a newer inference engine.';
-        for (final f in ariaDir.listSync()) {
+            'CASI supports: llama, qwen2/3, gemma2/3/4, phi3/4, and similar.';
+        for (final f in imriDir.listSync()) {
           if (f is File && f.path.endsWith('.gguf')) {
             try { f.deleteSync(); } catch (_) {}
           }
@@ -342,27 +351,27 @@ class ARIAService {
 
       // Crash guard: if previous attempts to load/use this model caused crashes
       final prefs = await SharedPreferences.getInstance();
-      final validated = prefs.getBool('aria_model_validated') ?? false;
-      final attempts = prefs.getInt('aria_load_attempts') ?? 0;
+      final validated = prefs.getBool('imri_model_validated') ?? false;
+      final attempts = prefs.getInt('imri_load_attempts') ?? 0;
 
       if (!validated && attempts >= 2) {
-        debugPrint('[ARIA] Model failed after $attempts attempts — removing bad model.');
-        for (final f in ariaDir.listSync()) {
+        debugPrint('[Imri] Model failed after $attempts attempts — removing bad model.');
+        for (final f in imriDir.listSync()) {
           if (f is File && f.path.endsWith('.gguf')) {
             try { f.deleteSync(); } catch (_) {}
           }
         }
-        await prefs.remove('aria_load_attempts');
-        await prefs.remove('aria_model_validated');
+        await prefs.remove('imri_load_attempts');
+        await prefs.remove('imri_model_validated');
         _modelError = 'Model crashed repeatedly and was removed. Try a different model.';
-        debugPrint('[ARIA] Bad model removed. Running in limited mode.');
+        debugPrint('[Imri] Bad model removed. Running in limited mode.');
         return;
       }
 
       // Increment attempt counter before loading (survives native crashes)
-      await prefs.setInt('aria_load_attempts', attempts + 1);
+      await prefs.setInt('imri_load_attempts', attempts + 1);
 
-      debugPrint('[ARIA] Found model: ${modelFile.split('/').last} '
+      debugPrint('[Imri] Found model: ${modelFile.split('/').last} '
           '(arch: ${arch ?? 'unknown'}, attempt ${attempts + 1})');
       _modelPath = modelFile;
       await _loadModel(modelFile);
@@ -371,107 +380,132 @@ class ARIAService {
         _validated = validated;
         if (validated) {
           // Model was already proven to work — reset counter
-          await prefs.setInt('aria_load_attempts', 0);
+          await prefs.setInt('imri_load_attempts', 0);
         }
       }
     } else {
-      debugPrint('[ARIA] Model not found — running in limited mode.');
-      debugPrint('[ARIA] Call pickModelFile() to import the .gguf via file picker.');
+      debugPrint('[Imri] Model not found — running in limited mode.');
+      debugPrint('[Imri] Call pickModelFile() to import the .gguf via file picker.');
     }
   }
 
   Future<void> _loadModel(String modelFile) async {
     try {
-      final fllama = Fllama.instance();
-      if (fllama != null) {
-        final result = await fllama.initContext(
-          modelFile,
-          nCtx: 512,
-          nGpuLayers: 0,  // CPU-only — safest across all devices
-        );
-        if (result != null && result['contextId'] != null) {
-          _contextId = double.parse(result['contextId'].toString());
-          _modelLoaded = true;
-          debugPrint('[ARIA] Ready. Context ID: $_contextId');
-        } else {
-          debugPrint('[ARIA] Failed to initialize model context.');
-        }
-      } else {
-        debugPrint('[ARIA] Fllama instance not available.');
-      }
+      final contextParams = ContextParams();
+      contextParams.nCtx = 512;
+
+      final samplingParams = SamplerParams();
+      samplingParams.temp = 0.7;
+      samplingParams.penaltyPresent = 0.3;
+
+      final loadCommand = LlamaLoad(
+        path: modelFile,
+        modelParams: ModelParams(),
+        contextParams: contextParams,
+        samplingParams: samplingParams,
+      );
+
+      _llamaParent = LlamaParent(loadCommand);
+      await _llamaParent!.init();
+      _modelLoaded = true;
+      debugPrint('[Imri] Ready.');
     } catch (e) {
-      debugPrint('[ARIA] _loadModel error: $e');
+      debugPrint('[Imri] _loadModel error: $e');
     }
   }
 
   /// Opens a file picker so the user can select the .gguf model file.
   /// Returns true if the model was successfully imported.
-  Future<bool> pickModelFile() async {
-    debugPrint('[ARIA] pickModelFile() called — opening file picker...');
+  Future<bool> pickModelFile({void Function(String)? onStatus}) async {
+    debugPrint('[Imri] pickModelFile() called — opening file picker...');
+    onStatus?.call('Opening file picker...');
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.any,
+        withReadStream: true,
       );
-      debugPrint('[ARIA] File picker returned: $result');
+      debugPrint('[Imri] File picker returned: $result');
 
       if (result == null || result.files.single.path == null) {
-        debugPrint('[ARIA] File picker cancelled.');
+        debugPrint('[Imri] File picker cancelled.');
+        onStatus?.call('Cancelled');
         return false;
       }
 
-      final pickedPath = result.files.single.path!;
+      final platformFile = result.files.single;
+      final pickedPath = platformFile.path!;
+      
       if (!pickedPath.endsWith('.gguf')) {
-        debugPrint('[ARIA] Selected file is not a .gguf model.');
+        debugPrint('[Imri] Selected file is not a .gguf model.');
         _modelError = 'Selected file is not a .gguf model.';
+        onStatus?.call('Invalid file type');
         return false;
       }
 
+      onStatus?.call('Validating architecture...');
       // Validate architecture before copying (avoids wasting time + storage)
       final arch = await _readGgufArchitecture(pickedPath);
       if (arch != null && !_supportedArchitectures.contains(arch)) {
-        debugPrint('[ARIA] Rejected model: unsupported architecture "$arch"');
+        debugPrint('[Imri] Rejected model: unsupported architecture "$arch"');
         _modelError = 'Unsupported model architecture: "$arch". '
-            'This version of CASI supports: qwen2, llama, gemma2, phi3, and similar. '
-            'Qwen 3.x models require a newer inference engine.';
+            'CASI supports: llama, qwen2/3, gemma2/3/4, phi3/4, and similar.';
+        onStatus?.call('Unsupported architecture');
         return false;
       }
 
       final internalDir = await getApplicationSupportDirectory();
-      final ariaDir = Directory('${internalDir.path}/aria');
-      if (!ariaDir.existsSync()) ariaDir.createSync(recursive: true);
+      final imriDir = Directory('${internalDir.path}/imri');
+      if (!imriDir.existsSync()) imriDir.createSync(recursive: true);
 
+      onStatus?.call('Cleaning up old model...');
       // Remove any existing model files
-      for (final f in ariaDir.listSync()) {
+      for (final f in imriDir.listSync()) {
         if (f is File && f.path.endsWith('.gguf')) {
-          debugPrint('[ARIA] Removing old model: ${f.path}');
+          debugPrint('[Imri] Removing old model: ${f.path}');
           f.deleteSync();
         }
       }
 
       // Reset state before loading new model
       _modelLoaded = false;
-      _contextId = null;
+      await _streamSub?.cancel();
+      _streamSub = null;
+      _llamaParent = null;
       _validated = false;
       _modelError = null;
 
       // Reset crash guard for new model
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('aria_model_validated', false);
-      await prefs.setInt('aria_load_attempts', 0);
+      await prefs.setBool('imri_model_validated', false);
+      await prefs.setInt('imri_load_attempts', 0);
 
       final fileName = pickedPath.split('/').last;
-      final destPath = '${ariaDir.path}/$fileName';
+      final destPath = '${imriDir.path}/$fileName';
 
-      debugPrint('[ARIA] Copying model: $fileName');
-      await File(pickedPath).copy(destPath);
-      debugPrint('[ARIA] Model copied successfully.');
+      onStatus?.call('Copying model ($fileName)...');
+      debugPrint('[Imri] Copying model: $fileName');
+      
+      // Use streams to avoid OOM or thread blocking on massive multi-GB model files
+      final destFile = File(destPath);
+      if (platformFile.readStream != null) {
+        final sink = destFile.openWrite();
+        await platformFile.readStream!.pipe(sink);
+      } else {
+        await File(pickedPath).copy(destPath);
+      }
+      
+      debugPrint('[Imri] Model copied successfully.');
 
+      onStatus?.call('Loading model...');
       _modelPath = destPath;
       await _loadModel(destPath);
+      
+      onStatus?.call('Done');
       return _modelLoaded;
     } catch (e, stack) {
-      debugPrint('[ARIA] pickModelFile error: $e');
-      debugPrint('[ARIA] Stack trace: $stack');
+      debugPrint('[Imri] pickModelFile error: $e');
+      debugPrint('[Imri] Stack trace: $stack');
+      onStatus?.call('Error importing model');
       return false;
     }
   }
@@ -487,18 +521,12 @@ class ARIAService {
     int maxTokens = 120,
     void Function(String accumulated)? onToken,
   }) async {
-    debugPrint('[ARIA] _runInferenceStreaming called. modelLoaded=$_modelLoaded, contextId=$_contextId');
-    if (!_modelLoaded || _contextId == null) {
-      debugPrint('[ARIA] _runInferenceStreaming bailing: model not loaded or no context.');
+    debugPrint('[Imri] _runInferenceStreaming called. modelLoaded=$_modelLoaded');
+    if (!_modelLoaded || _llamaParent == null) {
+      debugPrint('[Imri] _runInferenceStreaming bailing: model not loaded.');
       return '';
     }
     try {
-      final fllama = Fllama.instance();
-      if (fllama == null) {
-        debugPrint('[ARIA] _runInferenceStreaming: Fllama instance is null.');
-        return '';
-      }
-
       // Qwen 3.5 models support /no_think to suppress <think> reasoning blocks.
       // Prepend it to the system prompt so the model outputs text directly.
       final prompt = '<|im_start|>system\n/no_think\n$systemPrompt<|im_end|>\n'
@@ -508,68 +536,90 @@ class ARIAService {
       final buffer = StringBuffer();
       int lastWordEnd = 0;
       bool insideThink = false;
+      final completer = Completer<String>();
+      const stopTokens = [
+        '<|im_end|>', '<|endoftext|>', '<eos>', '<|end|>', '</s>', '<think>',
+      ];
 
-      late final StreamSubscription<Map<Object?, dynamic>> subscription;
-      subscription = fllama.onTokenStream!.listen((data) {
-        final function = data['function'] as String?;
-        if (function == 'completion') {
-          final result = data['result'];
-          if (result is Map) {
-            final token = result['token'] as String? ?? '';
+      // Cancel any previous stream subscription before starting a new one
+      await _streamSub?.cancel();
+      _streamSub = _llamaParent!.stream.listen(
+        (token) {
+          if (completer.isCompleted) return;
 
-            // Filter out <think>...</think> blocks in case the model still emits them
-            if (token.contains('<think>')) { insideThink = true; return; }
-            if (insideThink) {
-              if (token.contains('</think>')) { insideThink = false; }
+          // Check for stop tokens
+          for (final stop in stopTokens) {
+            if (token.contains(stop)) {
+              final output = buffer.toString()
+                  .replaceAll(RegExp(r'<think>[\s\S]*?</think>'), '')
+                  .trim();
+              if (onToken != null && output.length > lastWordEnd) {
+                onToken(output);
+              }
+              completer.complete(output);
               return;
             }
+          }
 
-            buffer.write(token);
-            // Emit each time a new word boundary appears
-            if (onToken != null) {
-              final text = buffer.toString();
-              final trimmed = text.trimRight();
-              // Check if we've accumulated a new word (whitespace after content)
-              if (text.length > lastWordEnd && (text.endsWith(' ') || text.endsWith('\n'))) {
-                lastWordEnd = text.length;
-                onToken(trimmed);
-              }
+          // Filter out <think>...</think> blocks
+          if (token.contains('<think>')) { insideThink = true; return; }
+          if (insideThink) {
+            if (token.contains('</think>')) { insideThink = false; }
+            return;
+          }
+
+          buffer.write(token);
+
+          // Emit each time a new word boundary appears
+          if (onToken != null) {
+            final text = buffer.toString();
+            final trimmed = text.trimRight();
+            if (text.length > lastWordEnd &&
+                (text.endsWith(' ') || text.endsWith('\n'))) {
+              lastWordEnd = text.length;
+              onToken(trimmed);
             }
           }
-        }
-      });
+        },
+        onDone: () {
+          if (!completer.isCompleted) {
+            final output = buffer.toString()
+                .replaceAll(RegExp(r'<think>[\s\S]*?</think>'), '')
+                .trim();
+            if (onToken != null && output.length > lastWordEnd) {
+              onToken(output);
+            }
+            completer.complete(output);
+          }
+        },
+        onError: (e) {
+          debugPrint('[Imri] stream error: $e');
+          if (!completer.isCompleted) {
+            completer.complete(buffer.toString().trim());
+          }
+        },
+      );
 
-      await fllama.completion(
-        _contextId!,
-        prompt: prompt,
-        nPredict: maxTokens,
-        temperature: 0.7,
-        penaltyPresent: 0.3,
-        emitRealtimeCompletion: true,
-        stop: ['<|im_end|>', '<|endoftext|>', '<eos>', '<|end|>', '</s>', '<think>'],
-      ).timeout(const Duration(seconds: 60));
+      _llamaParent!.sendPrompt(prompt);
 
-      subscription.cancel();
-      // Strip any residual <think>...</think> blocks from the output
-      var output = buffer.toString().replaceAll(RegExp(r'<think>[\s\S]*?</think>'), '').trim();
-      // Emit final text (last word may not have trailing space)
-      if (onToken != null && output.length > lastWordEnd) {
-        onToken(output);
-      }
+      final output = await completer.future.timeout(
+        const Duration(seconds: 60),
+        onTimeout: () => buffer.toString().trim(),
+      );
 
       // Mark model as validated after first successful inference
-      if (!_validated) {
+      if (!_validated && output.isNotEmpty) {
         _validated = true;
         SharedPreferences.getInstance().then((prefs) {
-          prefs.setBool('aria_model_validated', true);
-          prefs.setInt('aria_load_attempts', 0);
-          debugPrint('[ARIA] Model validated after successful inference.');
+          prefs.setBool('imri_model_validated', true);
+          prefs.setInt('imri_load_attempts', 0);
+          debugPrint('[Imri] Model validated after successful inference.');
         });
       }
 
       return output;
     } catch (e) {
-      debugPrint('[ARIA] _runInferenceStreaming error: $e');
+      debugPrint('[Imri] _runInferenceStreaming error: $e');
       return '';
     }
   }
@@ -589,16 +639,16 @@ class ARIAService {
     Map<DateTime, List<dynamic>>? upcomingEvents,
   }) async {
     if (!_modelLoaded) {
-      debugPrint('[ARIA] generateBriefMessage: model not loaded.');
+      debugPrint('[Imri] generateBriefMessage: model not loaded.');
       return null;
     }
     if (_generating) {
-      debugPrint('[ARIA] generateBriefMessage: already generating, skipping.');
+      debugPrint('[Imri] generateBriefMessage: already generating, skipping.');
       return null;
     }
 
     _generating = true;
-    debugPrint('[ARIA] generateBriefMessage: starting...');
+    debugPrint('[Imri] generateBriefMessage: starting...');
 
     try {
       final now = DateTime.now();
@@ -667,8 +717,9 @@ class ARIAService {
       }
 
       final systemPrompt =
-          'You are ARIA, a warm personal assistant built into a phone launcher. '
-          'Write a short, motivational greeting for one person. '
+          'You are Imri, an eloquent personal assistant woven into a phone launcher. '
+          'Speak as though your words carry weight — concise yet expressive. '
+          'Write a short, heartfelt greeting for one person. '
           'HARD RULES: '
           '1) Under 40 words. '
           '2) DO NOT state the date, day name, weather, or temperature — the user already sees those on screen. '
@@ -696,7 +747,7 @@ class ARIAService {
               }
             : null,
       );
-      debugPrint('[ARIA] generateBriefMessage result: "$raw"');
+      debugPrint('[Imri] generateBriefMessage result: "$raw"');
 
       _generating = false;
 
@@ -708,7 +759,7 @@ class ARIAService {
       }
       return cleaned.isEmpty ? null : cleaned;
     } catch (e) {
-      debugPrint('[ARIA] generateBriefMessage error: $e');
+      debugPrint('[Imri] generateBriefMessage error: $e');
       _generating = false;
       return null;
     }
@@ -717,7 +768,7 @@ class ARIAService {
   // ---------- Panel 2: Outfit & Weather Narratives ----------
 
   /// Generates a natural-language clothing recommendation from weather data.
-  /// The decision model data is piped through ARIA so the output feels like
+  /// The decision model data is piped through Imri so the output feels like
   /// a thoughtful suggestion, not a logic-tree readout.
   Future<String?> generateOutfitNarrative({
     required WeatherBriefData weatherData,
@@ -727,7 +778,7 @@ class ARIAService {
     if (_generating) return null;
 
     _generating = true;
-    debugPrint('[ARIA] generateOutfitNarrative: starting...');
+    debugPrint('[Imri] generateOutfitNarrative: starting...');
 
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -735,7 +786,7 @@ class ARIAService {
       final tempSpread = (weatherData.highTemp - weatherData.lowTemp).abs();
 
       final systemPrompt =
-          'You are ARIA, a practical clothing advisor. Recommend what WEIGHT and TYPE of clothing to wear based on the weather. '
+          'You are Imri, an eloquent clothing advisor. Recommend what WEIGHT and TYPE of clothing to wear based on the weather with well-chosen words. '
           'HARD RULES: '
           '1) Under 25 words. One or two short sentences. '
           '2) Focus ONLY on clothing weight and type: light/heavy, layers, shorts vs pants, jacket vs no jacket. '
@@ -764,7 +815,7 @@ class ARIAService {
               }
             : null,
       );
-      debugPrint('[ARIA] generateOutfitNarrative result: "$raw"');
+      debugPrint('[Imri] generateOutfitNarrative result: "$raw"');
 
       _generating = false;
       if (raw.isEmpty) return null;
@@ -777,7 +828,7 @@ class ARIAService {
       if (words.length > 25) cleaned = words.take(25).join(' ');
       return cleaned.isEmpty ? null : cleaned;
     } catch (e) {
-      debugPrint('[ARIA] generateOutfitNarrative error: $e');
+      debugPrint('[Imri] generateOutfitNarrative error: $e');
       _generating = false;
       return null;
     }
@@ -794,7 +845,7 @@ class ARIAService {
     if (_generating) return null;
 
     _generating = true;
-    debugPrint('[ARIA] generateWeatherNarrative: starting...');
+    debugPrint('[Imri] generateWeatherNarrative: starting...');
 
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -810,8 +861,8 @@ class ARIAService {
       }).join('. ');
 
       final systemPrompt =
-          'You are ARIA, a personal weather narrator. Write a natural summary of '
-          "how the day's weather will unfold. Conversational — describe "
+          'You are Imri, an eloquent weather narrator. Write a natural, well-spoken summary of '
+          "how the day's weather will unfold. Expressive yet concise — describe "
           'the arc and feel, not raw numbers. Just the summary, nothing else.';
 
       final userPrompt = 'Current: ${weatherData.overallCondition} at ${_tempStr(weatherData.currentTemp, unit)}.\n'
@@ -831,7 +882,7 @@ class ARIAService {
               }
             : null,
       );
-      debugPrint('[ARIA] generateWeatherNarrative result: "$raw"');
+      debugPrint('[Imri] generateWeatherNarrative result: "$raw"');
 
       _generating = false;
       if (raw.isEmpty) return null;
@@ -842,7 +893,7 @@ class ARIAService {
       }
       return cleaned.isEmpty ? null : cleaned;
     } catch (e) {
-      debugPrint('[ARIA] generateWeatherNarrative error: $e');
+      debugPrint('[Imri] generateWeatherNarrative error: $e');
       _generating = false;
       return null;
     }
@@ -854,7 +905,7 @@ class ARIAService {
     try {
       await _memory.recordAppLaunch(packageName);
     } catch (e) {
-      debugPrint('[ARIA] recordAppLaunch error: $e');
+      debugPrint('[Imri] recordAppLaunch error: $e');
     }
   }
 
@@ -864,16 +915,16 @@ class ARIAService {
     try {
       await _memory.storeFact(content, importance: importance);
     } catch (e) {
-      debugPrint('[ARIA] rememberFact error: $e');
+      debugPrint('[Imri] rememberFact error: $e');
     }
   }
 
   // ---------- Pre-generation cache ----------
 
-  static const _cacheKeyGreeting = 'aria_cached_greeting';
-  static const _cacheKeyOutfit = 'aria_cached_outfit';
-  static const _cacheKeyWeather = 'aria_cached_weather';
-  static const _cacheKeyDate = 'aria_cached_date';
+  static const _cacheKeyGreeting = 'imri_cached_greeting';
+  static const _cacheKeyOutfit = 'imri_cached_outfit';
+  static const _cacheKeyWeather = 'imri_cached_weather';
+  static const _cacheKeyDate = 'imri_cached_date';
 
   /// Returns the date string for today (YYYY-MM-DD).
   static String _todayKey() {
@@ -893,7 +944,7 @@ class ARIAService {
     if (outfit != null) await prefs.setString(_cacheKeyOutfit, outfit);
     if (weather != null) await prefs.setString(_cacheKeyWeather, weather);
     await prefs.setString(_cacheKeyDate, today);
-    debugPrint('[ARIA] Cached responses for $today');
+    debugPrint('[Imri] Cached responses for $today');
   }
 
   /// Load cached responses if they are from today.
@@ -903,7 +954,7 @@ class ARIAService {
     final cachedDate = prefs.getString(_cacheKeyDate);
     final today = _todayKey();
     if (cachedDate != today) {
-      debugPrint('[ARIA] Cache is stale (cached: $cachedDate, today: $today)');
+      debugPrint('[Imri] Cache is stale (cached: $cachedDate, today: $today)');
       return (greeting: null, outfit: null, weather: null);
     }
     return (
@@ -921,7 +972,7 @@ class ARIAService {
     Map<DateTime, List<dynamic>>? upcomingEvents,
   }) async {
     if (!_modelLoaded) return;
-    debugPrint('[ARIA] Pre-generating responses for ${_todayKey()}...');
+    debugPrint('[Imri] Pre-generating responses for ${_todayKey()}...');
 
     // Generate greeting
     final greeting = await generateBriefMessage(
@@ -938,7 +989,7 @@ class ARIAService {
     }
 
     await cacheResponses(greeting: greeting, outfit: outfit, weather: weather);
-    debugPrint('[ARIA] Pre-generation complete.');
+    debugPrint('[Imri] Pre-generation complete.');
   }
 
   // ---------- Helpers ----------

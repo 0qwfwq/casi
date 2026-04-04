@@ -25,7 +25,7 @@ import '../morning_brief/morning_brief_panel.dart';
 import '../morning_brief/weather_brief_service.dart';
 import '../morning_brief/calendar_brief_service.dart';
 import '../services/wallpaper_service.dart';
-import 'package:casi/services/aria_service.dart';
+import 'package:casi/services/imri_service.dart';
 import 'package:casi/services/foresight_service.dart';
 import 'package:casi/services/notification_pill_service.dart';
 import '../widgets/foresight_pill.dart';
@@ -139,13 +139,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
 
   String _temperatureUnit = 'C';
 
-  // --- ARIA State ---
-  String? _ariaSuggestion;
-  bool _ariaReady = false;
-  bool _ariaGenerating = false;
-  String? _ariaOutfitNarrative;
-  String? _ariaWeatherNarrative;
-  bool _ariaWeatherGenerating = false;
+  // --- Imri State ---
+  String? _imriSuggestion;
+  bool _imriReady = false;
+  bool _imriGenerating = false;
+  String? _imriOutfitNarrative;
+  String? _imriWeatherNarrative;
+  bool _imriWeatherGenerating = false;
   String? _lastLaunchedPackage;
   Timer? _midnightTimer;
 
@@ -170,7 +170,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   final DraggableScrollableController _drawerController = DraggableScrollableController();
   double _dragStartY = 0.0;
 
-
+  // --- ARIA Models / Settings ---
   @override
   void initState() {
     super.initState();
@@ -201,7 +201,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
       _checkAlarms();
     });
 
-    _initARIA();
+    _initImri();
     _initForesight();
   }
 
@@ -266,25 +266,25 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     AppLauncher.launchApp(packageName);
   }
 
-  Future<void> _initARIA() async {
-    await ARIAService.instance.initialize();
+  Future<void> _initImri() async {
+    await ImriService.instance.initialize();
     if (mounted) {
-      setState(() => _ariaReady = ARIAService.instance.isReady);
-      if (_ariaReady && _showMorningBrief) {
+      setState(() => _imriReady = ImriService.instance.isReady);
+      if (_imriReady && _showMorningBrief) {
         // Try loading cached responses first for instant display
-        final cached = await ARIAService.instance.loadCachedResponses();
+        final cached = await ImriService.instance.loadCachedResponses();
         if (cached.greeting != null || cached.outfit != null || cached.weather != null) {
           if (mounted) {
             setState(() {
-              if (cached.greeting != null) _ariaSuggestion = cached.greeting;
-              if (cached.outfit != null) _ariaOutfitNarrative = cached.outfit;
-              if (cached.weather != null) _ariaWeatherNarrative = cached.weather;
+              if (cached.greeting != null) _imriSuggestion = cached.greeting;
+              if (cached.outfit != null) _imriOutfitNarrative = cached.outfit;
+              if (cached.weather != null) _imriWeatherNarrative = cached.weather;
             });
           }
-          debugPrint('[ARIA] Loaded cached responses for today.');
+          debugPrint('[Imri] Loaded cached responses for today.');
         } else {
           // No cache for today — generate fresh
-          _refreshARIA();
+          _refreshImri();
         }
       }
       _scheduleMidnightRegeneration();
@@ -296,25 +296,25 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     final now = DateTime.now();
     final midnight = DateTime(now.year, now.month, now.day + 1);
     final timeUntilMidnight = midnight.difference(now);
-    debugPrint('[ARIA] Scheduling midnight pre-generation in ${timeUntilMidnight.inMinutes} minutes');
+    debugPrint('[Imri] Scheduling midnight pre-generation in ${timeUntilMidnight.inMinutes} minutes');
     _midnightTimer = Timer(timeUntilMidnight, () async {
       // Refresh weather and calendar data first
       await _refreshWeatherBrief();
       await _refreshCalendarBrief();
       // Pre-generate and cache for the new day
-      if (_ariaReady) {
-        await ARIAService.instance.preGenerateForDay(
+      if (_imriReady) {
+        await ImriService.instance.preGenerateForDay(
           weatherData: _weatherBriefData,
           calendarData: _calendarBriefData,
           upcomingEvents: _calendarEvents,
         );
         // Load the freshly cached responses
-        final cached = await ARIAService.instance.loadCachedResponses();
+        final cached = await ImriService.instance.loadCachedResponses();
         if (mounted) {
           setState(() {
-            if (cached.greeting != null) _ariaSuggestion = cached.greeting;
-            if (cached.outfit != null) _ariaOutfitNarrative = cached.outfit;
-            if (cached.weather != null) _ariaWeatherNarrative = cached.weather;
+            if (cached.greeting != null) _imriSuggestion = cached.greeting;
+            if (cached.outfit != null) _imriOutfitNarrative = cached.outfit;
+            if (cached.weather != null) _imriWeatherNarrative = cached.weather;
           });
         }
       }
@@ -323,13 +323,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     });
   }
 
-  Future<void> _refreshARIA() async {
-    if (!_ariaReady || ARIAService.instance.isGenerating) return;
-    if (mounted) setState(() => _ariaGenerating = true);
-    final message = await ARIAService.instance.generateBriefMessage(
+  Future<void> _refreshImri() async {
+    if (!_imriReady || ImriService.instance.isGenerating) return;
+    if (mounted) setState(() => _imriGenerating = true);
+    final message = await ImriService.instance.generateBriefMessage(
       onWord: (partialText) {
         if (mounted) {
-          setState(() => _ariaSuggestion = partialText);
+          setState(() => _imriSuggestion = partialText);
         }
       },
       weatherData: _weatherBriefData,
@@ -338,58 +338,58 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     );
     if (mounted) {
       setState(() {
-        _ariaGenerating = false;
-        if (message != null) _ariaSuggestion = message;
+        _imriGenerating = false;
+        if (message != null) _imriSuggestion = message;
       });
     }
     // After greeting, generate outfit + weather narratives for Panel 2
     if (_weatherBriefData != null) {
-      await _refreshARIAWeatherPanel();
+      await _refreshImriWeatherPanel();
     }
     // Cache all responses for instant loading next time
-    ARIAService.instance.cacheResponses(
-      greeting: _ariaSuggestion,
-      outfit: _ariaOutfitNarrative,
-      weather: _ariaWeatherNarrative,
+    ImriService.instance.cacheResponses(
+      greeting: _imriSuggestion,
+      outfit: _imriOutfitNarrative,
+      weather: _imriWeatherNarrative,
     );
   }
 
-  Future<void> _refreshARIAWeatherPanel() async {
-    if (!_ariaReady || _weatherBriefData == null) return;
-    if (ARIAService.instance.isGenerating) return;
-    if (mounted) setState(() => _ariaWeatherGenerating = true);
+  Future<void> _refreshImriWeatherPanel() async {
+    if (!_imriReady || _weatherBriefData == null) return;
+    if (ImriService.instance.isGenerating) return;
+    if (mounted) setState(() => _imriWeatherGenerating = true);
 
     // Generate outfit narrative
-    final outfit = await ARIAService.instance.generateOutfitNarrative(
+    final outfit = await ImriService.instance.generateOutfitNarrative(
       weatherData: _weatherBriefData!,
       onWord: (partialText) {
-        if (mounted) setState(() => _ariaOutfitNarrative = partialText);
+        if (mounted) setState(() => _imriOutfitNarrative = partialText);
       },
     );
     if (mounted && outfit != null) {
-      setState(() => _ariaOutfitNarrative = outfit);
+      setState(() => _imriOutfitNarrative = outfit);
     }
 
     // Generate weather narrative
-    final weather = await ARIAService.instance.generateWeatherNarrative(
+    final weather = await ImriService.instance.generateWeatherNarrative(
       weatherData: _weatherBriefData!,
       onWord: (partialText) {
-        if (mounted) setState(() => _ariaWeatherNarrative = partialText);
+        if (mounted) setState(() => _imriWeatherNarrative = partialText);
       },
     );
     if (mounted) {
       setState(() {
-        _ariaWeatherGenerating = false;
-        if (weather != null) _ariaWeatherNarrative = weather;
+        _imriWeatherGenerating = false;
+        if (weather != null) _imriWeatherNarrative = weather;
       });
     }
   }
 
-  Future<void> _importARIAModel() async {
-    final success = await ARIAService.instance.pickModelFile();
+  Future<void> _importImriModel() async {
+    final success = await ImriService.instance.pickModelFile();
     if (success && mounted) {
-      setState(() => _ariaReady = true);
-      _refreshARIA();
+      setState(() => _imriReady = true);
+      _refreshImri();
     }
   }
 
@@ -424,26 +424,26 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
       _refreshWeatherBrief();
       _refreshCalendarBrief();
   
-      // ARIA: record last launched app
-      if (_ariaReady && _lastLaunchedPackage != null) {
-        ARIAService.instance.recordAppLaunch(_lastLaunchedPackage!);
+      // Imri: record last launched app
+      if (_imriReady && _lastLaunchedPackage != null) {
+        ImriService.instance.recordAppLaunch(_lastLaunchedPackage!);
       }
-      // ARIA: check if the day changed — reload cache or regenerate
+      // Imri: check if the day changed — reload cache or regenerate
       final today = DateTime.now().day;
-      if (today != _lastCheckedDay && _ariaReady) {
+      if (today != _lastCheckedDay && _imriReady) {
         _lastCheckedDay = today;
         _scheduleMidnightRegeneration();
-        ARIAService.instance.loadCachedResponses().then((cached) {
+        ImriService.instance.loadCachedResponses().then((cached) {
           if (cached.greeting != null || cached.outfit != null || cached.weather != null) {
             if (mounted) {
               setState(() {
-                if (cached.greeting != null) _ariaSuggestion = cached.greeting;
-                if (cached.outfit != null) _ariaOutfitNarrative = cached.outfit;
-                if (cached.weather != null) _ariaWeatherNarrative = cached.weather;
+                if (cached.greeting != null) _imriSuggestion = cached.greeting;
+                if (cached.outfit != null) _imriOutfitNarrative = cached.outfit;
+                if (cached.weather != null) _imriWeatherNarrative = cached.weather;
               });
             }
           } else {
-            _refreshARIA();
+            _refreshImri();
           }
         });
       }
@@ -541,7 +541,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
         _refreshWeatherBrief();
         _refreshCalendarBrief();
     
-        _refreshARIA();
+        _refreshImri();
       }
     }
 
@@ -783,6 +783,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
         return;
       }
 
+      // Purge foresight data for apps that were removed
+      final removedPackages = loadedPackages.difference(currentPackages);
+      for (final pkg in removedPackages) {
+        ForesightService.instance.purgeApp(pkg);
+      }
+
       final fullApps = await InstalledApps.getInstalledApps(excludeSystemApps: false, withIcon: true);
       fullApps.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
       
@@ -882,7 +888,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     _refreshWeatherBrief();
     _refreshCalendarBrief();
 
-    _refreshARIA();
+    _refreshImri();
   }
 
   Future<void> _loadForesightState() async {
@@ -1233,13 +1239,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                                       calendarData: _calendarBriefData,
                                                       launcherEvents: _calendarEvents,
                                                       onDismiss: _dismissMorningBrief,
-                                                      ariaSuggestion: _ariaSuggestion,
-                                                      ariaReady: _ariaReady,
-                                                      ariaGenerating: _ariaGenerating,
-                                                      ariaOutfitNarrative: _ariaOutfitNarrative,
-                                                      ariaWeatherNarrative: _ariaWeatherNarrative,
-                                                      ariaWeatherGenerating: _ariaWeatherGenerating,
-                                                      onImportARIAModel: _importARIAModel,
+                                                      imriSuggestion: _imriSuggestion,
+                                                      imriReady: _imriReady,
+                                                      imriGenerating: _imriGenerating,
+                                                      imriOutfitNarrative: _imriOutfitNarrative,
+                                                      imriWeatherNarrative: _imriWeatherNarrative,
+                                                      imriWeatherGenerating: _imriWeatherGenerating,
+                                                      onImportImriModel: _importImriModel,
                                                       temperatureUnit: _temperatureUnit,
                                                     ),
                                                   )
@@ -1339,6 +1345,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                                   _isDragging = false;
                                                   _draggingApp = null;
                                                 });
+                                                ForesightService.instance.purgeApp(app.packageName);
                                                 try {
                                                   InstalledApps.uninstallApp(app.packageName);
                                                 } catch (e) {
@@ -1684,6 +1691,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                               },
                               onAddToHome: (app) => _addToHomeScreen(app),
                               onUninstall: (app) {
+                                ForesightService.instance.purgeApp(app.packageName);
                                 try {
                                   InstalledApps.uninstallApp(app.packageName);
                                 } catch (e) {

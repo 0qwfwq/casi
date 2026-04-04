@@ -271,7 +271,7 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                             ),
                             child: (_searchQuery.isNotEmpty && _isFullyExpanded)
                                 ? _buildSearchResults()
-                                : _buildAppList(),
+                                : _buildAppList(context, progress),
                           ),
                         ),
                       ),
@@ -407,10 +407,33 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
   bool get _isFullyExpanded =>
       widget.progressNotifier.value > 0.55;
 
-  Widget _buildAppList() {
+  Widget _buildAppList(BuildContext context, double progress) {
     final pinned = _pinnedApps;
     final grouped = _groupedApps;
     final showFull = _isFullyExpanded;
+
+    // Calculate dynamic padding so the pinned box sticks to the bottom when drawer is at 0.50
+    double topPadding = 0.0;
+    if (pinned.isNotEmpty) {
+      final double screenHeight = MediaQuery.of(context).size.height;
+      final int rows = (pinned.length / 6).ceil();
+      // Rough estimate of box height: label + padding + grid rows + bottom padding
+      final double boxHeight = 24.0 + (rows * 50.0);
+      
+      // We want the box to sit ~110px above the absolute bottom of the screen.
+      // When drawer progress is 0.50, the top of the drawer is at screenHeight * 0.50.
+      final double targetMaxPadding = (screenHeight * 0.50) - 110 - boxHeight;
+      
+      if (targetMaxPadding > 0) {
+        if (progress <= 0.50) {
+          topPadding = targetMaxPadding;
+        } else {
+          // Smoothly animate the padding away as the user drags up
+          final double normalized = ((progress - 0.50) / 0.50).clamp(0.0, 1.0);
+          topPadding = lerpDouble(targetMaxPadding, 0.0, Curves.easeOutCubic.transform(normalized)) ?? 0.0;
+        }
+      }
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -418,9 +441,9 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
         // Pinned section — 6-column grid
         if (pinned.isNotEmpty) ...[
           Padding(
-            padding: const EdgeInsets.only(
+            padding: EdgeInsets.only(
               left: CASISpacing.md,
-              top: CASISpacing.sm,
+              top: CASISpacing.sm + topPadding,
               bottom: CASISpacing.xs,
             ),
             child: Text(
@@ -437,7 +460,7 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
             physics: const NeverScrollableScrollPhysics(),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 6,
-              childAspectRatio: 0.75,
+              childAspectRatio: 1.0,
               mainAxisSpacing: CASISpacing.xs,
               crossAxisSpacing: CASISpacing.xs,
             ),
@@ -577,17 +600,6 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                     )
                   : Icon(Icons.android, color: CASIColors.textSecondary, size: 36),
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            app.name,
-            style: CASITypography.caption.copyWith(
-              color: CASIColors.textPrimary,
-              fontSize: 10,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
           ),
         ],
       ),

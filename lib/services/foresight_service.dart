@@ -208,16 +208,19 @@ class ForesightService {
         return [];
       }
 
-      // Sort descending by score, take top 3 with a minimum threshold
-      final sorted = scores.entries.toList()
-        ..sort((a, b) => b.value.compareTo(a.value));
-      final top = sorted.take(3).where((e) => e.value > 0.001).toList();
-
-      // Map package names to AppInfo for icons/names
+      // Map package names to AppInfo for fast lookup
       final appMap = <String, AppInfo>{};
       for (final app in installedApps) {
         appMap[app.packageName] = app;
       }
+
+      // Sort descending by score, filter uninstalled apps, take top 3
+      final sorted = scores.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+      final top = sorted
+          .where((e) => e.value > 0.001 && appMap.containsKey(e.key))
+          .take(3)
+          .toList();
 
       // Persist predictions and build result list
       final predictions = <ForesightPrediction>[];
@@ -233,8 +236,8 @@ class ForesightService {
 
         predictions.add(ForesightPrediction(
           packageName: pkg,
-          appName: app?.name ?? pkg,
-          icon: app?.icon,
+          appName: app!.name,
+          icon: app.icon,
           confidence: top[i].value,
           dbId: id,
         ));
@@ -568,6 +571,31 @@ class ForesightService {
       where: 'was_opened IS NULL AND timestamp < ?',
       whereArgs: [cutoff],
     );
+  }
+
+  /// Remove all launch history and prediction data for a specific package.
+  /// Call this when an app is uninstalled so it stops being recommended.
+  Future<void> purgeApp(String packageName) async {
+    if (_db == null) return;
+    try {
+      final launchesDeleted = await _db!.delete(
+        'launches',
+        where: 'package_name = ?',
+        whereArgs: [packageName],
+      );
+      final predictionsDeleted = await _db!.delete(
+        'predictions',
+        where: 'predicted_package = ?',
+        whereArgs: [packageName],
+      );
+      // Also clear it from current predictions cache
+      _currentPredictions.removeWhere((p) => p.packageName == packageName);
+      if (_previousApp == packageName) _previousApp = null;
+      debugPrint('[Foresight] Purged $packageName: '
+          '$launchesDeleted launches, $predictionsDeleted predictions removed.');
+    } catch (e) {
+      debugPrint('[Foresight] purgeApp error: $e');
+    }
   }
 
   /// Delete data older than 30 days (rolling window + quota management).

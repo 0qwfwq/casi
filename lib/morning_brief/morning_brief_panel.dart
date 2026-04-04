@@ -11,13 +11,13 @@ class MorningBriefPanel extends StatefulWidget {
   final WeatherBriefData? weatherData;
   final CalendarBriefData? calendarData;
   final Map<DateTime, List<CalendarEvent>> launcherEvents;
-  final String? ariaSuggestion;
-  final bool ariaReady;
-  final bool ariaGenerating;
-  final String? ariaOutfitNarrative;
-  final String? ariaWeatherNarrative;
-  final bool ariaWeatherGenerating;
-  final VoidCallback? onImportARIAModel;
+  final String? imriSuggestion;
+  final bool imriReady;
+  final bool imriGenerating;
+  final String? imriOutfitNarrative;
+  final String? imriWeatherNarrative;
+  final bool imriWeatherGenerating;
+  final VoidCallback? onImportImriModel;
   final String temperatureUnit;
 
   const MorningBriefPanel({
@@ -26,13 +26,13 @@ class MorningBriefPanel extends StatefulWidget {
     this.weatherData,
     this.calendarData,
     this.launcherEvents = const {},
-    this.ariaSuggestion,
-    this.ariaReady = false,
-    this.ariaGenerating = false,
-    this.ariaOutfitNarrative,
-    this.ariaWeatherNarrative,
-    this.ariaWeatherGenerating = false,
-    this.onImportARIAModel,
+    this.imriSuggestion,
+    this.imriReady = false,
+    this.imriGenerating = false,
+    this.imriOutfitNarrative,
+    this.imriWeatherNarrative,
+    this.imriWeatherGenerating = false,
+    this.onImportImriModel,
     this.temperatureUnit = 'C',
   });
 
@@ -170,7 +170,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
   }
 
   Widget _buildGreetingPage() {
-    final suggestion = widget.ariaSuggestion;
+    final suggestion = widget.imriSuggestion;
     return Padding(
           padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
           child: Column(
@@ -187,12 +187,12 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
                 ),
               ),
               const SizedBox(height: 12),
-              // ARIA-generated encouragement — takes remaining space
+              // Imri-generated encouragement — takes remaining space
               Expanded(
                 child: Center(
                   child: SingleChildScrollView(
                     physics: const BouncingScrollPhysics(),
-                    child: _buildAriaContent(suggestion),
+                    child: _buildImriContent(suggestion),
                   ),
                 ),
               ),
@@ -223,8 +223,8 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
         );
   }
 
-  Widget _buildAriaContent(String? suggestion) {
-    if (suggestion != null && widget.ariaReady) {
+  Widget _buildImriContent(String? suggestion) {
+    if (suggestion != null && widget.imriReady) {
       return Text(
         suggestion,
         textAlign: TextAlign.center,
@@ -237,7 +237,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
         ),
       );
     }
-    if (widget.ariaGenerating) {
+    if (widget.imriGenerating) {
       return SizedBox(
         width: 16,
         height: 16,
@@ -247,9 +247,9 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
         ),
       );
     }
-    if (!widget.ariaReady) {
+    if (!widget.imriReady) {
       return GestureDetector(
-        onTap: widget.onImportARIAModel,
+        onTap: widget.onImportImriModel,
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
@@ -261,7 +261,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
             ),
             const SizedBox(width: 6),
             Text(
-              'Set up ARIA',
+              'Set up Imri',
               style: TextStyle(
                 color: CASIColors.textTertiary,
                 fontSize: 12,
@@ -350,15 +350,15 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      widget.ariaOutfitNarrative ?? weather.clothingSuggestion,
+                      widget.imriOutfitNarrative ?? weather.clothingSuggestion,
                       textAlign: TextAlign.right,
                       style: TextStyle(
                         color: CASIColors.textSecondary,
                         fontSize: 11,
-                        fontWeight: widget.ariaOutfitNarrative != null
+                        fontWeight: widget.imriOutfitNarrative != null
                             ? FontWeight.w300
                             : FontWeight.w400,
-                        fontStyle: widget.ariaOutfitNarrative != null
+                        fontStyle: widget.imriOutfitNarrative != null
                             ? FontStyle.italic
                             : FontStyle.normal,
                         height: 1.3,
@@ -378,7 +378,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
                 color: CASIColors.glassCard,
                 borderRadius: BorderRadius.circular(14),
               ),
-              child: widget.ariaWeatherGenerating && widget.ariaWeatherNarrative == null
+              child: widget.imriWeatherGenerating && widget.imriWeatherNarrative == null
                   ? Center(
                       child: SizedBox(
                         width: 14,
@@ -392,14 +392,14 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
                   : SingleChildScrollView(
                       physics: const BouncingScrollPhysics(),
                       child: Text(
-                        widget.ariaWeatherNarrative ?? weather.weatherSummary,
+                        widget.imriWeatherNarrative ?? weather.weatherSummary,
                         style: TextStyle(
                           color: CASIColors.textSecondary,
                           fontSize: 11.5,
-                          fontWeight: widget.ariaWeatherNarrative != null
+                          fontWeight: widget.imriWeatherNarrative != null
                               ? FontWeight.w300
                               : FontWeight.w400,
-                          fontStyle: widget.ariaWeatherNarrative != null
+                          fontStyle: widget.imriWeatherNarrative != null
                               ? FontStyle.italic
                               : FontStyle.normal,
                           height: 1.5,

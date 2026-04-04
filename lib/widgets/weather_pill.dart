@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:casi/widgets/weather_forecast_widget.dart';
 import 'package:casi/design_system.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class WeatherPill extends StatefulWidget {
   final ValueChanged<bool>? onExpandedChanged;
@@ -372,6 +373,36 @@ class _WeatherPillState extends State<WeatherPill> with WidgetsBindingObserver {
     return Colors.white;
   }
 
+  // --- Open Default Weather App ---
+
+  Future<void> _openWeatherApp() async {
+    // Try common weather app package names
+    const weatherApps = [
+      'com.google.android.apps.weather',     // Google Weather
+      'com.samsung.android.weather',          // Samsung Weather
+      'com.oneplus.weather',                  // OnePlus Weather
+      'com.miui.weather2',                    // Xiaomi Weather
+      'org.breezyweather',                    // Breezy Weather
+      'com.accuweather.android',              // AccuWeather
+    ];
+
+    for (final pkg in weatherApps) {
+      try {
+        final launched = await launchUrl(
+          Uri.parse('android-app://$pkg'),
+          mode: LaunchMode.externalApplication,
+        );
+        if (launched) return;
+      } catch (_) {}
+    }
+
+    // Fallback: open web weather search
+    await launchUrl(
+      Uri.parse('https://www.google.com/search?q=weather'),
+      mode: LaunchMode.externalApplication,
+    );
+  }
+
   // --- Expand / Collapse ---
 
   void _collapse() {
@@ -436,6 +467,7 @@ class _WeatherPillState extends State<WeatherPill> with WidgetsBindingObserver {
     return GestureDetector(
       key: key,
       onTap: _expand,
+      onLongPress: _openWeatherApp,
       child: Center(
         child: ClipRRect(
           borderRadius: BorderRadius.circular(CASIGlass.cornerPill),
