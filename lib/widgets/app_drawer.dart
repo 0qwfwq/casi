@@ -364,7 +364,14 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
       valueListenable: widget.progressNotifier,
       builder: (context, progress, _) {
         final double screenWidth = MediaQuery.of(context).size.width;
-        final double contentOpacity = (progress * 2).clamp(0.0, 1.0);
+        // Fade content in so it reaches full opacity by the pinned snap
+        // (so pinned apps are 100% visible at the pinned-only stop). If
+        // there are no pinned apps, fall back to the old 2x ramp.
+        final double fadeCeiling = widget.pinnedSnapFraction > 0.01
+            ? widget.pinnedSnapFraction
+            : 0.5;
+        final double contentOpacity =
+            (progress / fadeCeiling).clamp(0.0, 1.0);
 
         for (final letter in _availableLetters) {
           _sectionKeys.putIfAbsent(letter, () => GlobalKey());
@@ -378,7 +385,10 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
             child: Stack(
               children: [
                 // Background - frosted glass with gradient opacity
-                _GradientBackground(progress: progress),
+                _GradientBackground(
+                  progress: progress,
+                  pinnedSnapFraction: widget.pinnedSnapFraction,
+                ),
                 // Main scrollable content
                 Positioned.fill(
                   top: 0,
@@ -1096,11 +1106,33 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
 
 class _GradientBackground extends StatelessWidget {
   final double progress;
+  final double pinnedSnapFraction;
 
-  const _GradientBackground({required this.progress});
+  const _GradientBackground({
+    required this.progress,
+    required this.pinnedSnapFraction,
+  });
 
   @override
   Widget build(BuildContext context) {
+    // When at or below the pinned snap, the background should be fully
+    // opaque so pinned apps never sit over a transparent glass gradient.
+    // Above the pinned snap, fade back into the normal top-transparent
+    // gradient as the drawer reveals the alphabetical section.
+    final double denom = (1.0 - pinnedSnapFraction).clamp(0.0001, 1.0);
+    final double fadeT =
+        ((progress - pinnedSnapFraction) / denom).clamp(0.0, 1.0);
+
+    double lerpAlpha(double a, double b) => a + (b - a) * fadeT;
+
+    // Pinned-snap "solid" state: all stops use the full frosted tint.
+    final double topAlpha = lerpAlpha(CASIGlass.tintStandard, 0.0);
+    final double midHiAlpha =
+        lerpAlpha(CASIGlass.tintStandard, CASIElevation.base.bgAlpha);
+    final double midLoAlpha =
+        lerpAlpha(CASIGlass.tintStandard, CASIGlass.tintLight);
+    const double bottomAlpha = CASIGlass.tintStandard;
+
     return Positioned.fill(
       child: ClipRRect(
         borderRadius: const BorderRadius.vertical(
@@ -1125,10 +1157,10 @@ class _GradientBackground extends StatelessWidget {
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    Colors.white.withValues(alpha: 0.0),
-                    Colors.white.withValues(alpha: CASIElevation.base.bgAlpha),
-                    Colors.white.withValues(alpha: CASIGlass.tintLight),
-                    Colors.white.withValues(alpha: CASIGlass.tintStandard),
+                    Colors.white.withValues(alpha: topAlpha),
+                    Colors.white.withValues(alpha: midHiAlpha),
+                    Colors.white.withValues(alpha: midLoAlpha),
+                    Colors.white.withValues(alpha: bottomAlpha),
                   ],
                   stops: const [0.0, 0.3, 0.6, 1.0],
                 ),

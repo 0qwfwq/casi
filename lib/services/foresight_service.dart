@@ -186,10 +186,12 @@ class ForesightService {
   // Prediction
   // -------------------------------------------------------------------------
 
-  /// Generate up to five app predictions for the current context.
-  /// Returns an empty list when insufficient data exists. The caller
-  /// (Foresight Dock) decides how many of the returned candidates to
-  /// actually display based on notification pill state.
+  /// Generate a ranked list of app predictions for the current context.
+  /// Returns up to the top 10 candidates so the Foresight Dock always
+  /// has enough runners-up to guarantee it can display 5 chips even
+  /// when some of its top picks collide with apps already shown in the
+  /// notification pills or pinned on the home dock.
+  /// Returns an empty list when insufficient data exists.
   Future<List<ForesightPrediction>> predict(List<AppInfo> installedApps) async {
     if (_db == null) return [];
 
@@ -218,14 +220,15 @@ class ForesightService {
         appMap[app.packageName] = app;
       }
 
-      // Sort descending by score, filter uninstalled apps, take top 5.
-      // The dock dynamically shows 3–5 of these depending on how many
-      // notification pills are active.
+      // Sort descending by score, filter uninstalled apps, take the
+      // top 10. The dock renders 5 icons; the extra 5 are runners-up
+      // so overlaps with the notification pills and home-dock apps
+      // can be filtered out without leaving empty slots.
       final sorted = scores.entries.toList()
         ..sort((a, b) => b.value.compareTo(a.value));
       final top = sorted
           .where((e) => e.value > 0.001 && appMap.containsKey(e.key))
-          .take(5)
+          .take(10)
           .toList();
 
       // Persist predictions and build result list

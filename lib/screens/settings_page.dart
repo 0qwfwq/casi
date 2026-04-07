@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:installed_apps/app_info.dart';
+import 'package:installed_apps/installed_apps.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:casi/design_system.dart';
@@ -20,6 +22,10 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   bool _immersiveMode = false;
   String _temperatureUnit = 'C'; // 'C' or 'F'
+  bool _showForesight = true;
+  bool _briefDismissedToday = false;
+  String _foresightLongPressPackage = '';
+  String _foresightLongPressLabel = 'Default Browser';
   final WallpaperService _wallpaperService = WallpaperService();
   final TextEditingController _nameController = TextEditingController();
 
@@ -39,10 +45,74 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     await _wallpaperService.initialize();
+    final today = DateTime.now().day;
+    final longPressPkg = prefs.getString('foresight_longpress_package') ?? '';
     setState(() {
       _immersiveMode = prefs.getBool('immersive_mode') ?? false;
       _temperatureUnit = prefs.getString('temperature_unit') ?? 'C';
       _nameController.text = prefs.getString('user_name') ?? '';
+      _showForesight = !(prefs.getBool('foresight_hidden') ?? false);
+      _briefDismissedToday =
+          (prefs.getInt('morning_brief_dismiss_day') ?? -1) == today;
+      _foresightLongPressPackage = longPressPkg;
+    });
+    // Resolve a human-readable label for the long-press target.
+    if (longPressPkg.isNotEmpty) {
+      try {
+        final info = await InstalledApps.getAppInfo(longPressPkg);
+        if (mounted && info != null) {
+          setState(() => _foresightLongPressLabel = info.name);
+        }
+      } catch (_) {
+        // Fall back to the raw package name if we can't resolve.
+        if (mounted) {
+          setState(() => _foresightLongPressLabel = longPressPkg);
+        }
+      }
+    } else if (mounted) {
+      setState(() => _foresightLongPressLabel = 'Default Browser');
+    }
+  }
+
+  Future<void> _toggleForesight(bool value) async {
+    setState(() => _showForesight = value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('foresight_hidden', !value);
+  }
+
+  /// "Show Brief again" — clears today's dismiss flag so the morning
+  /// brief reappears once. The user can still dismiss it again; the
+  /// next automatic re-show happens the following morning.
+  Future<void> _showBriefAgain() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('morning_brief_dismiss_day');
+    if (mounted) {
+      setState(() => _briefDismissedToday = false);
+    }
+  }
+
+  Future<void> _pickForesightLongPressApp() async {
+    final selected = await showDialog<_AppPickResult>(
+      context: context,
+      builder: (_) => const _AppPickerDialog(),
+    );
+    if (selected == null || !mounted) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+        'foresight_longpress_package', selected.packageName);
+    setState(() {
+      _foresightLongPressPackage = selected.packageName;
+      _foresightLongPressLabel = selected.label;
+    });
+  }
+
+  Future<void> _resetForesightLongPress() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('foresight_longpress_package', '');
+    setState(() {
+      _foresightLongPressPackage = '';
+      _foresightLongPressLabel = 'Default Browser';
     });
   }
 
@@ -186,10 +256,210 @@ class _SettingsPageState extends State<SettingsPage> {
                     ));
                   },
                 ),
+                // Foresight dock visibility
+                SwitchListTile(
+                  title: const Text("Show Foresight",
+                      style: TextStyle(color: Colors.white)),
+                  subtitle: const Text(
+                      "Show predicted app suggestions above the dock",
+                      style: TextStyle(
+                          color: CASIColors.textSecondary, fontSize: 12)),
+                  secondary: const Icon(Icons.auto_awesome_outlined,
+                      color: Colors.white),
+                  value: _showForesight,
+                  onChanged: _toggleForesight,
+                  activeThumbColor: CASIColors.accentPrimary,
+                ),
+                // Foresight long-press app picker
+                ListTile(
+                  title: const Text("Foresight Long-Press App",
+                      style: TextStyle(color: Colors.white)),
+                  subtitle: Text(
+                    _foresightLongPressLabel,
+                    style: const TextStyle(
+                        color: CASIColors.textSecondary, fontSize: 12),
+                  ),
+                  leading: const Icon(Icons.touch_app_outlined,
+                      color: Colors.white),
+                  trailing: _foresightLongPressPackage.isEmpty
+                      ? const Icon(Icons.arrow_forward_ios,
+                          color: Colors.white, size: 16)
+                      : IconButton(
+                          icon: const Icon(Icons.close,
+                              color: CASIColors.textSecondary, size: 18),
+                          tooltip: 'Reset to Default Browser',
+                          onPressed: _resetForesightLongPress,
+                        ),
+                  onTap: _pickForesightLongPressApp,
+                ),
+                // Morning Brief — manual re-show
+                ListTile(
+                  title: const Text("Show Brief Again",
+                      style: TextStyle(color: Colors.white)),
+                  subtitle: Text(
+                    _briefDismissedToday
+                        ? "You dismissed today's Brief — tap to bring it back"
+                        : "Brief is currently visible",
+                    style: const TextStyle(
+                        color: CASIColors.textSecondary, fontSize: 12),
+                  ),
+                  leading: const Icon(Icons.wb_sunny_outlined,
+                      color: Colors.white),
+                  trailing: const Icon(Icons.refresh,
+                      color: Colors.white, size: 18),
+                  enabled: _briefDismissedToday,
+                  onTap: _briefDismissedToday ? _showBriefAgain : null,
+                ),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ─── App Picker Dialog ──────────────────────────────────────────────────────
+// Presents a searchable list of installed apps and returns the picked
+// one. Used to choose which app is launched when the user long-presses
+// the Foresight dock.
+
+class _AppPickResult {
+  final String packageName;
+  final String label;
+
+  const _AppPickResult({required this.packageName, required this.label});
+}
+
+class _AppPickerDialog extends StatefulWidget {
+  const _AppPickerDialog();
+
+  @override
+  State<_AppPickerDialog> createState() => _AppPickerDialogState();
+}
+
+class _AppPickerDialogState extends State<_AppPickerDialog> {
+  List<AppInfo> _apps = [];
+  String _query = '';
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final apps = await InstalledApps.getInstalledApps(
+      excludeSystemApps: false,
+      withIcon: false,
+    );
+    apps.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    if (mounted) {
+      setState(() {
+        _apps = apps;
+        _loading = false;
+      });
+    }
+  }
+
+  List<AppInfo> get _filtered {
+    if (_query.isEmpty) return _apps;
+    final q = _query.toLowerCase();
+    return _apps
+        .where((a) =>
+            a.name.toLowerCase().contains(q) ||
+            a.packageName.toLowerCase().contains(q))
+        .toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(CASIGlass.cornerStandard),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(
+            sigmaX: CASIGlass.blurHeavy,
+            sigmaY: CASIGlass.blurHeavy,
+          ),
+          child: Container(
+            width: 320,
+            constraints: const BoxConstraints(maxHeight: 460),
+            decoration: BoxDecoration(
+              color:
+                  Colors.white.withValues(alpha: CASIElevation.float_.bgAlpha),
+              borderRadius: BorderRadius.circular(CASIGlass.cornerStandard),
+              border: Border.all(
+                color: Colors.white
+                    .withValues(alpha: CASIElevation.float_.borderAlpha),
+              ),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: TextField(
+                    autofocus: true,
+                    style: const TextStyle(color: Colors.white),
+                    cursorColor: CASIColors.accentPrimary,
+                    decoration: const InputDecoration(
+                      hintText: 'Search apps',
+                      hintStyle: TextStyle(color: CASIColors.textTertiary),
+                      prefixIcon:
+                          Icon(Icons.search, color: CASIColors.textSecondary),
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (v) => setState(() => _query = v),
+                  ),
+                ),
+                Flexible(
+                  child: _loading
+                      ? const Center(child: CircularProgressIndicator())
+                      : ListView.builder(
+                          itemCount: _filtered.length,
+                          itemBuilder: (context, i) {
+                            final app = _filtered[i];
+                            return ListTile(
+                              title: Text(
+                                app.name,
+                                style: const TextStyle(color: Colors.white),
+                              ),
+                              subtitle: Text(
+                                app.packageName,
+                                style: const TextStyle(
+                                    color: CASIColors.textTertiary,
+                                    fontSize: 11),
+                              ),
+                              onTap: () => Navigator.of(context).pop(
+                                _AppPickResult(
+                                  packageName: app.packageName,
+                                  label: app.name,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Text('Cancel'),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

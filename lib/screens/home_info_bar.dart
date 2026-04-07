@@ -8,6 +8,7 @@ import 'package:installed_apps/installed_apps.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:volume_controller/volume_controller.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:casi/design_system.dart';
 import 'settings_page.dart';
 import '../widgets/glass_header.dart';
@@ -145,6 +146,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   // --- Notification Pill State ---
   List<NotificationPillEntry> _notificationPillApps = [];
 
+  // --- Foresight long-press launch target ---
+  // Empty string means "use the system's default browser".
+  String _foresightLongPressPackage = '';
+
   // --- Settings ---
   final WallpaperService _wallpaperService = WallpaperService();
   bool _immersiveMode = false;
@@ -208,12 +213,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     if (!ForesightService.instance.isInitialized || _apps.isEmpty) return;
     final predictions = await ForesightService.instance.predict(_apps);
     final dockPackages = _homeApps.values.map((a) => a.packageName).toSet();
-    // Exclude apps already shown in the notification pill
-    final notifPackages = _notificationPillApps.map((n) => n.packageName).toSet();
+    // Exclude apps already on the home dock, and skip any that are
+    // currently shown in a notification pill — the runner-up (#6) will
+    // slide into the dock in that case so we always end up with 5.
+    final notifPackages =
+        _notificationPillApps.map((n) => n.packageName).toSet();
     final filtered = predictions
         .where((p) =>
             !dockPackages.contains(p.packageName) &&
             !notifPackages.contains(p.packageName))
+        .take(5)
         .toList();
     if (mounted) {
       setState(() => _foresightPredictions = filtered);
@@ -670,6 +679,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     });
     _applyImmersiveMode();
     await _wallpaperService.initialize();
+    // Foresight state (including the long-press app) and the Morning
+    // Brief dismiss flag may have been changed from the settings page —
+    // reload so the home screen reflects it immediately on return.
+    await _loadForesightState();
+    await _loadMorningBriefState();
     if (mounted) setState(() {});
   }
 
@@ -694,10 +708,21 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     final dismissDay = prefs.getInt('morning_brief_dismiss_day') ?? -1;
     final today = DateTime.now().day;
     final dismissed = dismissDay == today;
+    final wasShowing = _showMorningBrief;
     setState(() {
       _morningBriefDismissDay = dismissDay;
       _showMorningBrief = !dismissed;
+      // If the brief is being re-shown (e.g. after the user hit
+      // "Show Brief Again" in settings), force the panel to recreate
+      // at page 0 so it doesn't resume mid-flow.
+      if (!wasShowing && _showMorningBrief) {
+        _morningBriefKey++;
+      }
     });
+    if (!wasShowing && _showMorningBrief) {
+      _refreshWeatherBrief();
+      _refreshCalendarBrief();
+    }
   }
 
   Future<void> _dismissMorningBrief() async {
@@ -710,34 +735,37 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     });
   }
 
-  Future<void> _showMorningBriefAgain() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('morning_brief_dismiss_day');
-    setState(() {
-      _morningBriefDismissDay = -1;
-      _showMorningBrief = true;
-      _morningBriefKey++; // force panel to recreate at page 0
-    });
-    _refreshWeatherBrief();
-    _refreshCalendarBrief();
-  }
 
   Future<void> _loadForesightState() async {
     final prefs = await SharedPreferences.getInstance();
     final hidden = prefs.getBool('foresight_hidden') ?? false;
-    if (mounted) setState(() => _showForesight = !hidden);
+    final longPressPkg = prefs.getString('foresight_longpress_package') ?? '';
+    if (mounted) {
+      setState(() {
+        _showForesight = !hidden;
+        _foresightLongPressPackage = longPressPkg;
+      });
+    }
   }
 
-  Future<void> _dismissForesight() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('foresight_hidden', true);
-    if (mounted) setState(() => _showForesight = false);
-  }
-
-  Future<void> _showForesightAgain() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('foresight_hidden', false);
-    if (mounted) setState(() => _showForesight = true);
+  /// Launches the user's chosen "foresight long-press" app. An empty
+  /// package string means "open the system's default browser" via an
+  /// http: intent that Android resolves to whatever browser the user
+  /// has set as default.
+  Future<void> _onForesightLongPress() async {
+    HapticFeedback.mediumImpact();
+    if (_foresightLongPressPackage.isEmpty) {
+      try {
+        // about:blank is the most neutral URL that still routes through
+        // the user's configured default browser.
+        final uri = Uri.parse('https://www.google.com/');
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } catch (e) {
+        debugPrint('Failed to open default browser: $e');
+      }
+    } else {
+      AppLauncher.launchApp(_foresightLongPressPackage);
+    }
   }
 
   Future<void> _refreshWeatherBrief() async {
@@ -975,25 +1003,48 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
               }
               const MethodChannel('casi.launcher/apps').invokeMethod('lockScreen');
             },
-            onLongPressStart: (details) {
-              _showHomescreenContextMenu(details.globalPosition);
-            },
             onVerticalDragStart: (details) {
               _dragStartY = details.globalPosition.dy;
             },
             onVerticalDragEnd: (details) {
               final double screenHeight = MediaQuery.of(context).size.height;
-              if (_dragStartY < screenHeight - 60 && details.primaryVelocity! < -500) {
-                // Animate to the intermediate "pinned" snap when there are
-                // pinned apps, otherwise go straight to full expansion.
-                final double target = _drawerPinnedSnap.value > 0
-                    ? _drawerPinnedSnap.value
-                    : 1.0;
-                _drawerController.animateTo(
-                  target,
-                  duration: const Duration(milliseconds: 120),
-                  curve: Curves.easeOutCubic,
-                );
+              final double velocity = details.primaryVelocity ?? 0;
+              final bool drawerOpen = _drawerController.isAttached &&
+                  _drawerController.size > 0.05;
+
+              if (drawerOpen) {
+                // Once the drawer (pinned or otherwise) is showing, a
+                // swipe anywhere on screen expands it to full or closes
+                // it entirely. This lets the user flick up/down from
+                // above the drawer without needing to touch the pinned
+                // grid itself.
+                if (velocity < -500) {
+                  _drawerController.animateTo(
+                    1.0,
+                    duration: const Duration(milliseconds: 180),
+                    curve: Curves.easeOutCubic,
+                  );
+                } else if (velocity > 500) {
+                  _drawerController.animateTo(
+                    0.0,
+                    duration: const Duration(milliseconds: 180),
+                    curve: Curves.easeOutCubic,
+                  );
+                }
+              } else {
+                // Drawer closed: a swipe up from anywhere but the very
+                // bottom edge opens it to the pinned snap (or straight
+                // to full if the user has no pinned apps).
+                if (_dragStartY < screenHeight - 60 && velocity < -500) {
+                  final double target = _drawerPinnedSnap.value > 0
+                      ? _drawerPinnedSnap.value
+                      : 1.0;
+                  _drawerController.animateTo(
+                    target,
+                    duration: const Duration(milliseconds: 120),
+                    curve: Curves.easeOutCubic,
+                  );
+                }
               }
             },
             child: NotificationListener<CalendarTapNotification>(
@@ -1153,6 +1204,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                                         onAppTap: _onForesightAppTap,
                                                         notificationApps: _notificationPillApps,
                                                         onNotificationTap: _onNotificationPillTap,
+                                                        onLongPress: _onForesightLongPress,
                                                       ),
                                                     )
                                                   : const SizedBox.shrink(
@@ -1205,6 +1257,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                                       onAppTap: _onForesightAppTap,
                                                       notificationApps: _notificationPillApps,
                                                       onNotificationTap: _onNotificationPillTap,
+                                                      onLongPress: _onForesightLongPress,
                                                     )
                                                   : null,
                                               activePill: _showPill
@@ -1783,113 +1836,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
           ),
         ),
       ),
-    );
-  }
-
-  void _showHomescreenContextMenu(Offset position) {
-    // Only show on bare wallpaper — not when drawer, pill, alarm, etc. are active
-    if (_showPill || _isAlarmRinging || _drawerProgress.value > 0.05) {
-      return;
-    }
-
-    final screenSize = MediaQuery.of(context).size;
-    double left = (position.dx - 100).clamp(16.0, screenSize.width - 216.0);
-    double top = (position.dy - 40).clamp(16.0, screenSize.height - 100.0);
-
-    final briefLabel = _showMorningBrief ? 'Hide Brief' : 'Show Brief';
-    final foresightLabel = _showForesight ? 'Hide Foresight' : 'Show Foresight';
-
-    showDialog(
-      context: context,
-      barrierColor: Colors.transparent,
-      builder: (ctx) {
-        return Stack(
-          children: [
-            Positioned.fill(
-              child: GestureDetector(
-                onTap: () => Navigator.of(ctx).pop(),
-                child: Container(color: Colors.transparent),
-              ),
-            ),
-            Positioned(
-              left: left,
-              top: top,
-              child: Material(
-                color: Colors.transparent,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(CASIGlass.cornerStandard),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: CASIGlass.blurHeavy, sigmaY: CASIGlass.blurHeavy),
-                    child: Container(
-                      width: 200,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: CASIElevation.float_.bgAlpha),
-                        borderRadius: BorderRadius.circular(CASIGlass.cornerStandard),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: CASIElevation.float_.borderAlpha),
-                          width: 1.0,
-                        ),
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          InkWell(
-                            borderRadius: BorderRadius.vertical(top: Radius.circular(CASIGlass.cornerStandard)),
-                            onTap: () {
-                              Navigator.of(ctx).pop();
-                              if (_showMorningBrief) {
-                                _dismissMorningBrief();
-                              } else {
-                                _showMorningBriefAgain();
-                              }
-                            },
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                              child: Row(
-                                children: [
-                                  const Icon(Icons.wb_sunny_outlined, color: CASIColors.textPrimary, size: 20),
-                                  const SizedBox(width: 12),
-                                  Text(briefLabel, style: const TextStyle(color: CASIColors.textPrimary, fontSize: 14)),
-                                ],
-                              ),
-                            ),
-                          ),
-                          Divider(
-                            height: 1,
-                            thickness: 1,
-                            color: Colors.white.withValues(alpha: CASIElevation.card.borderAlpha),
-                          ),
-                          InkWell(
-                            borderRadius: BorderRadius.vertical(bottom: Radius.circular(CASIGlass.cornerStandard)),
-                            onTap: () {
-                              Navigator.of(ctx).pop();
-                              if (_showForesight) {
-                                _dismissForesight();
-                              } else {
-                                _showForesightAgain();
-                              }
-                            },
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                              child: Row(
-                                children: [
-                                  const Icon(Icons.auto_awesome_outlined, color: CASIColors.textPrimary, size: 20),
-                                  const SizedBox(width: 12),
-                                  Text(foresightLabel, style: const TextStyle(color: CASIColors.textPrimary, fontSize: 14)),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        );
-      },
     );
   }
 
