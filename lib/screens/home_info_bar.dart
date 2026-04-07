@@ -156,6 +156,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
 
   // --- Drawer Control ---
   final ValueNotifier<double> _drawerProgress = ValueNotifier(0.0);
+  final ValueNotifier<double> _drawerPinnedSnap = ValueNotifier(0.0);
   final DraggableScrollableController _drawerController = DraggableScrollableController();
   double _dragStartY = 0.0;
 
@@ -983,8 +984,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
             onVerticalDragEnd: (details) {
               final double screenHeight = MediaQuery.of(context).size.height;
               if (_dragStartY < screenHeight - 60 && details.primaryVelocity! < -500) {
+                // Animate to the intermediate "pinned" snap when there are
+                // pinned apps, otherwise go straight to full expansion.
+                final double target = _drawerPinnedSnap.value > 0
+                    ? _drawerPinnedSnap.value
+                    : 1.0;
                 _drawerController.animateTo(
-                  0.50,
+                  target,
                   duration: const Duration(milliseconds: 120),
                   curve: Curves.easeOutCubic,
                 );
@@ -1504,6 +1510,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                             AppDrawer(
                               apps: _apps,
                               progressNotifier: _drawerProgress,
+                              pinnedSnapNotifier: _drawerPinnedSnap,
                               controller: _drawerController,
                               onAppTap: (app) {
                                 ForesightService.instance.recordLaunch(app.packageName, appName: app.name);

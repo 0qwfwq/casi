@@ -8,7 +8,20 @@ import 'package:casi/services/notification_pill_service.dart';
 /// notification pill badges. The foresight chip row stays dead-center
 /// regardless of how many notification pills are visible; #1 priority sits
 /// to its right and #2 sits to its left.
+///
+/// Display sizing rule (icon size never changes, only the count):
+///   0 notification pills  → 5 foresight apps
+///   1 notification pill   → 4 foresight apps
+///   2 notification pills  → 3 foresight apps
+/// In short: `displayCount = 5 - notifCount`, clamped to [3, 5].
 class ForesightPill extends StatelessWidget {
+  /// Hard cap on foresight apps shown when no notification pills are active.
+  static const int _maxForesight = 5;
+
+  /// Hard floor on foresight apps shown when both notification pill slots
+  /// are occupied.
+  static const int _minForesight = 3;
+
   final List<ForesightPrediction> predictions;
   final void Function(String packageName) onAppTap;
   final List<NotificationPillEntry> notificationApps;
@@ -21,6 +34,15 @@ class ForesightPill extends StatelessWidget {
     this.notificationApps = const [],
     this.onNotificationTap,
   });
+
+  /// Number of foresight predictions we *want* to display given the current
+  /// notification pill count. This is independent of how many predictions
+  /// are actually available — the build method will show fewer if it has
+  /// to, but never more than this.
+  int get _targetForesightCount {
+    final int raw = _maxForesight - notificationApps.length;
+    return raw.clamp(_minForesight, _maxForesight);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -89,6 +111,13 @@ class ForesightPill extends StatelessWidget {
   Widget _buildForesightChips() {
     if (predictions.isEmpty) return const SizedBox.shrink();
 
+    // Clamp the rendered count to whatever the dock currently wants
+    // (5/4/3 depending on notification pill count) without ever exceeding
+    // the number of predictions we actually have on hand.
+    final int limit = _targetForesightCount;
+    final int count =
+        predictions.length < limit ? predictions.length : limit;
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(CASIGlass.cornerPill),
       child: BackdropFilter(
@@ -109,7 +138,7 @@ class ForesightPill extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              for (int i = 0; i < predictions.length; i++) ...[
+              for (int i = 0; i < count; i++) ...[
                 if (i > 0) const SizedBox(width: 16),
                 GestureDetector(
                   onTap: () => onAppTap(predictions[i].packageName),

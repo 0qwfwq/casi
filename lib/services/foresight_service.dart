@@ -3,7 +3,9 @@
 // Records every app launch with rich metadata (time, day, session gap,
 // previous app, network, battery, charging) into a local SQLite database.
 // On each unlock, scores all candidate apps using a tiered variable-
-// importance model and returns exactly three predictions.
+// importance model and returns up to five predictions. The consuming
+// UI decides how many to display based on how many notification pills
+// are currently active.
 //
 // Storage: 30-day rolling window, duplicate launches within a session
 // are collapsed, all I/O is asynchronous so launch performance is
@@ -184,8 +186,10 @@ class ForesightService {
   // Prediction
   // -------------------------------------------------------------------------
 
-  /// Generate exactly three app predictions for the current context.
-  /// Returns an empty list when insufficient data exists.
+  /// Generate up to five app predictions for the current context.
+  /// Returns an empty list when insufficient data exists. The caller
+  /// (Foresight Dock) decides how many of the returned candidates to
+  /// actually display based on notification pill state.
   Future<List<ForesightPrediction>> predict(List<AppInfo> installedApps) async {
     if (_db == null) return [];
 
@@ -214,12 +218,14 @@ class ForesightService {
         appMap[app.packageName] = app;
       }
 
-      // Sort descending by score, filter uninstalled apps, take top 3
+      // Sort descending by score, filter uninstalled apps, take top 5.
+      // The dock dynamically shows 3–5 of these depending on how many
+      // notification pills are active.
       final sorted = scores.entries.toList()
         ..sort((a, b) => b.value.compareTo(a.value));
       final top = sorted
           .where((e) => e.value > 0.001 && appMap.containsKey(e.key))
-          .take(3)
+          .take(5)
           .toList();
 
       // Persist predictions and build result list

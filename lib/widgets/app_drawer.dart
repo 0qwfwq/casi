@@ -8,9 +8,48 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:casi/utils/app_launcher.dart';
 import 'package:casi/design_system.dart';
 
+// ─── Pinned Section Metrics ─────────────────────────────────────────────────
+//
+// The pinned drawer's intermediate snap height is computed from these
+// constants so that what renders in the grid matches the snap target
+// pixel-for-pixel (no extra whitespace, no cut-off cells).
+
+class _PinnedSectionMetrics {
+  _PinnedSectionMetrics._();
+
+  static const int pinnedColumns = 6;
+  static const int maxPinnedRows = 4;
+  static const int maxPinnedApps = pinnedColumns * maxPinnedRows; // 24
+
+  static const double cellExtent = 56.0;              // fixed cell height
+  static const double cellSpacing = CASISpacing.xs;   // 4
+  static const double labelTopPadding = CASISpacing.sm; // 8
+  static const double labelHeight = 16.0;             // caption line height
+  static const double labelBottomPadding = CASISpacing.xs; // 4
+  static const double bottomBuffer = CASISpacing.sm;  // 8
+
+  /// Height in logical pixels needed to fit [rows] rows of pinned apps
+  /// plus the "PINNED" label header and its padding.
+  static double heightFor(int rows) {
+    if (rows <= 0) return 0.0;
+    final double grid = rows * cellExtent + (rows - 1) * cellSpacing;
+    return labelTopPadding +
+        labelHeight +
+        labelBottomPadding +
+        grid +
+        bottomBuffer;
+  }
+
+  /// Number of rows needed for [count] pinned apps (capped to [maxPinnedRows]).
+  static int rowsFor(int count) {
+    final clamped = count.clamp(0, maxPinnedApps);
+    return (clamped + pinnedColumns - 1) ~/ pinnedColumns;
+  }
+}
+
 // ─── Main AppDrawer Widget ──────────────────────────────────────────────────
 
-class AppDrawer extends StatelessWidget {
+class AppDrawer extends StatefulWidget {
   final List<AppInfo> apps;
   final ValueNotifier<double> progressNotifier;
   final Function(AppInfo) onAppTap;
@@ -18,6 +57,12 @@ class AppDrawer extends StatelessWidget {
   final Function(AppInfo) onUninstall;
   final VoidCallback onOpenSettings;
   final DraggableScrollableController? controller;
+
+  /// Optional notifier that receives the currently computed pinned-snap
+  /// fraction so the parent (home screen) can animate the drawer directly
+  /// to the intermediate "pinned only" stop on swipe-up. Emits 0.0 when
+  /// there are no pinned apps (in which case the parent should target 1.0).
+  final ValueNotifier<double>? pinnedSnapNotifier;
 
   const AppDrawer({
     super.key,
@@ -28,33 +73,130 @@ class AppDrawer extends StatelessWidget {
     required this.onUninstall,
     required this.onOpenSettings,
     this.controller,
+    this.pinnedSnapNotifier,
   });
 
   @override
+  State<AppDrawer> createState() => _AppDrawerState();
+}
+
+class _AppDrawerState extends State<AppDrawer> {
+  List<String> _pinnedPackages = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPinnedApps();
+  }
+
+  // ── Pinned Apps Persistence ────────────────────────────────────────────
+
+  Future<void> _loadPinnedApps() async {
+    final prefs = await SharedPreferences.getInstance();
+    final List<String>? pinned = prefs.getStringList('pinned_drawer_apps');
+    if (pinned != null && mounted) {
+      setState(() => _pinnedPackages = List<String>.from(pinned));
+    }
+  }
+
+  Future<void> _savePinnedApps() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('pinned_drawer_apps', _pinnedPackages);
+  }
+
+  void _togglePin(AppInfo app) {
+    setState(() {
+      if (_pinnedPackages.contains(app.packageName)) {
+        _pinnedPackages.remove(app.packageName);
+      } else {
+        if (_pinnedPackages.length >= _PinnedSectionMetrics.maxPinnedApps) {
+          return; // hard cap — 4 rows × 6 apps
+        }
+        _pinnedPackages.add(app.packageName);
+      }
+    });
+    _savePinnedApps();
+    _maybeResnapToPinned();
+  }
+
+  /// Compute the fraction of the parent's height needed to exactly fit the
+  /// pinned grid. Returns 0.0 when no apps are pinned.
+  double _computePinnedFraction(BuildContext context) {
+    final mq = MediaQuery.of(context);
+    final double containerHeight =
+        (mq.size.height - mq.padding.top - mq.padding.bottom)
+            .clamp(1.0, double.infinity);
+    final int rows = _PinnedSectionMetrics.rowsFor(_pinnedPackages.length);
+    if (rows == 0) return 0.0;
+    final double pinnedHeight = _PinnedSectionMetrics.heightFor(rows);
+    return (pinnedHeight / containerHeight).clamp(0.0, 0.95);
+  }
+
+  /// If the drawer is sitting at the old pinned snap (or anywhere in the
+  /// intermediate region), animate it to the freshly computed pinned snap
+  /// so pinning/unpinning resizes the drawer smoothly.
+  void _maybeResnapToPinned() {
+    final controller = widget.controller;
+    if (controller == null || !controller.isAttached) return;
+    final double size = controller.size;
+    if (size <= 0.01 || size >= 0.95) return; // closed or full — leave alone
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !controller.isAttached) return;
+      final double pinnedFraction = _computePinnedFraction(context);
+      final double target = pinnedFraction > 0 ? pinnedFraction : 1.0;
+      controller.animateTo(
+        target,
+        duration: CASIMotion.fast,
+        curve: Curves.easeOutCubic,
+      );
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final double pinnedFraction = _computePinnedFraction(context);
+    final bool hasPinned = pinnedFraction > 0;
+    final List<double> snapSizes = hasPinned
+        ? <double>[0.0, pinnedFraction, 1.0]
+        : const <double>[0.0, 1.0];
+
+    // Mirror the current pinned-snap into the parent-owned notifier (if any)
+    // so the home screen's swipe handler can animate straight to it.
+    final notifier = widget.pinnedSnapNotifier;
+    if (notifier != null && notifier.value != pinnedFraction) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        notifier.value = pinnedFraction;
+      });
+    }
+
     return NotificationListener<DraggableScrollableNotification>(
       onNotification: (notification) {
         final double progress = notification.extent / notification.maxExtent;
-        progressNotifier.value = progress.clamp(0.0, 1.0);
+        widget.progressNotifier.value = progress.clamp(0.0, 1.0);
         return false;
       },
       child: DraggableScrollableSheet(
-        controller: controller,
+        controller: widget.controller,
         initialChildSize: 0.0,
         minChildSize: 0.0,
         maxChildSize: 1.0,
         snap: true,
-        snapSizes: const [0.0, 0.50],
+        snapSizes: snapSizes,
         snapAnimationDuration: CASIMotion.micro,
         builder: (context, scrollController) {
           return _AppDrawerSheet(
-            apps: apps,
+            apps: widget.apps,
             scrollController: scrollController,
-            onAppTap: onAppTap,
-            onAddToHome: onAddToHome,
-            onUninstall: onUninstall,
-            onOpenSettings: onOpenSettings,
-            progressNotifier: progressNotifier,
+            onAppTap: widget.onAppTap,
+            onAddToHome: widget.onAddToHome,
+            onUninstall: widget.onUninstall,
+            onOpenSettings: widget.onOpenSettings,
+            progressNotifier: widget.progressNotifier,
+            pinnedPackages: _pinnedPackages,
+            onTogglePin: _togglePin,
+            pinnedSnapFraction: pinnedFraction,
           );
         },
       ),
@@ -72,6 +214,9 @@ class _AppDrawerSheet extends StatefulWidget {
   final Function(AppInfo) onUninstall;
   final VoidCallback onOpenSettings;
   final ValueNotifier<double> progressNotifier;
+  final List<String> pinnedPackages;
+  final ValueChanged<AppInfo> onTogglePin;
+  final double pinnedSnapFraction;
 
   const _AppDrawerSheet({
     required this.apps,
@@ -81,6 +226,9 @@ class _AppDrawerSheet extends StatefulWidget {
     required this.onUninstall,
     required this.onOpenSettings,
     required this.progressNotifier,
+    required this.pinnedPackages,
+    required this.onTogglePin,
+    required this.pinnedSnapFraction,
   });
 
   @override
@@ -92,9 +240,6 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
 
-
-  List<String> _pinnedPackages = [];
-
   String? _activeLetter;
   bool _isAlphabetDragging = false;
   double _alphabetDragLocalY = 0.0;
@@ -105,7 +250,6 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
   void initState() {
     super.initState();
     widget.progressNotifier.addListener(_onDrawerProgressChanged);
-    _loadPinnedApps();
   }
 
   void _onDrawerProgressChanged() {
@@ -139,47 +283,28 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
     });
   }
 
-  // ── Pinned Apps Persistence ────────────────────────────────────────────
+  // ── Pinned App Lookups ────────────────────────────────────────────────
+  // Pinned state lives in the parent AppDrawer so the snap sizing can react.
 
-  Future<void> _loadPinnedApps() async {
-    final prefs = await SharedPreferences.getInstance();
-    final List<String>? pinned = prefs.getStringList('pinned_drawer_apps');
-    if (pinned != null && mounted) {
-      setState(() => _pinnedPackages = List<String>.from(pinned));
-    }
-  }
-
-  Future<void> _savePinnedApps() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList('pinned_drawer_apps', _pinnedPackages);
-  }
-
-  void _togglePin(AppInfo app) {
-    setState(() {
-      if (_pinnedPackages.contains(app.packageName)) {
-        _pinnedPackages.remove(app.packageName);
-      } else {
-        _pinnedPackages.add(app.packageName);
-      }
-    });
-    _savePinnedApps();
-  }
-
-  bool _isPinned(AppInfo app) => _pinnedPackages.contains(app.packageName);
+  bool _isPinned(AppInfo app) =>
+      widget.pinnedPackages.contains(app.packageName);
 
   // ── App Lists ─────────────────────────────────────────────────────────
 
   List<AppInfo> get _pinnedApps {
     final appMap = {for (final app in widget.apps) app.packageName: app};
-    return _pinnedPackages
+    // Defensive cap: never render more than a 4×6 grid even if stale
+    // preferences still contain a larger list.
+    return widget.pinnedPackages
         .where((pkg) => appMap.containsKey(pkg))
+        .take(_PinnedSectionMetrics.maxPinnedApps)
         .map((pkg) => appMap[pkg]!)
         .toList();
   }
 
   List<AppInfo> get _unpinnedApps {
     return widget.apps
-        .where((app) => !_pinnedPackages.contains(app.packageName))
+        .where((app) => !widget.pinnedPackages.contains(app.packageName))
         .toList()
       ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
   }
@@ -277,7 +402,13 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                       ),
                       SliverToBoxAdapter(
                         child: SizedBox(
-                          height: MediaQuery.of(context).viewInsets.bottom + 80,
+                          // Reserve room for the floating search bar only
+                          // while fully expanded. At the pinned snap this
+                          // must be zero so the sliver height exactly
+                          // matches the drawer height (no scroll slack).
+                          height: _isFullyExpanded
+                              ? MediaQuery.of(context).viewInsets.bottom + 80
+                              : 0,
                         ),
                       ),
                     ],
@@ -403,48 +534,29 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
 
   // ── App List (Pinned + Alphabetical) ──────────────────────────────────
 
-  /// Whether the drawer is expanded beyond the pinned-only halfway snap (0.50).
-  bool get _isFullyExpanded =>
-      widget.progressNotifier.value > 0.55;
+  /// Whether the drawer is expanded past the pinned-only snap. Uses the
+  /// dynamically computed pinned snap so the threshold follows the actual
+  /// intermediate stop (5% above it gives a small commit window).
+  bool get _isFullyExpanded {
+    final double floor = widget.pinnedSnapFraction;
+    return widget.progressNotifier.value > floor + 0.05;
+  }
 
   Widget _buildAppList(BuildContext context, double progress) {
     final pinned = _pinnedApps;
     final grouped = _groupedApps;
     final showFull = _isFullyExpanded;
 
-    // Calculate dynamic padding so the pinned box sticks to the bottom when drawer is at 0.50
-    double topPadding = 0.0;
-    if (pinned.isNotEmpty) {
-      final double screenHeight = MediaQuery.of(context).size.height;
-      final int rows = (pinned.length / 6).ceil();
-      // Rough estimate of box height: label + padding + grid rows + bottom padding
-      final double boxHeight = 24.0 + (rows * 50.0);
-      
-      // We want the box to sit ~110px above the absolute bottom of the screen.
-      // When drawer progress is 0.50, the top of the drawer is at screenHeight * 0.50.
-      final double targetMaxPadding = (screenHeight * 0.50) - 110 - boxHeight;
-      
-      if (targetMaxPadding > 0) {
-        if (progress <= 0.50) {
-          topPadding = targetMaxPadding;
-        } else {
-          // Smoothly animate the padding away as the user drags up
-          final double normalized = ((progress - 0.50) / 0.50).clamp(0.0, 1.0);
-          topPadding = lerpDouble(targetMaxPadding, 0.0, Curves.easeOutCubic.transform(normalized)) ?? 0.0;
-        }
-      }
-    }
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Pinned section — 6-column grid
+        // Pinned section — 6-column grid. Sized exactly by the snap height.
         if (pinned.isNotEmpty) ...[
           Padding(
-            padding: EdgeInsets.only(
+            padding: const EdgeInsets.only(
               left: CASISpacing.md,
-              top: CASISpacing.sm + topPadding,
-              bottom: CASISpacing.xs,
+              top: _PinnedSectionMetrics.labelTopPadding,
+              bottom: _PinnedSectionMetrics.labelBottomPadding,
             ),
             child: Text(
               'PINNED',
@@ -459,16 +571,17 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 6,
-              childAspectRatio: 1.0,
-              mainAxisSpacing: CASISpacing.xs,
-              crossAxisSpacing: CASISpacing.xs,
+              crossAxisCount: _PinnedSectionMetrics.pinnedColumns,
+              mainAxisExtent: _PinnedSectionMetrics.cellExtent,
+              mainAxisSpacing: _PinnedSectionMetrics.cellSpacing,
+              crossAxisSpacing: _PinnedSectionMetrics.cellSpacing,
             ),
             itemCount: pinned.length,
             itemBuilder: (context, index) {
               return _buildPinnedGridCell(pinned[index]);
             },
           ),
+          const SizedBox(height: _PinnedSectionMetrics.bottomBuffer),
           // Separator — only when fully expanded
           if (showFull)
             Padding(
@@ -658,7 +771,7 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                             ),
                             onTap: () {
                               Navigator.of(context).pop();
-                              _togglePin(app);
+                              widget.onTogglePin(app);
                             },
                             child: Padding(
                               padding: const EdgeInsets.symmetric(
@@ -884,7 +997,7 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
               child: Stack(
                 clipBehavior: Clip.none,
                 children: [
-                  if (_pinnedPackages.isNotEmpty)
+                  if (widget.pinnedPackages.isNotEmpty)
                     Positioned(
                       top: topOffset - CASISpacing.md,
                       right: 0,
