@@ -244,6 +244,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
         timestamp: entry.timestamp,
         icon: installed?.icon,
         appName: installed?.name ?? entry.appName,
+        title: entry.title,
+        text: entry.text,
       );
     }).toList();
     if (mounted) {

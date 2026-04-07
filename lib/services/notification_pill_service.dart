@@ -27,12 +27,20 @@ class NotificationPillEntry {
   final Uint8List? icon;
   final String appName;
 
+  /// Notification title — typically the sender name (e.g. "John Doe").
+  final String title;
+
+  /// Notification body text — typically the message preview / email body.
+  final String text;
+
   NotificationPillEntry({
     required this.packageName,
     required this.tier,
     required this.timestamp,
     this.icon,
     required this.appName,
+    this.title = '',
+    this.text = '',
   });
 }
 
@@ -262,8 +270,13 @@ class NotificationPillService {
   // Notification fetching & ranking
   // -------------------------------------------------------------------------
 
-  /// Fetch active notifications, filter and rank them, return top 0–2 unique
-  /// app entries suitable for the notification pill.
+  /// Maximum number of unique notification entries to surface in the
+  /// notification stack pill.
+  static const int maxStackEntries = 6;
+
+  /// Fetch active notifications, filter and rank them, return up to
+  /// [maxStackEntries] unique app entries suitable for the notification
+  /// stack pill (most important first).
   ///
   /// [foregroundPackage] — if the user currently has an app open, exclude it.
   static Future<List<NotificationPillEntry>> getNotificationPillApps({
@@ -320,11 +333,20 @@ class NotificationPillService {
       if (tier == null) continue; // Ignored
 
       final timestamp = map['timestamp'] as int? ?? 0;
+      final title = (map['title'] as String? ?? '').trim();
+      final rawText = (map['text'] as String? ?? '').trim();
+      final bigText = (map['bigText'] as String? ?? '').trim();
+      // Prefer the longer body when available so the pill can show more
+      // context — bigText usually contains the full message body while
+      // text is a short preview.
+      final body = bigText.isNotEmpty ? bigText : rawText;
 
       candidates.add(_RankedNotification(
         packageName: packageName,
         tier: tier,
         timestamp: timestamp,
+        title: title,
+        text: body,
       ));
     }
 
@@ -345,8 +367,8 @@ class NotificationPillService {
       }
     }
 
-    // Take top 2
-    final top = unique.take(2).toList();
+    // Take top N for the stack pill
+    final top = unique.take(maxStackEntries).toList();
 
     return top
         .map((c) => NotificationPillEntry(
@@ -354,6 +376,8 @@ class NotificationPillService {
               tier: c.tier,
               timestamp: c.timestamp,
               appName: _appLabel(c.packageName),
+              title: c.title,
+              text: c.text,
             ))
         .toList();
   }
@@ -400,10 +424,14 @@ class _RankedNotification {
   final String packageName;
   final int tier;
   final int timestamp;
+  final String title;
+  final String text;
 
   _RankedNotification({
     required this.packageName,
     required this.tier,
     required this.timestamp,
+    this.title = '',
+    this.text = '',
   });
 }

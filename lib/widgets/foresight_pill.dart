@@ -4,11 +4,12 @@ import 'package:casi/design_system.dart';
 import 'package:casi/services/foresight_service.dart';
 import 'package:casi/services/notification_pill_service.dart';
 
-/// The Foresight dock + notification pills.
+/// The Foresight dock + notification stack pill.
 ///
 /// Layout:
-///   ┌──────────── 2 "half-big" notification pills ───────────┐
-///   │  [ #2 notif ]              [ #1 notif ]               │
+///   ┌────────── notification stack pill (single card) ──────┐
+///   │  [icon]  Sender                                        │
+///   │          message preview text…                         │
 ///   └───────────────────────────────────────────────────────┘
 ///   ┌───────────── 5 foresight app chips ───────────────────┐
 ///   │   [ A ]  [ B ]  [ C ]  [ D ]  [ E ]                    │
@@ -16,9 +17,13 @@ import 'package:casi/services/notification_pill_service.dart';
 ///
 /// The foresight chip row ALWAYS displays 5 app icons (the caller has
 /// already deduped against any notification apps). Above it sits a
-/// row of up to two "half-big" pills — each roughly half the width of
-/// the music player so a pair of them feel like an extension of the
-/// dock below. Pills animate in/out cooperatively with the dock.
+/// single "stacked" notification pill that matches the music player's
+/// width and feels like a natural extension of the dock below.
+///
+/// The stack shows the most-important notification on top with the
+/// remaining notifications visually layered behind it. Tapping the
+/// front card opens its app. Swiping right cycles forward through the
+/// stack (1 → 2 → 3 → … → wrap to 1); swiping left cycles backward.
 class ForesightPill extends StatelessWidget {
   /// Max foresight apps rendered in the dock row.
   static const int _maxForesight = 5;
@@ -47,17 +52,10 @@ class ForesightPill extends StatelessWidget {
     final hasNotifs = notificationApps.isNotEmpty;
     if (predictions.isEmpty && !hasNotifs) return const SizedBox.shrink();
 
-    // #1 priority on the right, #2 on the left (matches the order the
-    // rest of the UI uses — most important pill closest to the thumb).
-    final NotificationPillEntry? leftNotif =
-        notificationApps.length >= 2 ? notificationApps[1] : null;
-    final NotificationPillEntry? rightNotif =
-        notificationApps.isNotEmpty ? notificationApps[0] : null;
-
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Animated notification pill row above the dock. AnimatedSize
+        // Animated notification stack pill above the dock. AnimatedSize
         // collapses smoothly when there are no notifications so the
         // dock slides up/down as pills appear and disappear.
         AnimatedSize(
@@ -66,10 +64,9 @@ class ForesightPill extends StatelessWidget {
           alignment: Alignment.bottomCenter,
           child: hasNotifs
               ? Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: _NotificationPillRow(
-                    left: leftNotif,
-                    right: rightNotif,
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _NotificationStackPill(
+                    entries: notificationApps,
                     onTap: _handleNotifTap,
                   ),
                 )
@@ -159,209 +156,424 @@ class ForesightPill extends StatelessWidget {
   }
 }
 
-// ─── Notification Pill Row ──────────────────────────────────────────────────
+// ─── Notification Stack Pill ────────────────────────────────────────────────
 //
-// A centered row of up to two "half-big" notification pills that sits
-// above the Foresight dock. Each pill is roughly half the width of the
-// music player so two of them visually match one music-player-sized
-// pill. When only one notification is present it's centered beneath
-// where the pair would have sat so the animation feels balanced.
+// A single music-player-width pill that sits above the Foresight dock
+// and shows the user's most-important active notification on top. The
+// remaining notifications are visually layered behind it like a deck
+// of cards. Swiping right cycles forward (1 → 2 → 3 → … → wrap to 1);
+// swiping left cycles backward. Tapping the front card opens its app.
 
-class _NotificationPillRow extends StatelessWidget {
-  final NotificationPillEntry? left;
-  final NotificationPillEntry? right;
+/// Horizontal margin around the stack pill — matches `SongPlayer`'s
+/// margin so the pill aligns to the same rail as the music player.
+const double _kStackHorizontalMargin = 40.0;
+
+/// Front-card height. Sized to fit a sender line + a single body
+/// preview line comfortably.
+const double _kStackPillHeight = 64.0;
+
+/// How many cards behind the front are visible as decorative
+/// "depth" layers (each progressively smaller and dimmer).
+const int _kStackVisibleBehind = 2;
+
+/// Horizontal drag distance (px) past which a swipe is committed.
+const double _kSwipeCommitThreshold = 48.0;
+
+/// Horizontal velocity (px/s) past which a flick is committed even
+/// without crossing the distance threshold.
+const double _kSwipeVelocityThreshold = 320.0;
+
+class _NotificationStackPill extends StatefulWidget {
+  final List<NotificationPillEntry> entries;
   final void Function(String packageName) onTap;
 
-  const _NotificationPillRow({
-    required this.left,
-    required this.right,
+  const _NotificationStackPill({
+    required this.entries,
     required this.onTap,
   });
 
   @override
+  State<_NotificationStackPill> createState() => _NotificationStackPillState();
+}
+
+class _NotificationStackPillState extends State<_NotificationStackPill> {
+  /// Index of the notification currently shown on the front of the
+  /// stack. 0 = most important.
+  int _index = 0;
+
+  /// Direction of the most recent swipe — drives the slide animation
+  /// of the [AnimatedSwitcher] inside the front card. +1 = forward
+  /// (next), -1 = backward (previous).
+  int _direction = 1;
+
+  /// Live horizontal drag offset for the front card. Resets to 0 on
+  /// drag end.
+  double _dragDx = 0.0;
+
+  @override
+  void didUpdateWidget(covariant _NotificationStackPill oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Keep the visible index in range when notifications come and go.
+    if (widget.entries.isEmpty) {
+      _index = 0;
+    } else if (_index >= widget.entries.length) {
+      _index = _index % widget.entries.length;
+    }
+  }
+
+  void _cycle(int delta) {
+    if (widget.entries.length <= 1) return;
+    setState(() {
+      _direction = delta >= 0 ? 1 : -1;
+      _index = (_index + delta) % widget.entries.length;
+      if (_index < 0) _index += widget.entries.length;
+      _dragDx = 0.0;
+    });
+  }
+
+  void _onHorizontalDragUpdate(DragUpdateDetails details) {
+    if (widget.entries.length <= 1) return;
+    setState(() {
+      _dragDx += details.delta.dx;
+    });
+  }
+
+  void _onHorizontalDragEnd(DragEndDetails details) {
+    if (widget.entries.length <= 1) {
+      setState(() => _dragDx = 0.0);
+      return;
+    }
+    final velocity = details.primaryVelocity ?? 0.0;
+    final committed = _dragDx.abs() >= _kSwipeCommitThreshold ||
+        velocity.abs() >= _kSwipeVelocityThreshold;
+
+    if (committed) {
+      // Swipe right (positive dx / positive velocity) → next
+      // notification. Swipe left → previous.
+      final goingForward = (_dragDx > 0) || (velocity > 0);
+      _cycle(goingForward ? 1 : -1);
+    } else {
+      setState(() => _dragDx = 0.0);
+    }
+  }
+
+  void _onHorizontalDragCancel() {
+    setState(() => _dragDx = 0.0);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // Match the music player's horizontal inset so the pill row feels
-    // anchored to the same rail.
-    const double horizontalMargin = 40.0;
-    const double gap = 10.0;
+    if (widget.entries.isEmpty) return const SizedBox.shrink();
+
+    final entries = widget.entries;
+    final total = entries.length;
+    final safeIndex = total == 0 ? 0 : _index % total;
+    final current = entries[safeIndex];
+
+    // Build a list of "behind" entries to render as decorative depth
+    // layers. We render at most [_kStackVisibleBehind] of them, and
+    // skip rendering anything if the stack only has the front card.
+    final int behindCount =
+        (total - 1).clamp(0, _kStackVisibleBehind).toInt();
+    final behindEntries = <NotificationPillEntry>[];
+    for (int offset = behindCount; offset >= 1; offset--) {
+      // Walk forward through the cycle so the *next* notifications
+      // peek out behind the current one.
+      final i = (safeIndex + offset) % total;
+      behindEntries.add(entries[i]);
+    }
+
+    // Reserve enough vertical space for the front card AND the
+    // visible "behind" cards so the dock doesn't visually clip them.
+    final double stackHeight =
+        _kStackPillHeight + behindCount * _kBehindVerticalGap;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: horizontalMargin),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final double full = constraints.maxWidth;
-          final double halfWidth = (full - gap) / 2;
-
-          return SizedBox(
-            width: full,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // Left slot — uses AnimatedSwitcher so a new pill
-                // fades/slides in smoothly when a notification arrives.
-                SizedBox(
-                  width: halfWidth,
-                  child: _AnimatedSlot(
-                    entry: left,
-                    alignment: Alignment.centerRight,
-                    onTap: onTap,
+      padding: const EdgeInsets.symmetric(horizontal: _kStackHorizontalMargin),
+      child: SizedBox(
+        height: stackHeight,
+        child: Stack(
+          alignment: Alignment.bottomCenter,
+          clipBehavior: Clip.none,
+          children: [
+            // Decorative "behind" cards. They're non-interactive — the
+            // user reaches them by swiping the front card.
+            for (int i = 0; i < behindEntries.length; i++)
+              _BehindCard(
+                // depth: 1 = directly behind front, 2 = one further back
+                depth: behindEntries.length - i,
+                entry: behindEntries[i],
+              ),
+            // Front (interactive) card.
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => widget.onTap(current.packageName),
+                onHorizontalDragUpdate: _onHorizontalDragUpdate,
+                onHorizontalDragEnd: _onHorizontalDragEnd,
+                onHorizontalDragCancel: _onHorizontalDragCancel,
+                child: Transform.translate(
+                  // Live drag tracking — gives the swipe a tactile,
+                  // direct-manipulation feel before it commits.
+                  offset: Offset(_dragDx, 0),
+                  child: AnimatedSwitcher(
+                    duration: CASIMotion.standard,
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeInCubic,
+                    layoutBuilder: (currentChild, previousChildren) {
+                      return Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          ...previousChildren,
+                          ?currentChild,
+                        ],
+                      );
+                    },
+                    transitionBuilder: (child, animation) {
+                      // Slide direction matches the swipe so the
+                      // outgoing card flies off the way the user
+                      // pushed it.
+                      final beginX = _direction.toDouble();
+                      return FadeTransition(
+                        opacity: animation,
+                        child: SlideTransition(
+                          position: Tween<Offset>(
+                            begin: Offset(beginX, 0),
+                            end: Offset.zero,
+                          ).animate(animation),
+                          child: child,
+                        ),
+                      );
+                    },
+                    child: _FrontNotificationCard(
+                      key: ValueKey('notif_front_${current.packageName}_$safeIndex'),
+                      entry: current,
+                      indexLabel:
+                          total > 1 ? '${safeIndex + 1}/$total' : null,
+                    ),
                   ),
                 ),
-                const SizedBox(width: gap),
-                SizedBox(
-                  width: halfWidth,
-                  child: _AnimatedSlot(
-                    entry: right,
-                    alignment: Alignment.centerLeft,
-                    onTap: onTap,
-                  ),
-                ),
-              ],
+              ),
             ),
-          );
-        },
+          ],
+        ),
       ),
     );
   }
 }
 
-/// A single pill slot that animates its entry/exit. The slot itself
-/// always takes the same amount of horizontal space, so when one of
-/// the two pills is missing the other stays put instead of
-/// re-centering — that makes the row feel stable as notifications
-/// come and go.
-class _AnimatedSlot extends StatelessWidget {
-  final NotificationPillEntry? entry;
-  final AlignmentGeometry alignment;
-  final void Function(String packageName) onTap;
+/// Vertical pixels each "behind" depth layer is offset upward from
+/// the front card so the user can see it peeking out.
+const double _kBehindVerticalGap = 6.0;
 
-  const _AnimatedSlot({
-    required this.entry,
-    required this.alignment,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedSwitcher(
-      duration: CASIMotion.standard,
-      switchInCurve: Curves.easeOutCubic,
-      switchOutCurve: Curves.easeInCubic,
-      transitionBuilder: (child, animation) {
-        return FadeTransition(
-          opacity: animation,
-          child: SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(0, 0.4),
-              end: Offset.zero,
-            ).animate(animation),
-            child: ScaleTransition(
-              scale: Tween<double>(begin: 0.9, end: 1.0).animate(animation),
-              child: child,
-            ),
-          ),
-        );
-      },
-      child: entry == null
-          ? const SizedBox.shrink(key: ValueKey('empty_slot'))
-          : Align(
-              key: ValueKey('notif_slot_${entry!.packageName}'),
-              alignment: alignment,
-              child: _NotificationHalfPill(
-                entry: entry!,
-                onTap: () => onTap(entry!.packageName),
-              ),
-            ),
-    );
-  }
-}
-
-/// "Half-big" frosted pill containing a notification app icon and
-/// its short label. Designed to roughly match the music player's
-/// pill aesthetic at half the width.
-class _NotificationHalfPill extends StatelessWidget {
+/// A non-interactive decorative "deck" card behind the front pill.
+/// [depth] = 1 means directly behind the front, 2 means one further
+/// back, etc. Larger depths render smaller, dimmer, and shifted up.
+class _BehindCard extends StatelessWidget {
+  final int depth;
   final NotificationPillEntry entry;
-  final VoidCallback onTap;
 
-  const _NotificationHalfPill({
-    required this.entry,
-    required this.onTap,
-  });
+  const _BehindCard({required this.depth, required this.entry});
 
   @override
   Widget build(BuildContext context) {
-    const double pillHeight = 54;
-    const double iconSize = 34;
+    // Each layer back: shrink horizontally, drop opacity, shift up.
+    final double horizontalInset = 14.0 * depth;
+    final double verticalShift = _kBehindVerticalGap * depth;
+    final double opacity = (1.0 - 0.28 * depth).clamp(0.25, 1.0);
 
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(pillHeight / 2),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(
-            sigmaX: CASIGlass.blurStandard,
-            sigmaY: CASIGlass.blurStandard,
-          ),
-          child: Container(
-            height: pillHeight,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(
-              color:
-                  Colors.white.withValues(alpha: CASIElevation.card.bgAlpha),
-              borderRadius: BorderRadius.circular(pillHeight / 2),
-              border: Border.all(
-                color: Colors.white
-                    .withValues(alpha: CASIElevation.card.borderAlpha),
+    return Positioned(
+      left: horizontalInset,
+      right: horizontalInset,
+      bottom: verticalShift,
+      child: IgnorePointer(
+        child: Opacity(
+          opacity: opacity,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(_kStackPillHeight / 2),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(
+                sigmaX: CASIGlass.blurStandard,
+                sigmaY: CASIGlass.blurStandard,
               ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _buildNotifIcon(iconSize),
-                const SizedBox(width: 10),
-                Flexible(
-                  child: Text(
-                    entry.appName,
-                    style: const TextStyle(
-                      color: CASIColors.textPrimary,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+              child: Container(
+                height: _kStackPillHeight - 6.0 * depth,
+                decoration: BoxDecoration(
+                  color: Colors.white
+                      .withValues(alpha: CASIElevation.card.bgAlpha * 0.85),
+                  borderRadius:
+                      BorderRadius.circular(_kStackPillHeight / 2),
+                  border: Border.all(
+                    color: Colors.white.withValues(
+                        alpha: CASIElevation.card.borderAlpha * 0.85),
                   ),
                 ),
-              ],
+              ),
             ),
           ),
         ),
       ),
     );
   }
+}
 
-  Widget _buildNotifIcon(double size) {
-    final hasIcon = entry.icon != null && entry.icon!.isNotEmpty;
-    return hasIcon
-        ? ClipRRect(
-            borderRadius: BorderRadius.circular(size / 4),
-            child: Image.memory(
-              entry.icon!,
-              width: size,
-              height: size,
-              gaplessPlayback: true,
-              errorBuilder: (_, _, _) => Icon(
-                Icons.notifications_active_rounded,
-                color: CASIColors.textPrimary,
-                size: size,
-              ),
+/// The interactive top-of-stack notification card. Shows the app
+/// icon, the sender (notification title) and the message body, with
+/// the body truncated by ellipsis if it overflows. Sized to roughly
+/// match the music player's width and height aesthetic.
+class _FrontNotificationCard extends StatelessWidget {
+  final NotificationPillEntry entry;
+
+  /// Optional "1/4" style index indicator shown in the top-right of
+  /// the pill so users know how deep the stack is.
+  final String? indexLabel;
+
+  const _FrontNotificationCard({
+    super.key,
+    required this.entry,
+    this.indexLabel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Determine which strings to use. Fall back to the app name if
+    // the notification has no title (rare). Body falls back to empty.
+    final String displayTitle =
+        entry.title.isNotEmpty ? entry.title : entry.appName;
+    final String displayBody = entry.text;
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(_kStackPillHeight / 2),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(
+          sigmaX: CASIGlass.blurHeavy,
+          sigmaY: CASIGlass.blurHeavy,
+        ),
+        child: Container(
+          height: _kStackPillHeight,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.white
+                .withValues(alpha: CASIElevation.raised.bgAlpha),
+            borderRadius: BorderRadius.circular(_kStackPillHeight / 2),
+            border: Border.all(
+              color: Colors.white.withValues(
+                  alpha: CASIElevation.raised.borderAlpha),
+              width: 1.0,
             ),
-          )
-        : Icon(
-            Icons.notifications_active_rounded,
-            color: CASIColors.textPrimary,
-            size: size,
-          );
+          ),
+          child: Row(
+            children: [
+              _NotifAppIcon(entry: entry, size: 38),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            displayTitle,
+                            style: const TextStyle(
+                              color: CASIColors.textPrimary,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              height: 1.15,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (indexLabel != null) ...[
+                          const SizedBox(width: 8),
+                          Text(
+                            indexLabel!,
+                            style: const TextStyle(
+                              color: CASIColors.textSecondary,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    if (displayBody.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        displayBody,
+                        style: const TextStyle(
+                          color: CASIColors.textSecondary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w400,
+                          height: 1.2,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ] else ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        entry.appName,
+                        style: const TextStyle(
+                          color: CASIColors.textSecondary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w400,
+                          height: 1.2,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Square-rounded app icon for a notification entry, with a graceful
+/// fallback to a generic notification glyph.
+class _NotifAppIcon extends StatelessWidget {
+  final NotificationPillEntry entry;
+  final double size;
+
+  const _NotifAppIcon({required this.entry, required this.size});
+
+  @override
+  Widget build(BuildContext context) {
+    final hasIcon = entry.icon != null && entry.icon!.isNotEmpty;
+    return SizedBox(
+      width: size,
+      height: size,
+      child: hasIcon
+          ? ClipRRect(
+              borderRadius: BorderRadius.circular(size / 4),
+              child: Image.memory(
+                entry.icon!,
+                width: size,
+                height: size,
+                gaplessPlayback: true,
+                errorBuilder: (_, _, _) => Icon(
+                  Icons.notifications_active_rounded,
+                  color: CASIColors.textPrimary,
+                  size: size,
+                ),
+              ),
+            )
+          : Icon(
+              Icons.notifications_active_rounded,
+              color: CASIColors.textPrimary,
+              size: size,
+            ),
+    );
   }
 }
