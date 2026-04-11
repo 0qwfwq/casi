@@ -2,10 +2,16 @@
 //
 // Records every app launch with rich metadata (time, day, session gap,
 // previous app, network, battery, charging) into a local SQLite database.
-// On each unlock, scores all candidate apps using a tiered variable-
-// importance model and returns up to five predictions. The consuming
-// UI decides how many to display based on how many notification pills
-// are currently active.
+// On each prediction cycle, scores all candidate apps using a Multinomial
+// Naive Bayes classifier that computes P(app | context) via Bayes'
+// theorem with Laplace smoothing. Returns up to five predictions ranked
+// by posterior probability. The consuming UI decides how many to display
+// based on how many notification pills are currently active.
+//
+// The model is built from the full 30-day launch history on startup and
+// updated incrementally in O(1) on each new launch. A feedback loop from
+// the predictions table boosts apps the user actually opened and penalises
+// consistently ignored apps.
 //
 // Storage: 30-day rolling window, duplicate launches within a session
 // are collapsed, all I/O is asynchronous so launch performance is
@@ -13,6 +19,7 @@
 
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:installed_apps/app_info.dart';
@@ -58,6 +65,31 @@ class ForesightService {
   int _currentSessionGap = 7200; // seconds since last unlock
   List<ForesightPrediction> _currentPredictions = [];
   bool _initialized = false;
+
+  // ---------------------------------------------------------------------------
+  // Naive Bayes model state
+  // ---------------------------------------------------------------------------
+
+  /// Prior counts: package_name -> total launches in 30-day window.
+  Map<String, int> _priorCounts = {};
+
+  /// Total launches across all apps in the 30-day window.
+  int _totalLaunches = 0;
+
+  /// Likelihood counts: feature_name -> { feature_value -> { package -> count } }.
+  Map<String, Map<String, Map<String, int>>> _likelihoodCounts = {};
+
+  /// Number of distinct values observed per feature (for Laplace denominator).
+  Map<String, int> _vocabSizes = {};
+
+  /// All app package names the model has seen.
+  Set<String> _knownApps = {};
+
+  /// Whether the model has been built from the database at least once.
+  bool _modelLoaded = false;
+
+  /// Laplace smoothing parameter (additive smoothing).
+  static const double _alpha = 1.0;
 
   List<ForesightPrediction> get currentPredictions => _currentPredictions;
   bool get isInitialized => _initialized;
@@ -120,7 +152,8 @@ class ForesightService {
 
       _initialized = true;
       await _loadLastApp();
-      unawaited(_pruneOldData());
+      await _pruneOldData();
+      await _buildModel();
       debugPrint('[Foresight] Initialized.');
     } catch (e) {
       debugPrint('[Foresight] Init error: $e');
@@ -155,6 +188,7 @@ class ForesightService {
     try {
       final now = DateTime.now();
       final context = await _getDeviceContext();
+      final prevApp = _previousApp; // capture before overwriting
 
       await _db!.insert('launches', {
         'package_name': packageName,
@@ -163,7 +197,7 @@ class ForesightService {
         'hour': now.hour,
         'day_of_week': now.weekday,
         'session_gap_seconds': _currentSessionGap,
-        'previous_app': _previousApp,
+        'previous_app': prevApp,
         'network_state': context['networkState'] ?? 'unknown',
         'battery_level': context['batteryLevel'] ?? -1,
         'charging_state': (context['isCharging'] == true) ? 1 : 0,
@@ -172,6 +206,22 @@ class ForesightService {
       // Update tracking state
       _previousApp = packageName;
       _lastSessionPackage = packageName;
+
+      // Incrementally update the Naive Bayes model with this observation
+      if (_modelLoaded) {
+        _incrementalUpdate(
+          packageName,
+          _extractFeatures(
+            hour: now.hour,
+            dayOfWeek: now.weekday,
+            previousApp: prevApp,
+            sessionGapSeconds: _currentSessionGap,
+            batteryLevel: (context['batteryLevel'] as int?) ?? 100,
+            isCharging: context['isCharging'] == true,
+            networkState: (context['networkState'] as String?) ?? 'unknown',
+          ),
+        );
+      }
 
       // Record feedback for any outstanding predictions
       _recordFeedbackForLaunch(packageName);
@@ -266,16 +316,102 @@ class ForesightService {
   }
 
   // -------------------------------------------------------------------------
-  // Scoring — tiered variable importance model
+  // Naive Bayes classifier
   // -------------------------------------------------------------------------
   //
-  //  Tier 1 (~60%)  time_of_day 28%  |  previous_app 22%  |  day_of_week 10%
-  //  Tier 2 (~25%)  session_gap  9%  |  feedback      8%  |  charging     8%
-  //  Tier 3 (~10%)  battery      4%  |  network        4%  |  (notif 2% — Phase 2)
-  //  Tier 4  (~5%)  hist_freq    2%  |  recent_freq    2%  |  category     1%
-  //
-  //  Every prediction must trace to at least one Tier 1 or Tier 2 signal.
+  // Computes P(app | context) ∝ P(app) · ∏ P(feature_i | app) for every
+  // candidate app using Bayes' theorem with a conditional-independence
+  // assumption. All arithmetic is done in log-space to avoid floating-point
+  // underflow, and Laplace smoothing (α = 1) ensures unseen feature–app
+  // combinations receive a small non-zero probability.
 
+  /// Build (or rebuild) the in-memory Naive Bayes model from the 30-day
+  /// launch history stored in SQLite. Called once on startup and again
+  /// after old data is pruned.
+  Future<void> _buildModel() async {
+    if (_db == null) return;
+
+    final cutoff =
+        DateTime.now().subtract(const Duration(days: 30)).toIso8601String();
+
+    final rows = await _db!.rawQuery(
+      'SELECT package_name, hour, day_of_week, previous_app, '
+      'session_gap_seconds, battery_level, charging_state, network_state '
+      'FROM launches WHERE timestamp >= ?',
+      [cutoff],
+    );
+
+    // Reset model state
+    _priorCounts = {};
+    _totalLaunches = 0;
+    _likelihoodCounts = {};
+    _knownApps = {};
+    final vocabSets = <String, Set<String>>{};
+
+    for (final row in rows) {
+      final app = row['package_name'] as String;
+      _priorCounts[app] = (_priorCounts[app] ?? 0) + 1;
+      _totalLaunches++;
+      _knownApps.add(app);
+
+      final features = _extractFeatures(
+        hour: row['hour'] as int,
+        dayOfWeek: row['day_of_week'] as int,
+        previousApp: row['previous_app'] as String?,
+        sessionGapSeconds: row['session_gap_seconds'] as int,
+        batteryLevel: row['battery_level'] as int,
+        isCharging: (row['charging_state'] as int) == 1,
+        networkState: row['network_state'] as String,
+      );
+
+      for (final entry in features.entries) {
+        final fname = entry.key;
+        final fval = entry.value;
+
+        _likelihoodCounts.putIfAbsent(fname, () => {});
+        _likelihoodCounts[fname]!.putIfAbsent(fval, () => {});
+        _likelihoodCounts[fname]![fval]![app] =
+            (_likelihoodCounts[fname]![fval]![app] ?? 0) + 1;
+
+        vocabSets.putIfAbsent(fname, () => {});
+        vocabSets[fname]!.add(fval);
+      }
+    }
+
+    _vocabSizes = vocabSets.map((k, v) => MapEntry(k, v.length));
+    _modelLoaded = true;
+    debugPrint('[Foresight] Naive Bayes model built — '
+        '$_totalLaunches launches, ${_knownApps.length} apps, '
+        '${_vocabSizes.entries.map((e) => '${e.key}:${e.value}').join(', ')}');
+  }
+
+  /// Incrementally update the model with a single new launch observation
+  /// in O(1) time, avoiding a full rebuild.
+  void _incrementalUpdate(String app, Map<String, String> features) {
+    _priorCounts[app] = (_priorCounts[app] ?? 0) + 1;
+    _totalLaunches++;
+    _knownApps.add(app);
+
+    for (final entry in features.entries) {
+      final fname = entry.key;
+      final fval = entry.value;
+
+      _likelihoodCounts.putIfAbsent(fname, () => {});
+      _likelihoodCounts[fname]!.putIfAbsent(fval, () => {});
+      _likelihoodCounts[fname]![fval]![app] =
+          (_likelihoodCounts[fname]![fval]![app] ?? 0) + 1;
+
+      // Expand vocabulary size if a new value appears
+      final distinctValues = _likelihoodCounts[fname]!.keys.length;
+      if (distinctValues > (_vocabSizes[fname] ?? 0)) {
+        _vocabSizes[fname] = distinctValues;
+      }
+    }
+  }
+
+  /// Score every known app using the Naive Bayes posterior probability
+  /// given the current context, then normalize via softmax to produce
+  /// confidence values in the 0–1 range.
   Future<Map<String, double>> _computeScores({
     required int hour,
     required int dayOfWeek,
@@ -285,234 +421,151 @@ class ForesightService {
     required bool isCharging,
     required String networkState,
   }) async {
-    final db = _db!;
-    final cutoff =
-        DateTime.now().subtract(const Duration(days: 30)).toIso8601String();
-    final cutoff24h =
-        DateTime.now().subtract(const Duration(hours: 24)).toIso8601String();
+    if (!_modelLoaded) await _buildModel();
+    if (_totalLaunches == 0 || _knownApps.isEmpty) return {};
 
-    // --- Time window ---
-    final window = _getTimeWindowRange(hour);
-    final bool wraps = window[1] > 24;
-    final int hStart = window[0];
-    final int hEnd = wraps ? window[1] - 24 : window[1];
+    final features = _extractFeatures(
+      hour: hour,
+      dayOfWeek: dayOfWeek,
+      previousApp: previousApp,
+      sessionGapSeconds: sessionGapSeconds,
+      batteryLevel: batteryLevel,
+      isCharging: isCharging,
+      networkState: networkState,
+    );
 
-    final timeQuery = wraps
-        ? 'SELECT package_name, COUNT(*) as cnt FROM launches '
-            'WHERE timestamp >= ? AND (hour >= ? OR hour < ?) '
-            'GROUP BY package_name'
-        : 'SELECT package_name, COUNT(*) as cnt FROM launches '
-            'WHERE timestamp >= ? AND hour >= ? AND hour < ? '
-            'GROUP BY package_name';
+    final numApps = _knownApps.length;
+    final scores = <String, double>{};
 
-    // --- Gap bucket ---
-    final gap = _getGapBucketRange(sessionGapSeconds);
+    for (final app in _knownApps) {
+      // Log-prior: log P(app)
+      double logScore = _safeLog((_priorCounts[app] ?? 0) + _alpha) -
+          _safeLog(_totalLaunches + _alpha * numApps);
 
-    // --- Day type ---
-    final isWeekend = dayOfWeek == 6 || dayOfWeek == 7;
-    final dayList = isWeekend ? [6, 7] : [1, 2, 3, 4, 5];
-    final dayPlaceholders = dayList.map((_) => '?').join(',');
+      // Log-likelihoods: sum of log P(feature_value | app)
+      for (final entry in features.entries) {
+        final fname = entry.key;
+        final fval = entry.value;
+        final vocabSize = _vocabSizes[fname] ?? 1;
 
-    // --- Run all queries ---
-    final timeCounts =
-        await db.rawQuery(timeQuery, [cutoff, hStart, hEnd]);
+        final countGivenApp =
+            _likelihoodCounts[fname]?[fval]?[app] ?? 0;
+        final countApp = _priorCounts[app] ?? 0;
 
-    final prevCounts = previousApp != null
-        ? await db.rawQuery(
-            'SELECT package_name, COUNT(*) as cnt FROM launches '
-            'WHERE timestamp >= ? AND previous_app = ? '
-            'GROUP BY package_name',
-            [cutoff, previousApp])
-        : <Map<String, Object?>>[];
-
-    final dayCounts = await db.rawQuery(
-        'SELECT package_name, COUNT(*) as cnt FROM launches '
-        'WHERE timestamp >= ? AND day_of_week IN ($dayPlaceholders) '
-        'GROUP BY package_name',
-        [cutoff, ...dayList]);
-
-    final gapCounts = await db.rawQuery(
-        'SELECT package_name, COUNT(*) as cnt FROM launches '
-        'WHERE timestamp >= ? AND session_gap_seconds >= ? AND session_gap_seconds < ? '
-        'GROUP BY package_name',
-        [cutoff, gap[0], gap[1]]);
-
-    final chargeCounts = await db.rawQuery(
-        'SELECT package_name, COUNT(*) as cnt FROM launches '
-        'WHERE timestamp >= ? AND charging_state = ? '
-        'GROUP BY package_name',
-        [cutoff, isCharging ? 1 : 0]);
-
-    final netCounts = await db.rawQuery(
-        'SELECT package_name, COUNT(*) as cnt FROM launches '
-        'WHERE timestamp >= ? AND network_state = ? '
-        'GROUP BY package_name',
-        [cutoff, networkState]);
-
-    final overallCounts = await db.rawQuery(
-        'SELECT package_name, COUNT(*) as cnt FROM launches '
-        'WHERE timestamp >= ? '
-        'GROUP BY package_name',
-        [cutoff]);
-
-    final recentCounts = await db.rawQuery(
-        'SELECT package_name, COUNT(*) as cnt FROM launches '
-        'WHERE timestamp >= ? '
-        'GROUP BY package_name',
-        [cutoff24h]);
-
-    final feedbackRows = await db.rawQuery(
-        'SELECT predicted_package, '
-        'SUM(CASE WHEN was_opened = 1 THEN 1.0 ELSE 0.0 END) as opened, '
-        'COUNT(*) as total '
-        'FROM predictions WHERE was_opened IS NOT NULL '
-        'GROUP BY predicted_package');
-
-    final lowBattCounts = batteryLevel < 20
-        ? await db.rawQuery(
-            'SELECT package_name, COUNT(*) as cnt FROM launches '
-            'WHERE timestamp >= ? AND battery_level >= 0 AND battery_level < 20 '
-            'GROUP BY package_name',
-            [cutoff])
-        : <Map<String, Object?>>[];
-
-    // --- Convert to maps ---
-    Map<String, int> toMap(List<Map<String, Object?>> rows) {
-      final m = <String, int>{};
-      for (final r in rows) {
-        m[r['package_name'] as String] = (r['cnt'] as int?) ?? 0;
+        logScore += _safeLog(countGivenApp + _alpha) -
+            _safeLog(countApp + _alpha * vocabSize);
       }
-      return m;
+
+      scores[app] = logScore;
     }
 
-    int sumCounts(Map<String, int> m) => m.values.fold(0, (a, b) => a + b);
+    // Boost scores using the prediction feedback loop
+    await _applyFeedbackBoost(scores);
 
-    final timeMap = toMap(timeCounts);
-    final prevMap = toMap(prevCounts);
-    final dayMap = toMap(dayCounts);
-    final gapMap = toMap(gapCounts);
-    final chargeMap = toMap(chargeCounts);
-    final netMap = toMap(netCounts);
-    final overallMap = toMap(overallCounts);
-    final recentMap = toMap(recentCounts);
-    final lowBattMap = toMap(lowBattCounts);
+    // Convert log-probabilities to 0–1 confidence via softmax
+    _softmaxNormalize(scores);
 
-    final totalTime = sumCounts(timeMap);
-    final totalPrev = sumCounts(prevMap);
-    final totalDay = sumCounts(dayMap);
-    final totalGap = sumCounts(gapMap);
-    final totalCharge = sumCounts(chargeMap);
-    final totalNet = sumCounts(netMap);
-    final totalOverall = sumCounts(overallMap);
-    final totalRecent = sumCounts(recentMap);
-    final totalLowBatt = sumCounts(lowBattMap);
+    return scores;
+  }
 
-    // Feedback: package -> hit rate (0.0–1.0)
-    final feedbackMap = <String, double>{};
+  /// Adjust log-scores using prediction hit-rate feedback from the
+  /// predictions table. Apps the user actually opened after they were
+  /// predicted receive a positive boost; consistently-ignored apps
+  /// receive a penalty.
+  Future<void> _applyFeedbackBoost(Map<String, double> logScores) async {
+    if (_db == null) return;
+
+    final feedbackRows = await _db!.rawQuery(
+      'SELECT predicted_package, '
+      'SUM(CASE WHEN was_opened = 1 THEN 1.0 ELSE 0.0 END) as opened, '
+      'COUNT(*) as total '
+      'FROM predictions WHERE was_opened IS NOT NULL '
+      'GROUP BY predicted_package',
+    );
+
     for (final r in feedbackRows) {
       final pkg = r['predicted_package'] as String;
       final opened = (r['opened'] as num?)?.toDouble() ?? 0;
       final total = (r['total'] as num?)?.toDouble() ?? 1;
-      feedbackMap[pkg] = total > 0 ? opened / total : 0.5;
-    }
+      final hitRate = total > 0 ? opened / total : 0.5;
 
-    // --- Score every candidate ---
-    final scores = <String, double>{};
-
-    for (final app in overallMap.keys) {
-      double tier12 = 0.0;
-
-      // Tier 1: Time of day (28%)
-      final tTime =
-          totalTime > 0 ? (timeMap[app] ?? 0) / totalTime : 0.0;
-      tier12 += tTime * 0.28;
-
-      // Tier 1: Previous app transition (22%)
-      final tPrev =
-          totalPrev > 0 ? (prevMap[app] ?? 0) / totalPrev : 0.0;
-      tier12 += tPrev * 0.22;
-
-      // Tier 1: Day of week (10%)
-      final tDay = totalDay > 0 ? (dayMap[app] ?? 0) / totalDay : 0.0;
-      tier12 += tDay * 0.10;
-
-      // Tier 2: Session gap (9%)
-      final tGap = totalGap > 0 ? (gapMap[app] ?? 0) / totalGap : 0.0;
-      tier12 += tGap * 0.09;
-
-      // Tier 2: Prediction feedback (8%)
-      final tFb = feedbackMap[app] ?? 0.5;
-      tier12 += tFb * 0.08;
-
-      // Tier 2: Charging state (8%)
-      final tCharge =
-          totalCharge > 0 ? (chargeMap[app] ?? 0) / totalCharge : 0.0;
-      tier12 += tCharge * 0.08;
-
-      // Guard: must have Tier 1/2 backing
-      if (tier12 < 0.001) continue;
-
-      double score = tier12;
-
-      // Tier 3: Battery level (4%)
-      if (batteryLevel < 20 && totalLowBatt > 0) {
-        score += ((lowBattMap[app] ?? 0) / totalLowBatt) * 0.04;
-      } else {
-        score +=
-            (totalOverall > 0 ? (overallMap[app] ?? 0) / totalOverall : 0.0) *
-                0.04;
+      if (logScores.containsKey(pkg)) {
+        // Shift in log-space: hitRate 1.0 → +0.5, hitRate 0.0 → −0.5
+        logScores[pkg] = logScores[pkg]! + (hitRate - 0.5);
       }
+    }
+  }
 
-      // Tier 3: Network state (4%)
-      score +=
-          (totalNet > 0 ? (netMap[app] ?? 0) / totalNet : 0.0) * 0.04;
+  /// Softmax-normalize a map of log-scores into 0–1 confidence values.
+  void _softmaxNormalize(Map<String, double> logScores) {
+    if (logScores.isEmpty) return;
 
-      // Tier 4: Historical frequency (2%)
-      score +=
-          (totalOverall > 0 ? (overallMap[app] ?? 0) / totalOverall : 0.0) *
-              0.02;
+    // Subtract max for numerical stability
+    final maxLog = logScores.values.reduce((a, b) => a > b ? a : b);
 
-      // Tier 4: Recent frequency — last 24 h (2%)
-      score +=
-          (totalRecent > 0 ? (recentMap[app] ?? 0) / totalRecent : 0.0) *
-              0.02;
-
-      // Tier 4: App category of previous app (1%) — Phase 2
-      // score += 0.0;
-
-      scores[app] = score;
+    double sumExp = 0.0;
+    final expScores = <String, double>{};
+    for (final entry in logScores.entries) {
+      final e = _safeExp(entry.value - maxLog);
+      expScores[entry.key] = e;
+      sumExp += e;
     }
 
-    return scores;
+    for (final key in logScores.keys) {
+      logScores[key] = sumExp > 0 ? expScores[key]! / sumExp : 0.0;
+    }
   }
+
+  /// log(x) clamped so log(0) returns −30 instead of −infinity.
+  double _safeLog(num x) => x > 0 ? log(x.toDouble()) : -30.0;
+
+  /// exp(x) clamped to avoid overflow/underflow.
+  double _safeExp(double x) => exp(x.clamp(-30.0, 30.0));
 
   // -------------------------------------------------------------------------
   // Helpers
   // -------------------------------------------------------------------------
 
-  /// Map an hour (0–23) to a behavioural time window.
-  ///   early_morning 5–7  |  morning 8–11  |  afternoon 12–16
-  ///   evening 17–20      |  night 21–0    |  late_night 1–4
-  /// Returns [startHour, endHour]. endHour > 24 means the window wraps
-  /// past midnight.
-  List<int> _getTimeWindowRange(int hour) {
-    if (hour >= 5 && hour < 8) return [5, 8];
-    if (hour >= 8 && hour < 12) return [8, 12];
-    if (hour >= 12 && hour < 17) return [12, 17];
-    if (hour >= 17 && hour < 21) return [17, 21];
-    if (hour >= 21 || hour < 1) return [21, 25]; // wraps midnight
-    return [1, 5]; // late night
+  /// Map an hour (0–23) to a behavioural time-bucket label.
+  String _getTimeBucket(int hour) {
+    if (hour >= 5 && hour < 8) return 'early_morning';
+    if (hour >= 8 && hour < 12) return 'morning';
+    if (hour >= 12 && hour < 17) return 'afternoon';
+    if (hour >= 17 && hour < 21) return 'evening';
+    if (hour >= 21 || hour < 1) return 'night';
+    return 'late_night';
   }
 
-  /// Map a session gap (seconds) to a behavioural bucket.
-  ///   instant <30s  |  short 30s–5m  |  medium 5m–30m
-  ///   long 30m–2h   |  fresh >2h
-  List<int> _getGapBucketRange(int seconds) {
-    if (seconds < 30) return [0, 30];
-    if (seconds < 300) return [30, 300];
-    if (seconds < 1800) return [300, 1800];
-    if (seconds < 7200) return [1800, 7200];
-    return [7200, 999999];
+  /// Map a session gap (seconds) to a behavioural bucket label.
+  String _getGapBucket(int seconds) {
+    if (seconds < 30) return 'instant';
+    if (seconds < 300) return 'short';
+    if (seconds < 1800) return 'medium';
+    if (seconds < 7200) return 'long';
+    return 'fresh';
+  }
+
+  /// Convert raw contextual signals into categorical feature values
+  /// for the Naive Bayes classifier.
+  Map<String, String> _extractFeatures({
+    required int hour,
+    required int dayOfWeek,
+    required String? previousApp,
+    required int sessionGapSeconds,
+    required int batteryLevel,
+    required bool isCharging,
+    required String networkState,
+  }) {
+    return {
+      'time_bucket': _getTimeBucket(hour),
+      'day_type': (dayOfWeek == 6 || dayOfWeek == 7) ? 'weekend' : 'weekday',
+      'previous_app': previousApp ?? '__none__',
+      'gap_bucket': _getGapBucket(sessionGapSeconds),
+      'charging': isCharging ? 'true' : 'false',
+      'battery_bucket':
+          batteryLevel < 20 ? 'low' : (batteryLevel > 80 ? 'high' : 'medium'),
+      'network': networkState,
+    };
   }
 
   Future<Map<String, dynamic>> _getDeviceContext() async {
@@ -597,9 +650,20 @@ class ForesightService {
         where: 'predicted_package = ?',
         whereArgs: [packageName],
       );
-      // Also clear it from current predictions cache
+      // Clear from current predictions cache
       _currentPredictions.removeWhere((p) => p.packageName == packageName);
       if (_previousApp == packageName) _previousApp = null;
+
+      // Remove from in-memory Naive Bayes model
+      _knownApps.remove(packageName);
+      _priorCounts.remove(packageName);
+      for (final featureMap in _likelihoodCounts.values) {
+        for (final valueMap in featureMap.values) {
+          valueMap.remove(packageName);
+        }
+      }
+      _totalLaunches = _priorCounts.values.fold(0, (a, b) => a + b);
+
       debugPrint('[Foresight] Purged $packageName: '
           '$launchesDeleted launches, $predictionsDeleted predictions removed.');
     } catch (e) {
@@ -617,6 +681,7 @@ class ForesightService {
     await _db!.delete('predictions', where: 'timestamp < ?', whereArgs: [cutoff]);
     if (deleted > 0) {
       debugPrint('[Foresight] Pruned $deleted entries older than 30 days.');
+      await _buildModel(); // Rebuild model without pruned data
     }
   }
 }
