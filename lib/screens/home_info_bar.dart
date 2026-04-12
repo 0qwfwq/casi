@@ -142,6 +142,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   // --- Foresight State ---
   List<ForesightPrediction> _foresightPredictions = [];
   bool _showForesight = true;
+  int _foresightDockCount = 5;
 
   // --- Notification Pill State ---
   List<NotificationPillEntry> _notificationPillApps = [];
@@ -161,7 +162,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
 
   // --- Drawer Control ---
   final ValueNotifier<double> _drawerProgress = ValueNotifier(0.0);
-  final ValueNotifier<double> _drawerPinnedSnap = ValueNotifier(0.0);
   final DraggableScrollableController _drawerController = DraggableScrollableController();
   double _dragStartY = 0.0;
 
@@ -222,7 +222,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
         .where((p) =>
             !dockPackages.contains(p.packageName) &&
             !notifPackages.contains(p.packageName))
-        .take(5)
+        .take(_foresightDockCount)
         .toList();
     if (mounted) {
       setState(() => _foresightPredictions = filtered);
@@ -742,10 +742,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     final prefs = await SharedPreferences.getInstance();
     final hidden = prefs.getBool('foresight_hidden') ?? false;
     final longPressPkg = prefs.getString('foresight_longpress_package') ?? '';
+    final dockCount = (prefs.getInt('foresight_dock_count') ?? 5).clamp(1, 7);
     if (mounted) {
       setState(() {
         _showForesight = !hidden;
         _foresightLongPressPackage = longPressPkg;
+        _foresightDockCount = dockCount;
       });
     }
   }
@@ -1015,11 +1017,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                   _drawerController.size > 0.05;
 
               if (drawerOpen) {
-                // Once the drawer (pinned or otherwise) is showing, a
-                // swipe anywhere on screen expands it to full or closes
-                // it entirely. This lets the user flick up/down from
-                // above the drawer without needing to touch the pinned
-                // grid itself.
+                // Once the drawer is showing, a swipe anywhere on screen
+                // expands it to full or closes it entirely.
                 if (velocity < -500) {
                   _drawerController.animateTo(
                     1.0,
@@ -1035,14 +1034,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                 }
               } else {
                 // Drawer closed: a swipe up from anywhere but the very
-                // bottom edge opens it to the pinned snap (or straight
-                // to full if the user has no pinned apps).
+                // bottom edge opens it to the full app drawer.
                 if (_dragStartY < screenHeight - 60 && velocity < -500) {
-                  final double target = _drawerPinnedSnap.value > 0
-                      ? _drawerPinnedSnap.value
-                      : 1.0;
                   _drawerController.animateTo(
-                    target,
+                    1.0,
                     duration: const Duration(milliseconds: 120),
                     curve: Curves.easeOutCubic,
                   );
@@ -1204,6 +1199,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                                       child: ForesightPill(
                                                         predictions: _foresightPredictions,
                                                         onAppTap: _onForesightAppTap,
+                                                        maxForesight: _foresightDockCount,
                                                         notificationApps: _notificationPillApps,
                                                         onNotificationTap: _onNotificationPillTap,
                                                         onLongPress: _onForesightLongPress,
@@ -1257,6 +1253,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                                   ? ForesightPill(
                                                       predictions: _foresightPredictions,
                                                       onAppTap: _onForesightAppTap,
+                                                      maxForesight: _foresightDockCount,
                                                       notificationApps: _notificationPillApps,
                                                       onNotificationTap: _onNotificationPillTap,
                                                       onLongPress: _onForesightLongPress,
@@ -1565,7 +1562,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                             AppDrawer(
                               apps: _apps,
                               progressNotifier: _drawerProgress,
-                              pinnedSnapNotifier: _drawerPinnedSnap,
                               controller: _drawerController,
                               onAppTap: (app) {
                                 ForesightService.instance.recordLaunch(app.packageName, appName: app.name);

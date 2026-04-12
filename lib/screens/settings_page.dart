@@ -23,6 +23,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _immersiveMode = false;
   String _temperatureUnit = 'C'; // 'C' or 'F'
   bool _showForesight = true;
+  int _foresightDockCount = 5;
   bool _briefDismissedToday = false;
   String _foresightLongPressPackage = '';
   String _foresightLongPressLabel = 'Default Browser';
@@ -52,6 +53,7 @@ class _SettingsPageState extends State<SettingsPage> {
       _temperatureUnit = prefs.getString('temperature_unit') ?? 'C';
       _nameController.text = prefs.getString('user_name') ?? '';
       _showForesight = !(prefs.getBool('foresight_hidden') ?? false);
+      _foresightDockCount = (prefs.getInt('foresight_dock_count') ?? 5).clamp(1, 7);
       _briefDismissedToday =
           (prefs.getInt('morning_brief_dismiss_day') ?? -1) == today;
       _foresightLongPressPackage = longPressPkg;
@@ -78,6 +80,13 @@ class _SettingsPageState extends State<SettingsPage> {
     setState(() => _showForesight = value);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('foresight_hidden', !value);
+  }
+
+  Future<void> _setForesightDockCount(int count) async {
+    final clamped = count.clamp(1, 7);
+    setState(() => _foresightDockCount = clamped);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('foresight_dock_count', clamped);
   }
 
   /// "Show Brief again" — clears today's dismiss flag so the morning
@@ -135,6 +144,32 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  // ── Section header builder ────────────────────────────────────────────
+
+  Widget _sectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 4),
+      child: Text(
+        title.toUpperCase(),
+        style: CASITypography.caption.copyWith(
+          color: CASIColors.textTertiary,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 1.2,
+        ),
+      ),
+    );
+  }
+
+  Widget _sectionDivider() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Container(
+        height: 0.5,
+        color: CASIColors.glassDivider,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -159,6 +194,8 @@ class _SettingsPageState extends State<SettingsPage> {
           SafeArea(
             child: ListView(
               children: [
+                // ─── General ───────────────────────────────────────
+                _sectionHeader('General'),
                 // Your Name
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -188,7 +225,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 4),
                 ListTile(
                   title: const Text("Background", style: TextStyle(color: Colors.white)),
                   leading: const Icon(Icons.wallpaper, color: Colors.white),
@@ -240,23 +277,10 @@ class _SettingsPageState extends State<SettingsPage> {
                     ],
                   ),
                 ),
-                ListTile(
-                  title: const Text("Notification Tiers", style: TextStyle(color: Colors.white)),
-                  subtitle: const Text("Customize app priority for notification pills", style: TextStyle(color: CASIColors.textSecondary, fontSize: 12)),
-                  leading: const Icon(Icons.notifications_active_outlined, color: Colors.white),
-                  trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 16),
-                  onTap: () {
-                    Navigator.push(context, PageRouteBuilder(
-                      pageBuilder: (context, animation, secondaryAnimation) => const NotificationTierSettingsPage(),
-                      transitionDuration: const Duration(milliseconds: 80),
-                      reverseTransitionDuration: const Duration(milliseconds: 60),
-                      transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                        return FadeTransition(opacity: animation, child: child);
-                      },
-                    ));
-                  },
-                ),
-                // Foresight dock visibility
+
+                // ─── Foresight ─────────────────────────────────────
+                _sectionDivider(),
+                _sectionHeader('Foresight'),
                 SwitchListTile(
                   title: const Text("Show Foresight",
                       style: TextStyle(color: Colors.white)),
@@ -270,9 +294,40 @@ class _SettingsPageState extends State<SettingsPage> {
                   onChanged: _toggleForesight,
                   activeThumbColor: CASIColors.accentPrimary,
                 ),
+                // Foresight dock count slider
+                ListTile(
+                  leading: const Icon(Icons.apps_outlined, color: Colors.white),
+                  title: const Text("Dock Suggestions",
+                      style: TextStyle(color: Colors.white)),
+                  subtitle: Text(
+                    '$_foresightDockCount app${_foresightDockCount == 1 ? '' : 's'}',
+                    style: const TextStyle(
+                        color: CASIColors.textSecondary, fontSize: 12),
+                  ),
+                  trailing: SizedBox(
+                    width: 160,
+                    child: SliderTheme(
+                      data: SliderThemeData(
+                        activeTrackColor: CASIColors.accentPrimary,
+                        inactiveTrackColor: CASIColors.textTertiary.withValues(alpha: 0.3),
+                        thumbColor: CASIColors.accentPrimary,
+                        overlayColor: CASIColors.accentPrimary.withValues(alpha: 0.12),
+                        trackHeight: 3,
+                        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+                      ),
+                      child: Slider(
+                        value: _foresightDockCount.toDouble(),
+                        min: 1,
+                        max: 7,
+                        divisions: 6,
+                        onChanged: (v) => _setForesightDockCount(v.round()),
+                      ),
+                    ),
+                  ),
+                ),
                 // Foresight long-press app picker
                 ListTile(
-                  title: const Text("Foresight Long-Press App",
+                  title: const Text("Long-Press App",
                       style: TextStyle(color: Colors.white)),
                   subtitle: Text(
                     _foresightLongPressLabel,
@@ -292,7 +347,30 @@ class _SettingsPageState extends State<SettingsPage> {
                         ),
                   onTap: _pickForesightLongPressApp,
                 ),
-                // Morning Brief — manual re-show
+
+                // ─── Notifications ─────────────────────────────────
+                _sectionDivider(),
+                _sectionHeader('Notifications'),
+                ListTile(
+                  title: const Text("Notification Tiers", style: TextStyle(color: Colors.white)),
+                  subtitle: const Text("Customize app priority for notification pills", style: TextStyle(color: CASIColors.textSecondary, fontSize: 12)),
+                  leading: const Icon(Icons.notifications_active_outlined, color: Colors.white),
+                  trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 16),
+                  onTap: () {
+                    Navigator.push(context, PageRouteBuilder(
+                      pageBuilder: (context, animation, secondaryAnimation) => const NotificationTierSettingsPage(),
+                      transitionDuration: const Duration(milliseconds: 80),
+                      reverseTransitionDuration: const Duration(milliseconds: 60),
+                      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                        return FadeTransition(opacity: animation, child: child);
+                      },
+                    ));
+                  },
+                ),
+
+                // ─── Morning Brief ─────────────────────────────────
+                _sectionDivider(),
+                _sectionHeader('Morning Brief'),
                 ListTile(
                   title: const Text("Show Brief Again",
                       style: TextStyle(color: Colors.white)),
@@ -310,6 +388,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   enabled: _briefDismissedToday,
                   onTap: _briefDismissedToday ? _showBriefAgain : null,
                 ),
+                const SizedBox(height: 24),
               ],
             ),
           ),

@@ -11,12 +11,13 @@ import 'package:casi/services/notification_pill_service.dart';
 ///   │  [icon]  Sender                                        │
 ///   │          message preview text…                         │
 ///   └───────────────────────────────────────────────────────┘
-///   ┌───────────── 5 foresight app chips ───────────────────┐
+///   ┌───────────── 1–7 foresight app chips ──────────────────┐
 ///   │   [ A ]  [ B ]  [ C ]  [ D ]  [ E ]                    │
 ///   └───────────────────────────────────────────────────────┘
 ///
-/// The foresight chip row ALWAYS displays 5 app icons (the caller has
-/// already deduped against any notification apps). Above it sits a
+/// The foresight chip row displays up to [maxForesight] app icons
+/// (configurable 1–7 via settings, default 5). The caller has
+/// already deduped against any notification apps. Above it sits a
 /// single "stacked" notification pill that matches the music player's
 /// width and feels like a natural extension of the dock below.
 ///
@@ -26,7 +27,8 @@ import 'package:casi/services/notification_pill_service.dart';
 /// stack (1 → 2 → 3 → … → wrap to 1); swiping left cycles backward.
 class ForesightPill extends StatelessWidget {
   /// Max foresight apps rendered in the dock row.
-  static const int _maxForesight = 5;
+  /// Configurable via settings (1–7); falls back to 5.
+  final int maxForesight;
 
   final List<ForesightPrediction> predictions;
   final void Function(String packageName) onAppTap;
@@ -42,6 +44,7 @@ class ForesightPill extends StatelessWidget {
     super.key,
     required this.predictions,
     required this.onAppTap,
+    this.maxForesight = 5,
     this.notificationApps = const [],
     this.onNotificationTap,
     this.onLongPress,
@@ -81,9 +84,9 @@ class ForesightPill extends StatelessWidget {
   Widget _buildForesightChips() {
     if (predictions.isEmpty) return const SizedBox.shrink();
 
-    final int count = predictions.length < _maxForesight
+    final int count = predictions.length < maxForesight
         ? predictions.length
-        : _maxForesight;
+        : maxForesight;
 
     return GestureDetector(
       onLongPress: onLongPress,

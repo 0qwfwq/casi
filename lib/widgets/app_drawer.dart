@@ -4,52 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:installed_apps/app_info.dart';
 import 'package:installed_apps/installed_apps.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:casi/utils/app_launcher.dart';
 import 'package:casi/design_system.dart';
 
-// ─── Pinned Section Metrics ─────────────────────────────────────────────────
-//
-// The pinned drawer's intermediate snap height is computed from these
-// constants so that what renders in the grid matches the snap target
-// pixel-for-pixel (no extra whitespace, no cut-off cells).
-
-class _PinnedSectionMetrics {
-  _PinnedSectionMetrics._();
-
-  static const int pinnedColumns = 6;
-  static const int maxPinnedRows = 4;
-  static const int maxPinnedApps = pinnedColumns * maxPinnedRows; // 24
-
-  static const double cellExtent = 56.0;              // fixed cell height
-  static const double cellSpacing = CASISpacing.xs;   // 4
-  static const double labelTopPadding = CASISpacing.sm; // 8
-  static const double labelHeight = 16.0;             // caption line height
-  static const double labelBottomPadding = CASISpacing.xs; // 4
-  static const double bottomBuffer = CASISpacing.sm;  // 8
-
-  /// Height in logical pixels needed to fit [rows] rows of pinned apps
-  /// plus the "PINNED" label header and its padding.
-  static double heightFor(int rows) {
-    if (rows <= 0) return 0.0;
-    final double grid = rows * cellExtent + (rows - 1) * cellSpacing;
-    return labelTopPadding +
-        labelHeight +
-        labelBottomPadding +
-        grid +
-        bottomBuffer;
-  }
-
-  /// Number of rows needed for [count] pinned apps (capped to [maxPinnedRows]).
-  static int rowsFor(int count) {
-    final clamped = count.clamp(0, maxPinnedApps);
-    return (clamped + pinnedColumns - 1) ~/ pinnedColumns;
-  }
-}
-
 // ─── Main AppDrawer Widget ──────────────────────────────────────────────────
 
-class AppDrawer extends StatefulWidget {
+class AppDrawer extends StatelessWidget {
   final List<AppInfo> apps;
   final ValueNotifier<double> progressNotifier;
   final Function(AppInfo) onAppTap;
@@ -57,12 +17,6 @@ class AppDrawer extends StatefulWidget {
   final Function(AppInfo) onUninstall;
   final VoidCallback onOpenSettings;
   final DraggableScrollableController? controller;
-
-  /// Optional notifier that receives the currently computed pinned-snap
-  /// fraction so the parent (home screen) can animate the drawer directly
-  /// to the intermediate "pinned only" stop on swipe-up. Emits 0.0 when
-  /// there are no pinned apps (in which case the parent should target 1.0).
-  final ValueNotifier<double>? pinnedSnapNotifier;
 
   const AppDrawer({
     super.key,
@@ -73,130 +27,33 @@ class AppDrawer extends StatefulWidget {
     required this.onUninstall,
     required this.onOpenSettings,
     this.controller,
-    this.pinnedSnapNotifier,
   });
 
   @override
-  State<AppDrawer> createState() => _AppDrawerState();
-}
-
-class _AppDrawerState extends State<AppDrawer> {
-  List<String> _pinnedPackages = [];
-
-  @override
-  void initState() {
-    super.initState();
-    _loadPinnedApps();
-  }
-
-  // ── Pinned Apps Persistence ────────────────────────────────────────────
-
-  Future<void> _loadPinnedApps() async {
-    final prefs = await SharedPreferences.getInstance();
-    final List<String>? pinned = prefs.getStringList('pinned_drawer_apps');
-    if (pinned != null && mounted) {
-      setState(() => _pinnedPackages = List<String>.from(pinned));
-    }
-  }
-
-  Future<void> _savePinnedApps() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList('pinned_drawer_apps', _pinnedPackages);
-  }
-
-  void _togglePin(AppInfo app) {
-    setState(() {
-      if (_pinnedPackages.contains(app.packageName)) {
-        _pinnedPackages.remove(app.packageName);
-      } else {
-        if (_pinnedPackages.length >= _PinnedSectionMetrics.maxPinnedApps) {
-          return; // hard cap — 4 rows × 6 apps
-        }
-        _pinnedPackages.add(app.packageName);
-      }
-    });
-    _savePinnedApps();
-    _maybeResnapToPinned();
-  }
-
-  /// Compute the fraction of the parent's height needed to exactly fit the
-  /// pinned grid. Returns 0.0 when no apps are pinned.
-  double _computePinnedFraction(BuildContext context) {
-    final mq = MediaQuery.of(context);
-    final double containerHeight =
-        (mq.size.height - mq.padding.top - mq.padding.bottom)
-            .clamp(1.0, double.infinity);
-    final int rows = _PinnedSectionMetrics.rowsFor(_pinnedPackages.length);
-    if (rows == 0) return 0.0;
-    final double pinnedHeight = _PinnedSectionMetrics.heightFor(rows);
-    return (pinnedHeight / containerHeight).clamp(0.0, 0.95);
-  }
-
-  /// If the drawer is sitting at the old pinned snap (or anywhere in the
-  /// intermediate region), animate it to the freshly computed pinned snap
-  /// so pinning/unpinning resizes the drawer smoothly.
-  void _maybeResnapToPinned() {
-    final controller = widget.controller;
-    if (controller == null || !controller.isAttached) return;
-    final double size = controller.size;
-    if (size <= 0.01 || size >= 0.95) return; // closed or full — leave alone
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !controller.isAttached) return;
-      final double pinnedFraction = _computePinnedFraction(context);
-      final double target = pinnedFraction > 0 ? pinnedFraction : 1.0;
-      controller.animateTo(
-        target,
-        duration: CASIMotion.fast,
-        curve: Curves.easeOutCubic,
-      );
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final double pinnedFraction = _computePinnedFraction(context);
-    final bool hasPinned = pinnedFraction > 0;
-    final List<double> snapSizes = hasPinned
-        ? <double>[0.0, pinnedFraction, 1.0]
-        : const <double>[0.0, 1.0];
-
-    // Mirror the current pinned-snap into the parent-owned notifier (if any)
-    // so the home screen's swipe handler can animate straight to it.
-    final notifier = widget.pinnedSnapNotifier;
-    if (notifier != null && notifier.value != pinnedFraction) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        notifier.value = pinnedFraction;
-      });
-    }
-
     return NotificationListener<DraggableScrollableNotification>(
       onNotification: (notification) {
         final double progress = notification.extent / notification.maxExtent;
-        widget.progressNotifier.value = progress.clamp(0.0, 1.0);
+        progressNotifier.value = progress.clamp(0.0, 1.0);
         return false;
       },
       child: DraggableScrollableSheet(
-        controller: widget.controller,
+        controller: controller,
         initialChildSize: 0.0,
         minChildSize: 0.0,
         maxChildSize: 1.0,
         snap: true,
-        snapSizes: snapSizes,
+        snapSizes: const <double>[0.0, 1.0],
         snapAnimationDuration: CASIMotion.micro,
         builder: (context, scrollController) {
           return _AppDrawerSheet(
-            apps: widget.apps,
+            apps: apps,
             scrollController: scrollController,
-            onAppTap: widget.onAppTap,
-            onAddToHome: widget.onAddToHome,
-            onUninstall: widget.onUninstall,
-            onOpenSettings: widget.onOpenSettings,
-            progressNotifier: widget.progressNotifier,
-            pinnedPackages: _pinnedPackages,
-            onTogglePin: _togglePin,
-            pinnedSnapFraction: pinnedFraction,
+            onAppTap: onAppTap,
+            onAddToHome: onAddToHome,
+            onUninstall: onUninstall,
+            onOpenSettings: onOpenSettings,
+            progressNotifier: progressNotifier,
           );
         },
       ),
@@ -214,9 +71,6 @@ class _AppDrawerSheet extends StatefulWidget {
   final Function(AppInfo) onUninstall;
   final VoidCallback onOpenSettings;
   final ValueNotifier<double> progressNotifier;
-  final List<String> pinnedPackages;
-  final ValueChanged<AppInfo> onTogglePin;
-  final double pinnedSnapFraction;
 
   const _AppDrawerSheet({
     required this.apps,
@@ -226,9 +80,6 @@ class _AppDrawerSheet extends StatefulWidget {
     required this.onUninstall,
     required this.onOpenSettings,
     required this.progressNotifier,
-    required this.pinnedPackages,
-    required this.onTogglePin,
-    required this.pinnedSnapFraction,
   });
 
   @override
@@ -283,35 +134,16 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
     });
   }
 
-  // ── Pinned App Lookups ────────────────────────────────────────────────
-  // Pinned state lives in the parent AppDrawer so the snap sizing can react.
-
-  bool _isPinned(AppInfo app) =>
-      widget.pinnedPackages.contains(app.packageName);
-
   // ── App Lists ─────────────────────────────────────────────────────────
 
-  List<AppInfo> get _pinnedApps {
-    final appMap = {for (final app in widget.apps) app.packageName: app};
-    // Defensive cap: never render more than a 4×6 grid even if stale
-    // preferences still contain a larger list.
-    return widget.pinnedPackages
-        .where((pkg) => appMap.containsKey(pkg))
-        .take(_PinnedSectionMetrics.maxPinnedApps)
-        .map((pkg) => appMap[pkg]!)
-        .toList();
-  }
-
-  List<AppInfo> get _unpinnedApps {
-    return widget.apps
-        .where((app) => !widget.pinnedPackages.contains(app.packageName))
-        .toList()
+  List<AppInfo> get _sortedApps {
+    return widget.apps.toList()
       ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
   }
 
   Map<String, List<AppInfo>> get _groupedApps {
     final Map<String, List<AppInfo>> groups = {};
-    for (final app in _unpinnedApps) {
+    for (final app in _sortedApps) {
       final firstChar = app.name.trim().isNotEmpty
           ? app.name.trim()[0].toUpperCase()
           : '#';
@@ -364,14 +196,8 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
       valueListenable: widget.progressNotifier,
       builder: (context, progress, _) {
         final double screenWidth = MediaQuery.of(context).size.width;
-        // Fade content in so it reaches full opacity by the pinned snap
-        // (so pinned apps are 100% visible at the pinned-only stop). If
-        // there are no pinned apps, fall back to the old 2x ramp.
-        final double fadeCeiling = widget.pinnedSnapFraction > 0.01
-            ? widget.pinnedSnapFraction
-            : 0.5;
         final double contentOpacity =
-            (progress / fadeCeiling).clamp(0.0, 1.0);
+            (progress / 0.5).clamp(0.0, 1.0);
 
         for (final letter in _availableLetters) {
           _sectionKeys.putIfAbsent(letter, () => GlobalKey());
@@ -385,10 +211,7 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
             child: Stack(
               children: [
                 // Background - frosted glass with gradient opacity
-                _GradientBackground(
-                  progress: progress,
-                  pinnedSnapFraction: widget.pinnedSnapFraction,
-                ),
+                _GradientBackground(progress: progress),
                 // Main scrollable content
                 Positioned.fill(
                   top: 0,
@@ -412,10 +235,8 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                       ),
                       SliverToBoxAdapter(
                         child: SizedBox(
-                          // Reserve room for the floating search bar only
-                          // while fully expanded. At the pinned snap this
-                          // must be zero so the sliver height exactly
-                          // matches the drawer height (no scroll slack).
+                          // Reserve room for the floating search bar while
+                          // fully expanded.
                           height: _isFullyExpanded
                               ? MediaQuery.of(context).viewInsets.bottom + 80
                               : 0,
@@ -439,7 +260,7 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                       ),
                     ),
                   ),
-                // Search bar — only visible when fully expanded past pinned snap
+                // Search bar — only visible when fully expanded
                 if (_isFullyExpanded)
                 Positioned(
                   left: 0,
@@ -544,96 +365,43 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
 
   // ── App List (Pinned + Alphabetical) ──────────────────────────────────
 
-  /// Whether the drawer is expanded past the pinned-only snap. Uses the
-  /// dynamically computed pinned snap so the threshold follows the actual
-  /// intermediate stop (5% above it gives a small commit window).
   bool get _isFullyExpanded {
-    final double floor = widget.pinnedSnapFraction;
-    return widget.progressNotifier.value > floor + 0.05;
+    return widget.progressNotifier.value > 0.05;
   }
 
   Widget _buildAppList(BuildContext context, double progress) {
-    final pinned = _pinnedApps;
     final grouped = _groupedApps;
-    final showFull = _isFullyExpanded;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Pinned section — 6-column grid. Sized exactly by the snap height.
-        if (pinned.isNotEmpty) ...[
-          Padding(
+        for (final entry in grouped.entries) ...[
+          Container(
+            key: _sectionKeys[entry.key],
             padding: const EdgeInsets.only(
               left: CASISpacing.md,
-              top: _PinnedSectionMetrics.labelTopPadding,
-              bottom: _PinnedSectionMetrics.labelBottomPadding,
+              top: CASISpacing.md,
+              bottom: CASISpacing.xs,
             ),
             child: Text(
-              'PINNED',
+              entry.key,
               style: CASITypography.caption.copyWith(
                 color: CASIColors.textTertiary,
-                fontWeight: FontWeight.w500,
-                letterSpacing: 1.5,
+                fontWeight: FontWeight.w400,
+                letterSpacing: 1.0,
               ),
             ),
           ),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: _PinnedSectionMetrics.pinnedColumns,
-              mainAxisExtent: _PinnedSectionMetrics.cellExtent,
-              mainAxisSpacing: _PinnedSectionMetrics.cellSpacing,
-              crossAxisSpacing: _PinnedSectionMetrics.cellSpacing,
-            ),
-            itemCount: pinned.length,
-            itemBuilder: (context, index) {
-              return _buildPinnedGridCell(pinned[index]);
-            },
-          ),
-          const SizedBox(height: _PinnedSectionMetrics.bottomBuffer),
-          // Separator — only when fully expanded
-          if (showFull)
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: CASISpacing.md,
-                vertical: CASISpacing.sm,
-              ),
-              child: Container(
-                height: 0.5,
-                color: CASIColors.glassDivider,
-              ),
-            ),
+          for (final app in entry.value)
+            _buildAppRow(app),
         ],
-        // Alphabetical sections — only when fully expanded
-        if (showFull)
-          for (final entry in grouped.entries) ...[
-            Container(
-              key: _sectionKeys[entry.key],
-              padding: const EdgeInsets.only(
-                left: CASISpacing.md,
-                top: CASISpacing.md,
-                bottom: CASISpacing.xs,
-              ),
-              child: Text(
-                entry.key,
-                style: CASITypography.caption.copyWith(
-                  color: CASIColors.textTertiary,
-                  fontWeight: FontWeight.w400,
-                  letterSpacing: 1.0,
-                ),
-              ),
-            ),
-            for (final app in entry.value)
-              _buildAppRow(app, isPinned: false),
-          ],
       ],
     );
   }
 
   // ── Single App Row (section 4.4 Single Column Spec) ────────────────────
 
-  Widget _buildAppRow(AppInfo app, {required bool isPinned}) {
+  Widget _buildAppRow(AppInfo app) {
     final hasIcon = app.icon != null && app.icon!.isNotEmpty;
 
     return GestureDetector(
@@ -642,14 +410,12 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
         _showContextMenu(app, details.globalPosition);
       },
       child: Padding(
-        // Row horizontal padding: 16dp each side (space.md)
         padding: const EdgeInsets.symmetric(
           horizontal: CASISpacing.md,
           vertical: 10,
         ),
         child: Row(
           children: [
-            // App icon — 48dp x 48dp (section 4.4)
             ClipRRect(
               borderRadius: BorderRadius.circular(10),
               child: SizedBox(
@@ -667,9 +433,7 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                     : Icon(Icons.android, color: CASIColors.textSecondary, size: 40),
               ),
             ),
-            // Icon-to-label padding: 16dp (space.md)
             const SizedBox(width: CASIAppIconSpec.iconToLabelPadding),
-            // App name — type.body1 SemiBold (section 4.4)
             Expanded(
               child: Text(
                 app.name,
@@ -678,53 +442,8 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            // Pin indicator
-            if (isPinned)
-              Padding(
-                padding: const EdgeInsets.only(left: CASISpacing.sm),
-                child: Icon(
-                  Icons.push_pin,
-                  size: CASIIcons.micro,
-                  color: CASIColors.textTertiary,
-                ),
-              ),
           ],
         ),
-      ),
-    );
-  }
-
-  // ── Pinned App Grid Cell ─────────────────────────────────────────────
-
-  Widget _buildPinnedGridCell(AppInfo app) {
-    final hasIcon = app.icon != null && app.icon!.isNotEmpty;
-
-    return GestureDetector(
-      onTap: () => widget.onAppTap(app),
-      onLongPressStart: (details) {
-        _showContextMenu(app, details.globalPosition);
-      },
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: SizedBox(
-              width: 40,
-              height: 40,
-              child: hasIcon
-                  ? Image.memory(
-                      app.icon!,
-                      width: 40,
-                      height: 40,
-                      gaplessPlayback: true,
-                      errorBuilder: (_, _, _) =>
-                          Icon(Icons.android, color: CASIColors.textSecondary, size: 36),
-                    )
-                  : Icon(Icons.android, color: CASIColors.textSecondary, size: 36),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -732,192 +451,38 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
   // ── Context Menu (Long Press) — glass.float level ─────────────────────
 
   void _showContextMenu(AppInfo app, Offset position) {
+    HapticFeedback.mediumImpact();
     final screenSize = MediaQuery.of(context).size;
-    final pinned = _isPinned(app);
-    double left = (position.dx - 100).clamp(16.0, screenSize.width - 216.0);
-    double top = (position.dy - 80).clamp(16.0, screenSize.height - 220.0);
 
-    showDialog(
-      context: context,
-      barrierColor: Colors.transparent,
-      builder: (context) {
-        return Stack(
-          children: [
-            Positioned.fill(
-              child: GestureDetector(
-                onTap: () => Navigator.of(context).pop(),
-                child: Container(color: Colors.transparent),
-              ),
-            ),
-            Positioned(
-              left: left,
-              top: top,
-              child: Material(
-                color: Colors.transparent,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(CASIGlass.cornerStandard),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(
-                      sigmaX: CASIGlass.blurHeavy,
-                      sigmaY: CASIGlass.blurHeavy,
-                    ),
-                    child: Container(
-                      width: 200,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: CASIElevation.float_.bgAlpha),
-                        borderRadius: BorderRadius.circular(CASIGlass.cornerStandard),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: CASIElevation.float_.borderAlpha),
-                          width: 1.0,
-                        ),
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // Pin / Unpin
-                          InkWell(
-                            borderRadius: const BorderRadius.vertical(
-                              top: Radius.circular(CASIGlass.cornerStandard),
-                            ),
-                            onTap: () {
-                              Navigator.of(context).pop();
-                              widget.onTogglePin(app);
-                            },
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: CASISpacing.md,
-                                vertical: 14,
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    pinned ? Icons.push_pin_outlined : Icons.push_pin,
-                                    color: CASIColors.textPrimary,
-                                    size: CASIIcons.standard,
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Text(
-                                    pinned ? 'Unpin' : 'Pin to Top',
-                                    style: CASITypography.body2.copyWith(
-                                      color: CASIColors.textPrimary,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          Container(
-                            height: 0.5,
-                            color: CASIColors.glassDivider,
-                          ),
-                          // Add to Home
-                          InkWell(
-                            onTap: () {
-                              Navigator.of(context).pop();
-                              widget.onAddToHome(app);
-                            },
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: CASISpacing.md,
-                                vertical: 14,
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.add_to_home_screen_outlined,
-                                    color: CASIColors.textPrimary,
-                                    size: CASIIcons.standard,
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Text(
-                                    'Add to Home',
-                                    style: CASITypography.body2.copyWith(
-                                      color: CASIColors.textPrimary,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          Container(
-                            height: 0.5,
-                            color: CASIColors.glassDivider,
-                          ),
-                          // App Info
-                          InkWell(
-                            onTap: () {
-                              Navigator.of(context).pop();
-                              InstalledApps.openSettings(app.packageName);
-                            },
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: CASISpacing.md,
-                                vertical: 14,
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.info_outline,
-                                    color: CASIColors.textPrimary,
-                                    size: CASIIcons.standard,
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Text(
-                                    'App Info',
-                                    style: CASITypography.body2.copyWith(
-                                      color: CASIColors.textPrimary,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          Container(
-                            height: 0.5,
-                            color: CASIColors.glassDivider,
-                          ),
-                          // Uninstall
-                          InkWell(
-                            borderRadius: const BorderRadius.vertical(
-                              bottom: Radius.circular(CASIGlass.cornerStandard),
-                            ),
-                            onTap: () {
-                              Navigator.of(context).pop();
-                              widget.onUninstall(app);
-                            },
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: CASISpacing.md,
-                                vertical: 14,
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.delete_outline,
-                                    color: CASIColors.alert,
-                                    size: CASIIcons.standard,
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Text(
-                                    'Uninstall',
-                                    style: CASITypography.body2.copyWith(
-                                      color: CASIColors.alert,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        );
-      },
+    const double menuWidth = 200;
+    const double menuHeight = 170;
+
+    double left = (position.dx - menuWidth / 2).clamp(16.0, screenSize.width - menuWidth - 16.0);
+    double top = (position.dy - 40).clamp(16.0, screenSize.height - menuHeight - 16.0);
+
+    final double alignX = ((position.dx - left) / menuWidth * 2 - 1).clamp(-1.0, 1.0);
+    final double alignY = ((position.dy - top) / menuHeight * 2 - 1).clamp(-1.0, 1.0);
+
+    Navigator.of(context).push(
+      _ContextMenuRoute(
+        left: left,
+        top: top,
+        scaleAlignment: Alignment(alignX, alignY),
+        child: _ContextMenuContent(
+          onAddToHome: () {
+            Navigator.of(context).pop();
+            widget.onAddToHome(app);
+          },
+          onAppInfo: () {
+            Navigator.of(context).pop();
+            InstalledApps.openSettings(app.packageName);
+          },
+          onUninstall: () {
+            Navigator.of(context).pop();
+            widget.onUninstall(app);
+          },
+        ),
+      ),
     );
   }
 
@@ -947,7 +512,7 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         for (final app in filtered)
-          _buildAppRow(app, isPinned: _isPinned(app)),
+          _buildAppRow(app),
       ],
     );
   }
@@ -1007,34 +572,6 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
               child: Stack(
                 clipBehavior: Clip.none,
                 children: [
-                  if (widget.pinnedPackages.isNotEmpty)
-                    Positioned(
-                      top: topOffset - CASISpacing.md,
-                      right: 0,
-                      child: GestureDetector(
-                        onTap: () {
-                          widget.scrollController.animateTo(
-                            0,
-                            duration: CASIMotion.micro,
-                            curve: Curves.easeOutCubic,
-                          );
-                        },
-                        child: SizedBox(
-                          width: sidebarWidth,
-                          child: Align(
-                            alignment: Alignment.centerRight,
-                            child: Padding(
-                              padding: const EdgeInsets.only(right: 5),
-                              child: Icon(
-                                Icons.star_rounded,
-                                size: CASIIcons.micro,
-                                color: CASIColors.textSecondary,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
                   for (int i = 0; i < letters.length; i++)
                     Builder(builder: (context) {
                       final letter = letters[i];
@@ -1106,31 +643,14 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
 
 class _GradientBackground extends StatelessWidget {
   final double progress;
-  final double pinnedSnapFraction;
 
-  const _GradientBackground({
-    required this.progress,
-    required this.pinnedSnapFraction,
-  });
+  const _GradientBackground({required this.progress});
 
   @override
   Widget build(BuildContext context) {
-    // When at or below the pinned snap, the background should be fully
-    // opaque so pinned apps never sit over a transparent glass gradient.
-    // Above the pinned snap, fade back into the normal top-transparent
-    // gradient as the drawer reveals the alphabetical section.
-    final double denom = (1.0 - pinnedSnapFraction).clamp(0.0001, 1.0);
-    final double fadeT =
-        ((progress - pinnedSnapFraction) / denom).clamp(0.0, 1.0);
-
-    double lerpAlpha(double a, double b) => a + (b - a) * fadeT;
-
-    // Pinned-snap "solid" state: all stops use the full frosted tint.
-    final double topAlpha = lerpAlpha(CASIGlass.tintStandard, 0.0);
-    final double midHiAlpha =
-        lerpAlpha(CASIGlass.tintStandard, CASIElevation.base.bgAlpha);
-    final double midLoAlpha =
-        lerpAlpha(CASIGlass.tintStandard, CASIGlass.tintLight);
+    const double topAlpha = 0.0;
+    final double midHiAlpha = CASIElevation.base.bgAlpha;
+    const double midLoAlpha = CASIGlass.tintLight;
     const double bottomAlpha = CASIGlass.tintStandard;
 
     return Positioned.fill(
@@ -1165,6 +685,209 @@ class _GradientBackground extends StatelessWidget {
                   stops: const [0.0, 0.3, 0.6, 1.0],
                 ),
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Animated Context Menu Route ──────────────────────────────────────────
+//
+// A custom [PopupRoute] that scales + fades the context menu in from the
+// user's finger position. The animation uses an easeOutCubic curve for a
+// smooth, organic feel that matches the CASI design language.
+
+class _ContextMenuRoute extends PopupRoute<void> {
+  final double left;
+  final double top;
+  final Alignment scaleAlignment;
+  final Widget child;
+
+  _ContextMenuRoute({
+    required this.left,
+    required this.top,
+    required this.scaleAlignment,
+    required this.child,
+  });
+
+  @override
+  Color? get barrierColor => null;
+
+  @override
+  bool get barrierDismissible => true;
+
+  @override
+  String? get barrierLabel => 'Dismiss';
+
+  @override
+  Duration get transitionDuration => CASIMotion.expressive;
+
+  @override
+  Duration get reverseTransitionDuration => CASIMotion.fast;
+
+  @override
+  Widget buildPage(
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+  ) {
+    return child;
+  }
+
+  @override
+  Widget buildTransitions(
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    final curved = CurvedAnimation(
+      parent: animation,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    );
+
+    return Stack(
+      children: [
+        // Tap-to-dismiss scrim
+        Positioned.fill(
+          child: GestureDetector(
+            onTap: () => Navigator.of(context).pop(),
+            behavior: HitTestBehavior.opaque,
+            child: FadeTransition(
+              opacity: curved,
+              child: Container(
+                color: Colors.black.withValues(alpha: 0.15),
+              ),
+            ),
+          ),
+        ),
+        // Animated menu
+        Positioned(
+          left: left,
+          top: top,
+          child: FadeTransition(
+            opacity: curved,
+            child: ScaleTransition(
+              scale: Tween<double>(begin: 0.0, end: 1.0).animate(curved),
+              alignment: scaleAlignment,
+              child: child,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─── Context Menu Content ─────────────────────────────────────────────────
+
+class _ContextMenuContent extends StatelessWidget {
+  final VoidCallback onAddToHome;
+  final VoidCallback onAppInfo;
+  final VoidCallback onUninstall;
+
+  const _ContextMenuContent({
+    required this.onAddToHome,
+    required this.onAppInfo,
+    required this.onUninstall,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(CASIGlass.cornerStandard),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(
+            sigmaX: CASIGlass.blurHeavy,
+            sigmaY: CASIGlass.blurHeavy,
+          ),
+          child: Container(
+            width: 200,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: CASIElevation.float_.bgAlpha),
+              borderRadius: BorderRadius.circular(CASIGlass.cornerStandard),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: CASIElevation.float_.borderAlpha),
+                width: 1.0,
+              ),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _ContextMenuItem(
+                  icon: Icons.add_to_home_screen_outlined,
+                  label: 'Add to Home',
+                  onTap: onAddToHome,
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(CASIGlass.cornerStandard),
+                  ),
+                ),
+                _divider(),
+                _ContextMenuItem(
+                  icon: Icons.info_outline,
+                  label: 'App Info',
+                  onTap: onAppInfo,
+                ),
+                _divider(),
+                _ContextMenuItem(
+                  icon: Icons.delete_outline,
+                  label: 'Uninstall',
+                  onTap: onUninstall,
+                  color: CASIColors.alert,
+                  borderRadius: const BorderRadius.vertical(
+                    bottom: Radius.circular(CASIGlass.cornerStandard),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _divider() {
+    return Container(height: 0.5, color: CASIColors.glassDivider);
+  }
+}
+
+class _ContextMenuItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final Color color;
+  final BorderRadius? borderRadius;
+
+  const _ContextMenuItem({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.color = CASIColors.textPrimary,
+    this.borderRadius,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: borderRadius,
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: CASISpacing.md,
+          vertical: 14,
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: color, size: CASIIcons.standard),
+            const SizedBox(width: 12),
+            Text(
+              label,
+              style: CASITypography.body2.copyWith(color: color),
             ),
           ],
         ),

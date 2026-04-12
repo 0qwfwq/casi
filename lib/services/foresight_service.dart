@@ -237,10 +237,10 @@ class ForesightService {
   // -------------------------------------------------------------------------
 
   /// Generate a ranked list of app predictions for the current context.
-  /// Returns up to the top 10 candidates so the Foresight Dock always
-  /// has enough runners-up to guarantee it can display 5 chips even
-  /// when some of its top picks collide with apps already shown in the
-  /// notification pills or pinned on the home dock.
+  /// Returns up to the top 15 candidates so the Foresight Dock always
+  /// has enough runners-up to guarantee it can fill the configured
+  /// dock size (up to 7) even when some of its top picks collide with
+  /// apps already shown in the notification pills or on the home dock.
   /// Returns an empty list when insufficient data exists.
   Future<List<ForesightPrediction>> predict(List<AppInfo> installedApps) async {
     if (_db == null) return [];
@@ -271,36 +271,38 @@ class ForesightService {
       }
 
       // Sort descending by score, filter uninstalled apps, take the
-      // top 10. The dock renders 5 icons; the extra 5 are runners-up
+      // top 15. The dock renders up to 7 icons; the extras are runners-up
       // so overlaps with the notification pills and home-dock apps
       // can be filtered out without leaving empty slots.
       final sorted = scores.entries.toList()
         ..sort((a, b) => b.value.compareTo(a.value));
       final top = sorted
           .where((e) => e.value > 0.001 && appMap.containsKey(e.key))
-          .take(10)
+          .take(15)
           .toList();
 
-      // Persist predictions and build result list
+      // Persist predictions in a single transaction to avoid lock contention.
       final predictions = <ForesightPrediction>[];
-      for (var i = 0; i < top.length; i++) {
-        final pkg = top[i].key;
-        final app = appMap[pkg];
+      await _db!.transaction((txn) async {
+        for (var i = 0; i < top.length; i++) {
+          final pkg = top[i].key;
+          final app = appMap[pkg];
 
-        final id = await _db!.insert('predictions', {
-          'timestamp': now.toIso8601String(),
-          'rank': i + 1,
-          'predicted_package': pkg,
-        });
+          final id = await txn.insert('predictions', {
+            'timestamp': now.toIso8601String(),
+            'rank': i + 1,
+            'predicted_package': pkg,
+          });
 
-        predictions.add(ForesightPrediction(
-          packageName: pkg,
-          appName: app!.name,
-          icon: app.icon,
-          confidence: top[i].value,
-          dbId: id,
-        ));
-      }
+          predictions.add(ForesightPrediction(
+            packageName: pkg,
+            appName: app!.name,
+            icon: app.icon,
+            confidence: top[i].value,
+            dbId: id,
+          ));
+        }
+      });
 
       // Clean up stale predictions that never got feedback
       unawaited(_invalidateOldPredictions());
@@ -602,21 +604,25 @@ class ForesightService {
   /// When an app is launched, mark matching predictions as opened and
   /// non-matching predictions as ignored.
   void _recordFeedbackForLaunch(String launchedPackage) {
-    if (_currentPredictions.isEmpty) return;
+    if (_currentPredictions.isEmpty || _db == null) return;
     final now = DateTime.now().toIso8601String();
-
-    for (final p in _currentPredictions) {
-      if (p.dbId != null) {
-        final wasOpened = p.packageName == launchedPackage ? 1 : 0;
-        _db?.update(
-          'predictions',
-          {'was_opened': wasOpened, 'feedback_timestamp': now},
-          where: 'id = ? AND was_opened IS NULL',
-          whereArgs: [p.dbId],
-        );
-      }
-    }
+    final preds = List<ForesightPrediction>.from(_currentPredictions);
     _currentPredictions = [];
+
+    // Batch all updates in a single transaction to avoid lock contention.
+    _db!.transaction((txn) async {
+      for (final p in preds) {
+        if (p.dbId != null) {
+          final wasOpened = p.packageName == launchedPackage ? 1 : 0;
+          await txn.update(
+            'predictions',
+            {'was_opened': wasOpened, 'feedback_timestamp': now},
+            where: 'id = ? AND was_opened IS NULL',
+            whereArgs: [p.dbId],
+          );
+        }
+      }
+    });
   }
 
   /// Mark predictions older than 5 minutes without feedback as ignored.
@@ -640,16 +646,20 @@ class ForesightService {
   Future<void> purgeApp(String packageName) async {
     if (_db == null) return;
     try {
-      final launchesDeleted = await _db!.delete(
-        'launches',
-        where: 'package_name = ?',
-        whereArgs: [packageName],
-      );
-      final predictionsDeleted = await _db!.delete(
-        'predictions',
-        where: 'predicted_package = ?',
-        whereArgs: [packageName],
-      );
+      int launchesDeleted = 0;
+      int predictionsDeleted = 0;
+      await _db!.transaction((txn) async {
+        launchesDeleted = await txn.delete(
+          'launches',
+          where: 'package_name = ?',
+          whereArgs: [packageName],
+        );
+        predictionsDeleted = await txn.delete(
+          'predictions',
+          where: 'predicted_package = ?',
+          whereArgs: [packageName],
+        );
+      });
       // Clear from current predictions cache
       _currentPredictions.removeWhere((p) => p.packageName == packageName);
       if (_previousApp == packageName) _previousApp = null;
@@ -676,9 +686,11 @@ class ForesightService {
     if (_db == null) return;
     final cutoff =
         DateTime.now().subtract(const Duration(days: 30)).toIso8601String();
-    final deleted =
-        await _db!.delete('launches', where: 'timestamp < ?', whereArgs: [cutoff]);
-    await _db!.delete('predictions', where: 'timestamp < ?', whereArgs: [cutoff]);
+    int deleted = 0;
+    await _db!.transaction((txn) async {
+      deleted = await txn.delete('launches', where: 'timestamp < ?', whereArgs: [cutoff]);
+      await txn.delete('predictions', where: 'timestamp < ?', whereArgs: [cutoff]);
+    });
     if (deleted > 0) {
       debugPrint('[Foresight] Pruned $deleted entries older than 30 days.');
       await _buildModel(); // Rebuild model without pruned data
