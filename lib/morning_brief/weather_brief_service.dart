@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class HourlyWeather {
@@ -16,7 +17,9 @@ class HourlyWeather {
     required this.isDay,
   });
 
-  bool get isRainy => (weatherCode >= 51 && weatherCode <= 67) || (weatherCode >= 80 && weatherCode <= 82);
+  bool get isRainy =>
+      (weatherCode >= 51 && weatherCode <= 67) ||
+      (weatherCode >= 80 && weatherCode <= 82);
   bool get isSnowy => weatherCode >= 71 && weatherCode <= 77;
   bool get isStormy => weatherCode >= 95 && weatherCode <= 99;
   bool get isCloudy => weatherCode >= 1 && weatherCode <= 3;
@@ -75,18 +78,23 @@ class WeatherBriefService {
 
     try {
       final data = jsonDecode(cachedJson);
-      return _analyzeWeather(data, unit);
+      return analyzeWeather(data, unit);
     } catch (e) {
       return null;
     }
   }
 
-  static String _tempStr(double celsius, String unit) {
-    final val = unit == 'F' ? (celsius * 9 / 5 + 32).round() : celsius.round();
+  static String tempStr(double celsius, String unit) {
+    final val =
+        unit == 'F' ? (celsius * 9 / 5 + 32).round() : celsius.round();
     return '$val°$unit';
   }
 
-  static WeatherBriefData _analyzeWeather(Map<String, dynamic> data, String unit) {
+  @visibleForTesting
+  static WeatherBriefData analyzeWeather(
+      Map<String, dynamic> data, String unit,
+      {DateTime? now}) {
+    now ??= DateTime.now();
     final hourly = data['hourly'];
     final times = hourly['time'] as List;
     final temps = hourly['temperature_2m'] as List;
@@ -94,12 +102,14 @@ class WeatherBriefService {
     final precipProbs = hourly['precipitation_probability'] as List;
     final isDays = hourly['is_day'] as List;
 
-    final now = DateTime.now();
     final todayHours = <HourlyWeather>[];
 
     for (int i = 0; i < times.length; i++) {
       final t = DateTime.parse(times[i]);
-      if (t.day == now.day && t.month == now.month && t.year == now.year && t.hour >= now.hour) {
+      if (t.day == now.day &&
+          t.month == now.month &&
+          t.year == now.year &&
+          t.hour >= now.hour) {
         todayHours.add(HourlyWeather(
           hour: t.hour,
           temp: (temps[i] as num).toDouble(),
@@ -111,15 +121,16 @@ class WeatherBriefService {
     }
 
     if (todayHours.isEmpty) {
-      // Fallback: use daily data
       final daily = data['daily'];
       final maxTemp = (daily['temperature_2m_max'][0] as num).toDouble();
       final minTemp = (daily['temperature_2m_min'][0] as num).toDouble();
       final code = (daily['weathercode'][0] as num).toInt();
-      final condition = _codeToCondition(code);
+      final condition = codeToCondition(code);
       return WeatherBriefData(
-        clothingSuggestion: _getClothingSuggestion(maxTemp, minTemp, condition, false, 0),
-        weatherSummary: "Today's high is ${_tempStr(maxTemp, unit)} with a low of ${_tempStr(minTemp, unit)}. Expect ${condition.toLowerCase()} skies.",
+        clothingSuggestion:
+            getClothingSuggestion(maxTemp, minTemp, condition, false, 0),
+        weatherSummary:
+            "Today's high is ${tempStr(maxTemp, unit)} with a low of ${tempStr(minTemp, unit)}. Expect ${condition.toLowerCase()} skies.",
         currentTemp: maxTemp,
         highTemp: maxTemp,
         lowTemp: minTemp,
@@ -127,22 +138,29 @@ class WeatherBriefService {
       );
     }
 
-    final highTemp = todayHours.map((h) => h.temp).reduce((a, b) => a > b ? a : b);
-    final lowTemp = todayHours.map((h) => h.temp).reduce((a, b) => a < b ? a : b);
+    final highTemp =
+        todayHours.map((h) => h.temp).reduce((a, b) => a > b ? a : b);
+    final lowTemp =
+        todayHours.map((h) => h.temp).reduce((a, b) => a < b ? a : b);
     final currentTemp = todayHours.first.temp;
 
-    // Group into periods based on weather changes
-    final periods = _groupIntoPeriods(todayHours);
+    final periods = groupIntoPeriods(todayHours);
     final hasRain = todayHours.any((h) => h.isRainy);
     final hasSnow = todayHours.any((h) => h.isSnowy);
     final hasStorm = todayHours.any((h) => h.isStormy);
-    final maxPrecipProb = todayHours.map((h) => h.precipProbability).reduce((a, b) => a > b ? a : b);
+    final maxPrecipProb = todayHours
+        .map((h) => h.precipProbability)
+        .reduce((a, b) => a > b ? a : b);
 
-    final overallCondition = _determineOverallCondition(todayHours);
-    final weatherSummary = _buildWeatherSummary(periods, todayHours, highTemp, lowTemp, unit);
-    final clothingSuggestion = _getClothingSuggestion(
-      highTemp, lowTemp, overallCondition,
-      hasRain || hasSnow || hasStorm, maxPrecipProb,
+    final overallCondition = determineOverallCondition(todayHours);
+    final weatherSummary =
+        buildWeatherSummary(periods, todayHours, highTemp, lowTemp, unit);
+    final clothingSuggestion = getClothingSuggestion(
+      highTemp,
+      lowTemp,
+      overallCondition,
+      hasRain || hasSnow || hasStorm,
+      maxPrecipProb,
     );
 
     return WeatherBriefData(
@@ -158,20 +176,21 @@ class WeatherBriefService {
     );
   }
 
-  static List<WeatherPeriod> _groupIntoPeriods(List<HourlyWeather> hours) {
+  @visibleForTesting
+  static List<WeatherPeriod> groupIntoPeriods(List<HourlyWeather> hours) {
     if (hours.isEmpty) return [];
 
     final periods = <WeatherPeriod>[];
-    String currentCondition = _codeToCondition(hours.first.weatherCode);
+    String currentCondition = codeToCondition(hours.first.weatherCode);
     int startHour = hours.first.hour;
     List<double> tempAccum = [hours.first.temp];
     int maxPrecip = hours.first.precipProbability;
 
     for (int i = 1; i < hours.length; i++) {
-      final condition = _codeToCondition(hours[i].weatherCode);
+      final condition = codeToCondition(hours[i].weatherCode);
       if (condition != currentCondition) {
         periods.add(WeatherPeriod(
-          label: _hourLabel(startHour),
+          label: hourLabel(startHour),
           startHour: startHour,
           endHour: hours[i - 1].hour,
           condition: currentCondition,
@@ -191,7 +210,7 @@ class WeatherBriefService {
     }
 
     periods.add(WeatherPeriod(
-      label: _hourLabel(startHour),
+      label: hourLabel(startHour),
       startHour: startHour,
       endHour: hours.last.hour,
       condition: currentCondition,
@@ -202,7 +221,8 @@ class WeatherBriefService {
     return periods;
   }
 
-  static String _buildWeatherSummary(
+  @visibleForTesting
+  static String buildWeatherSummary(
     List<WeatherPeriod> periods,
     List<HourlyWeather> hours,
     double highTemp,
@@ -212,54 +232,56 @@ class WeatherBriefService {
     if (periods.length == 1) {
       final p = periods.first;
       final tempRange = (highTemp - lowTemp).abs() < 3
-          ? "around ${_tempStr(highTemp, unit)}"
-          : "between ${_tempStr(lowTemp, unit)} and ${_tempStr(highTemp, unit)}";
+          ? "around ${tempStr(highTemp, unit)}"
+          : "between ${tempStr(lowTemp, unit)} and ${tempStr(highTemp, unit)}";
 
-      if (p.condition == 'Clear') {
-        return "It's going to be clear and ${_tempFeeling(highTemp)} all day, with temperatures $tempRange.";
-      } else if (p.condition == 'Cloudy') {
-        return "Expect cloudy skies throughout the day with temperatures $tempRange.";
-      } else if (p.condition == 'Rainy') {
-        return "Rain is expected throughout the day. Temperatures will be $tempRange.";
-      } else if (p.condition == 'Snowy') {
-        return "Snow is expected throughout the day. Stay warm with temperatures $tempRange.";
-      } else if (p.condition == 'Foggy') {
-        return "Foggy conditions expected today with temperatures $tempRange.";
-      } else {
-        return "Expect ${p.condition.toLowerCase()} conditions all day with temperatures $tempRange.";
-      }
+      return switch (p.condition) {
+        'Clear' =>
+          "It's going to be clear and ${tempFeeling(highTemp)} all day, with temperatures $tempRange.",
+        'Cloudy' =>
+          "Expect cloudy skies throughout the day with temperatures $tempRange.",
+        'Rainy' =>
+          "Rain is expected throughout the day. Temperatures will be $tempRange.",
+        'Snowy' =>
+          "Snow is expected throughout the day. Stay warm with temperatures $tempRange.",
+        'Foggy' =>
+          "Foggy conditions expected today with temperatures $tempRange.",
+        _ =>
+          "Expect ${p.condition.toLowerCase()} conditions all day with temperatures $tempRange.",
+      };
     }
 
-    // Multiple weather periods - build a narrative
     final parts = <String>[];
     for (int i = 0; i < periods.length && i < 3; i++) {
       final p = periods[i];
-      final timeStr = i == 0
-          ? "Currently"
-          : "Around ${_hourLabel(p.startHour)}";
-      final tempDisplay = _tempStr(p.avgTemp, unit);
+      final timeStr = i == 0 ? "Currently" : "Around ${hourLabel(p.startHour)}";
+      final tempDisplay = tempStr(p.avgTemp, unit);
 
-      if (p.condition == 'Clear') {
-        parts.add("$timeStr, it will be ${_tempFeeling(p.avgTemp)} and clear at $tempDisplay.");
-      } else if (p.condition == 'Rainy') {
-        parts.add("$timeStr, rain is expected with a ${p.maxPrecipProb}% chance and temperatures near $tempDisplay.");
-      } else if (p.condition == 'Cloudy') {
-        parts.add("$timeStr, skies will be cloudy at $tempDisplay.");
-      } else if (p.condition == 'Snowy') {
-        parts.add("$timeStr, expect snow with temperatures around $tempDisplay.");
-      } else if (p.condition == 'Stormy') {
-        parts.add("$timeStr, thunderstorms are expected around $tempDisplay.");
-      } else {
-        parts.add("$timeStr, expect ${p.condition.toLowerCase()} conditions at $tempDisplay.");
-      }
+      parts.add(switch (p.condition) {
+        'Clear' =>
+          "$timeStr, it will be ${tempFeeling(p.avgTemp)} and clear at $tempDisplay.",
+        'Rainy' =>
+          "$timeStr, rain is expected with a ${p.maxPrecipProb}% chance and temperatures near $tempDisplay.",
+        'Cloudy' => "$timeStr, skies will be cloudy at $tempDisplay.",
+        'Snowy' =>
+          "$timeStr, expect snow with temperatures around $tempDisplay.",
+        'Stormy' =>
+          "$timeStr, thunderstorms are expected around $tempDisplay.",
+        _ =>
+          "$timeStr, expect ${p.condition.toLowerCase()} conditions at $tempDisplay.",
+      });
     }
 
     return parts.join(' ');
   }
 
-  static String _getClothingSuggestion(
-    double highTemp, double lowTemp, String condition,
-    bool hasPrecipitation, int maxPrecipProb,
+  @visibleForTesting
+  static String getClothingSuggestion(
+    double highTemp,
+    double lowTemp,
+    String condition,
+    bool hasPrecipitation,
+    int maxPrecipProb,
   ) {
     final avgTemp = (highTemp + lowTemp) / 2;
     final tempSpread = highTemp - lowTemp;
@@ -282,12 +304,10 @@ class WeatherBriefService {
       parts.add("Dress light and stay cool today.");
     }
 
-    // Large temp spread
     if (tempSpread > 8) {
       parts.add("Layer up, as temperatures will vary significantly.");
     }
 
-    // Precipitation
     if (hasPrecipitation && maxPrecipProb >= 50) {
       if (condition == 'Snowy') {
         parts.add("Wear waterproof boots and bring warm accessories.");
@@ -300,7 +320,6 @@ class WeatherBriefService {
       parts.add("Consider carrying an umbrella just in case.");
     }
 
-    // Sun protection
     if (condition == 'Clear' && highTemp > 22) {
       parts.add("Don't forget sunglasses and sunscreen.");
     }
@@ -308,10 +327,11 @@ class WeatherBriefService {
     return parts.join(' ');
   }
 
-  static String _determineOverallCondition(List<HourlyWeather> hours) {
+  @visibleForTesting
+  static String determineOverallCondition(List<HourlyWeather> hours) {
     final conditionCounts = <String, int>{};
     for (final h in hours) {
-      final c = _codeToCondition(h.weatherCode);
+      final c = codeToCondition(h.weatherCode);
       conditionCounts[c] = (conditionCounts[c] ?? 0) + 1;
     }
 
@@ -332,7 +352,8 @@ class WeatherBriefService {
     return best ?? 'Clear';
   }
 
-  static String _codeToCondition(int code) {
+  @visibleForTesting
+  static String codeToCondition(int code) {
     if (code == 0) return 'Clear';
     if (code >= 1 && code <= 3) return 'Cloudy';
     if (code >= 45 && code <= 48) return 'Foggy';
@@ -343,7 +364,8 @@ class WeatherBriefService {
     return 'Clear';
   }
 
-  static String _tempFeeling(double temp) {
+  @visibleForTesting
+  static String tempFeeling(double temp) {
     if (temp <= 0) return 'freezing';
     if (temp <= 5) return 'very cold';
     if (temp <= 10) return 'cold';
@@ -354,7 +376,8 @@ class WeatherBriefService {
     return 'very hot';
   }
 
-  static String _hourLabel(int hour) {
+  @visibleForTesting
+  static String hourLabel(int hour) {
     if (hour == 0) return '12 AM';
     if (hour < 12) return '$hour AM';
     if (hour == 12) return '12 PM';

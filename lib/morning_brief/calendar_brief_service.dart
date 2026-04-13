@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 class DeviceCalendarEvent {
@@ -36,10 +37,11 @@ class DeviceCalendarEvent {
     if (allDay) return 'All day';
     final start = DateTime.fromMillisecondsSinceEpoch(begin);
     final finish = DateTime.fromMillisecondsSinceEpoch(end);
-    return '${_formatTime(start)} – ${_formatTime(finish)}';
+    return '${formatTime(start)} – ${formatTime(finish)}';
   }
 
-  static String _formatTime(DateTime dt) {
+  @visibleForTesting
+  static String formatTime(DateTime dt) {
     final hour = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
     final minute = dt.minute.toString().padLeft(2, '0');
     final ampm = dt.hour >= 12 ? 'PM' : 'AM';
@@ -55,9 +57,14 @@ class CalendarBriefData {
 }
 
 class CalendarBriefService {
-  static const _channel = MethodChannel('casi.launcher/calendar');
+  static const _defaultChannel = MethodChannel('casi.launcher/calendar');
 
-  static Future<bool> hasPermission() async {
+  final MethodChannel _channel;
+
+  CalendarBriefService({MethodChannel? channel})
+      : _channel = channel ?? _defaultChannel;
+
+  Future<bool> hasPermission() async {
     try {
       final result = await _channel.invokeMethod<bool>('hasCalendarPermission');
       return result ?? false;
@@ -66,13 +73,13 @@ class CalendarBriefService {
     }
   }
 
-  static Future<void> requestPermission() async {
+  Future<void> requestPermission() async {
     try {
       await _channel.invokeMethod('requestCalendarPermission');
     } catch (_) {}
   }
 
-  static Future<CalendarBriefData> getTodayEvents() async {
+  Future<CalendarBriefData> getTodayEvents() async {
     final hasPerm = await hasPermission();
     if (!hasPerm) {
       return CalendarBriefData(hasPermission: false, events: []);
@@ -94,4 +101,7 @@ class CalendarBriefService {
       return CalendarBriefData(hasPermission: true, events: []);
     }
   }
+
+  /// Convenience static accessor for use without injection.
+  static final instance = CalendarBriefService();
 }

@@ -782,7 +782,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   }
 
   Future<void> _refreshCalendarBrief() async {
-    final data = await CalendarBriefService.getTodayEvents();
+    final data = await CalendarBriefService.instance.getTodayEvents();
     if (mounted) {
       setState(() {
         _calendarBriefData = data;

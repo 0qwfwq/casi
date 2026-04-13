@@ -37,11 +37,8 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
     super.dispose();
   }
 
-  String _tempStr(double celsius) {
-    final u = widget.temperatureUnit;
-    final val = u == 'F' ? (celsius * 9 / 5 + 32).round() : celsius.round();
-    return '$val°$u';
-  }
+  String _tempStr(double celsius) =>
+      WeatherBriefService.tempStr(celsius, widget.temperatureUnit);
 
   String _getGreeting() {
     final hour = DateTime.now().hour;
@@ -49,7 +46,6 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
     if (hour < 17) return 'Good Afternoon';
     return 'Good Evening';
   }
-
 
   IconData _conditionIcon(String condition) => switch (condition) {
     'Clear' => CupertinoIcons.sun_max_fill,
@@ -62,7 +58,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
   };
 
   Color _conditionColor(String condition) => switch (condition) {
-    'Clear' => CASIColors.caution,           // Warm orange
+    'Clear' => CASIColors.caution,            // Warm orange
     'Cloudy' => CASIColors.textSecondary,     // Muted
     'Rainy' => CASIColors.accentPrimary,      // Pulse Blue
     'Snowy' => CASIColors.accentTertiary,     // Teal
@@ -101,7 +97,6 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
             ),
             child: GestureDetector(
               onVerticalDragEnd: (details) {
-                // Swipe up to dismiss (like weather widget)
                 if (details.primaryVelocity != null && details.primaryVelocity! < -300) {
                   widget.onDismiss();
                 }
@@ -318,7 +313,6 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
 
   // ── Panel 3: Calendar Events ────────────────────────────────────────────
 
-  /// Collects today's launcher-created events as DeviceCalendarEvent objects.
   List<DeviceCalendarEvent> _todayLauncherEvents() {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -361,7 +355,7 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
             ),
             const SizedBox(height: 12),
             GestureDetector(
-              onTap: () => CalendarBriefService.requestPermission(),
+              onTap: () => CalendarBriefService.instance.requestPermission(),
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(
