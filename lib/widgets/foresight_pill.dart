@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:casi/design_system.dart';
 import 'package:casi/services/foresight_service.dart';
@@ -91,38 +90,22 @@ class ForesightPill extends StatelessWidget {
     return GestureDetector(
       onLongPress: onLongPress,
       behavior: HitTestBehavior.opaque,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(CASIGlass.cornerPill),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(
-            sigmaX: CASIGlass.blurStandard,
-            sigmaY: CASIGlass.blurStandard,
-          ),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: CASIElevation.card.bgAlpha),
-              borderRadius: BorderRadius.circular(CASIGlass.cornerPill),
-              border: Border.all(
-                color: Colors.white
-                    .withValues(alpha: CASIElevation.card.borderAlpha),
+      child: GlassSurface.foresight(
+        cornerRadius: CASIGlass.cornerPill,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (int i = 0; i < count; i++) ...[
+              if (i > 0) const SizedBox(width: 16),
+              GestureDetector(
+                onTap: () => onAppTap(predictions[i].packageName),
+                onLongPress: onLongPress,
+                behavior: HitTestBehavior.opaque,
+                child: _buildPredictionIcon(predictions[i]),
               ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                for (int i = 0; i < count; i++) ...[
-                  if (i > 0) const SizedBox(width: 16),
-                  GestureDetector(
-                    onTap: () => onAppTap(predictions[i].packageName),
-                    onLongPress: onLongPress,
-                    behavior: HitTestBehavior.opaque,
-                    child: _buildPredictionIcon(predictions[i]),
-                  ),
-                ],
-              ],
-            ),
-          ),
+            ],
+          ],
         ),
       ),
     );
@@ -395,27 +378,10 @@ class _BehindCard extends StatelessWidget {
       child: IgnorePointer(
         child: Opacity(
           opacity: opacity,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(_kStackPillHeight / 2),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(
-                sigmaX: CASIGlass.blurStandard,
-                sigmaY: CASIGlass.blurStandard,
-              ),
-              child: Container(
-                height: _kStackPillHeight - 6.0 * depth,
-                decoration: BoxDecoration(
-                  color: Colors.white
-                      .withValues(alpha: CASIElevation.card.bgAlpha * 0.85),
-                  borderRadius:
-                      BorderRadius.circular(_kStackPillHeight / 2),
-                  border: Border.all(
-                    color: Colors.white.withValues(
-                        alpha: CASIElevation.card.borderAlpha * 0.85),
-                  ),
-                ),
-              ),
-            ),
+          child: GlassSurface.foresight(
+            cornerRadius: _kStackPillHeight / 2,
+            height: _kStackPillHeight - 6.0 * depth,
+            child: const SizedBox.shrink(),
           ),
         ),
       ),
@@ -448,27 +414,11 @@ class _FrontNotificationCard extends StatelessWidget {
         entry.title.isNotEmpty ? entry.title : entry.appName;
     final String displayBody = entry.text;
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(_kStackPillHeight / 2),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(
-          sigmaX: CASIGlass.blurHeavy,
-          sigmaY: CASIGlass.blurHeavy,
-        ),
-        child: Container(
-          height: _kStackPillHeight,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          decoration: BoxDecoration(
-            color: Colors.white
-                .withValues(alpha: CASIElevation.raised.bgAlpha),
-            borderRadius: BorderRadius.circular(_kStackPillHeight / 2),
-            border: Border.all(
-              color: Colors.white.withValues(
-                  alpha: CASIElevation.raised.borderAlpha),
-              width: 1.0,
-            ),
-          ),
-          child: Row(
+    return GlassSurface.foresight(
+      cornerRadius: _kStackPillHeight / 2,
+      height: _kStackPillHeight,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      child: Row(
             children: [
               _NotifAppIcon(entry: entry, size: 38),
               const SizedBox(width: 12),
@@ -537,8 +487,6 @@ class _FrontNotificationCard extends StatelessWidget {
               ),
             ],
           ),
-        ),
-      ),
     );
   }
 }

@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:installed_apps/app_info.dart';
 import 'package:casi/design_system.dart';
@@ -138,33 +137,22 @@ class ScreenDock extends StatelessWidget {
         final isHovered = candidateData.isNotEmpty;
         return GestureDetector(
           onTap: () => onCancel?.call(),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(24),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(
-                sigmaX: CASIGlass.blurStandard,
-                sigmaY: CASIGlass.blurStandard,
-              ),
-              child: AnimatedContainer(
-                duration: CASIMotion.micro,
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
+          child: AnimatedSize(
+            duration: CASIMotion.micro,
+            child: GlassSurface.dock(
+              cornerRadius: 24,
+              width: 48,
+              height: 48,
+              tintOverride: isHovered
+                  ? Colors.white.withValues(alpha: 0.3)
+                  : null,
+              child: Center(
+                child: Icon(
+                  Icons.close_rounded,
                   color: isHovered
-                      ? Colors.white.withValues(alpha: 0.3)
-                      : Colors.white.withValues(alpha: CASIElevation.card.bgAlpha),
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: CASIElevation.card.borderAlpha),
-                    width: 1.0,
-                  ),
-                ),
-                child: Center(
-                  child: Icon(
-                    Icons.close_rounded,
-                    color: isHovered ? CASIColors.textPrimary : CASIColors.textSecondary,
-                    size: CASIIcons.small,
-                  ),
+                      ? CASIColors.textPrimary
+                      : CASIColors.textSecondary,
+                  size: CASIIcons.small,
                 ),
               ),
             ),
@@ -187,31 +175,20 @@ class ScreenDock extends StatelessWidget {
         final isHovered = candidateData.isNotEmpty;
         return GestureDetector(
           onTap: onTap,
-          child: ClipRRect(
-          borderRadius: BorderRadius.circular(CASIGlass.cornerStandard),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(
-              sigmaX: CASIGlass.blurStandard,
-              sigmaY: CASIGlass.blurStandard,
-            ),
-            child: AnimatedContainer(
-              duration: CASIMotion.micro,
+          child: AnimatedSize(
+            duration: CASIMotion.micro,
+            child: GlassSurface.dock(
+              cornerRadius: CASIGlass.cornerStandard,
               padding: const EdgeInsets.symmetric(
                 horizontal: CASISpacing.md,
                 vertical: 12,
               ),
-              decoration: BoxDecoration(
-                color: isHovered
-                    ? hoverColor.withValues(alpha: 0.4)
-                    : Colors.white.withValues(alpha: CASIElevation.card.bgAlpha),
-                borderRadius: BorderRadius.circular(CASIGlass.cornerStandard),
-                border: Border.all(
-                  color: isHovered
-                      ? hoverColor.withValues(alpha: 0.6)
-                      : Colors.white.withValues(alpha: CASIElevation.card.borderAlpha),
-                  width: 1.0,
-                ),
-              ),
+              tintOverride: isHovered
+                  ? hoverColor.withValues(alpha: 0.4)
+                  : null,
+              borderOverride: isHovered
+                  ? hoverColor.withValues(alpha: 0.6)
+                  : null,
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -231,7 +208,6 @@ class ScreenDock extends StatelessWidget {
               ),
             ),
           ),
-        ),
         );
       },
     );

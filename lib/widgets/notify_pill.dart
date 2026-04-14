@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:casi/design_system.dart';
 
@@ -146,53 +145,39 @@ class _NotifyPillOverlayState extends State<_NotifyPillOverlay>
               });
             }
           },
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(CASISearchBarSpec.cornerRadius),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(
-                sigmaX: CASIGlass.blurHeavy,
-                sigmaY: CASIGlass.blurHeavy,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 300),
+            child: GlassSurface.pill(
+              cornerRadius: CASISearchBarSpec.cornerRadius,
+              padding: const EdgeInsets.symmetric(
+                horizontal: CASISearchBarSpec.horizontalPadding,
+                vertical: 12,
               ),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: CASISearchBarSpec.horizontalPadding,
-                  vertical: 12,
-                ),
-                constraints: const BoxConstraints(maxWidth: 300),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: CASIElevation.raised.bgAlpha),
-                  borderRadius: BorderRadius.circular(CASISearchBarSpec.cornerRadius),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: CASIElevation.raised.borderAlpha),
-                    width: 1.0,
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (widget.icon != null) ...[
-                      Icon(
-                        widget.icon,
-                        color: CASIColors.textPrimary,
-                        size: CASIIcons.small,
-                      ),
-                      const SizedBox(width: 10),
-                    ],
-                    Flexible(
-                      child: Text(
-                        widget.message,
-                        style: CASITypography.body2.copyWith(
-                          fontWeight: FontWeight.w500,
-                          height: 1.3,
-                          decoration: TextDecoration.none,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.center,
-                      ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (widget.icon != null) ...[
+                    Icon(
+                      widget.icon,
+                      color: CASIColors.textPrimary,
+                      size: CASIIcons.small,
                     ),
+                    const SizedBox(width: 10),
                   ],
-                ),
+                  Flexible(
+                    child: Text(
+                      widget.message,
+                      style: CASITypography.body2.copyWith(
+                        fontWeight: FontWeight.w500,
+                        height: 1.3,
+                        decoration: TextDecoration.none,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),

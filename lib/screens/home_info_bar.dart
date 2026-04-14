@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:installed_apps/app_info.dart';
@@ -1803,35 +1802,25 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     return GestureDetector(
       onTap: onTap,
       onLongPress: onLongPress,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(CASIGlass.cornerPill),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: CASIGlass.blurStandard, sigmaY: CASIGlass.blurStandard),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: CASIElevation.card.bgAlpha),
-              borderRadius: BorderRadius.circular(CASIGlass.cornerPill),
-              border: Border.all(color: Colors.white.withValues(alpha: CASIElevation.card.borderAlpha)),
-            ),
-            child: Row(
-              children: [
-                Icon(icon, color: CASIColors.textPrimary, size: 13),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: textAlignment,
-                    child: Text(
-                      label,
-                      style: const TextStyle(color: CASIColors.textPrimary, fontSize: 11, fontWeight: FontWeight.w500),
-                      maxLines: 1,
-                    ),
-                  ),
+      child: GlassSurface.pill(
+        cornerRadius: CASIGlass.cornerPill,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        child: Row(
+          children: [
+            Icon(icon, color: CASIColors.textPrimary, size: 13),
+            const SizedBox(width: 4),
+            Expanded(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: textAlignment,
+                child: Text(
+                  label,
+                  style: const TextStyle(color: CASIColors.textPrimary, fontSize: 11, fontWeight: FontWeight.w500),
+                  maxLines: 1,
                 ),
-              ],
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );

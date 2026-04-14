@@ -3,48 +3,33 @@ import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:palette_generator/palette_generator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:casi/design_system.dart';
 
 /// Wallpaper source types.
 enum WallpaperType { color, image, system }
 
-/// Holds brightness analysis results for adaptive glass opacity.
+/// Holds brightness analysis results — used only for OLED-black detection
+/// now that the glass material is driven by the accent palette instead of
+/// a brightness-based opacity multiplier.
 class WallpaperBrightness {
   /// 0.0 = pure black, 1.0 = pure white
   final double luminance;
 
   const WallpaperBrightness({required this.luminance});
 
-  /// Whether the wallpaper is predominantly dark (luminance < 0.4).
   bool get isDark => luminance < 0.4;
-
-  /// Whether the wallpaper is predominantly light (luminance >= 0.4).
   bool get isLight => !isDark;
-
-  /// Glass tint multiplier — brighter wallpapers need more opaque glass
-  /// for readability; darker wallpapers can use lighter tints.
-  /// Range: 0.6 (very dark wallpaper) to 1.6 (very bright wallpaper).
-  double get glassTintMultiplier {
-    if (luminance < 0.15) return 0.6;  // OLED / near-black
-    if (luminance < 0.3) return 0.8;   // Dark wallpaper
-    if (luminance < 0.5) return 1.0;   // Medium
-    if (luminance < 0.7) return 1.2;   // Light
-    return 1.5;                         // Very bright
-  }
-
-  /// Border alpha multiplier — brighter wallpapers need stronger borders.
-  double get glassBorderMultiplier {
-    if (luminance < 0.2) return 0.7;
-    if (luminance < 0.5) return 1.0;
-    return 1.4;
-  }
 
   static const dark = WallpaperBrightness(luminance: 0.1);
   static const medium = WallpaperBrightness(luminance: 0.5);
 }
 
 /// Service that manages wallpaper state, provides the wallpaper widget,
-/// analyzes brightness for adaptive glass, and handles OLED optimization.
+/// handles OLED optimization, and — on every wallpaper change — extracts
+/// a single accent color from the wallpaper and pushes it to
+/// [GlassPalette.accent] so every frosted surface re-tints to match.
 class WallpaperService extends ChangeNotifier {
   static const _channel = MethodChannel('casi.launcher/wallpaper');
 
@@ -94,8 +79,8 @@ class WallpaperService extends ChangeNotifier {
         _type = WallpaperType.color;
     }
 
-    // Analyze brightness based on current wallpaper type
     await _analyzeBrightness();
+    await _extractAccent();
 
     // Try fetching system wallpaper in the background
     _fetchSystemWallpaper();
@@ -118,6 +103,7 @@ class WallpaperService extends ChangeNotifier {
 
         if (_type == WallpaperType.system) {
           await _analyzeImageBrightness(result);
+          await _extractAccent();
           notifyListeners();
         }
       }
@@ -128,7 +114,7 @@ class WallpaperService extends ChangeNotifier {
     }
   }
 
-  /// Analyze the brightness of the current wallpaper for adaptive glass.
+  /// Analyze the brightness of the current wallpaper (OLED-black gating).
   Future<void> _analyzeBrightness() async {
     switch (_type) {
       case WallpaperType.color:
@@ -157,12 +143,11 @@ class WallpaperService extends ChangeNotifier {
   }
 
   /// Sample an image's pixels to compute average luminance.
-  /// Uses a small decoded image for performance.
   Future<void> _analyzeImageBrightness(Uint8List bytes) async {
     try {
       final codec = await ui.instantiateImageCodec(
         bytes,
-        targetWidth: 64,  // Tiny sample for speed
+        targetWidth: 64,
         targetHeight: 64,
       );
       final frame = await codec.getNextFrame();
@@ -180,12 +165,10 @@ class WallpaperService extends ChangeNotifier {
       double totalLuminance = 0;
       int pixelCount = 0;
 
-      // Sample every 4th pixel for speed
       for (int i = 0; i < pixels.length; i += 16) {
         final r = pixels[i] / 255.0;
         final g = pixels[i + 1] / 255.0;
         final b = pixels[i + 2] / 255.0;
-        // Relative luminance (ITU-R BT.709)
         totalLuminance += 0.2126 * r + 0.7152 * g + 0.0722 * b;
         pixelCount++;
       }
@@ -198,6 +181,47 @@ class WallpaperService extends ChangeNotifier {
     } catch (_) {
       _brightness = WallpaperBrightness.dark;
     }
+  }
+
+  /// Extract a single dominant color from the current wallpaper and push
+  /// it to [GlassPalette]. Called once per wallpaper change — the palette
+  /// notifier fans the result out to every [GlassSurface] in the tree.
+  Future<void> _extractAccent() async {
+    try {
+      switch (_type) {
+        case WallpaperType.color:
+          // Solid-color wallpapers are their own accent.
+          GlassPalette.update(_color);
+        case WallpaperType.image:
+          if (_imagePath != null && await File(_imagePath!).exists()) {
+            final provider = FileImage(File(_imagePath!));
+            await _extractFromProvider(provider);
+          } else {
+            GlassPalette.update(GlassPalette.fallbackAccent);
+          }
+        case WallpaperType.system:
+          if (_systemWallpaperBytes != null) {
+            await _extractFromProvider(MemoryImage(_systemWallpaperBytes!));
+          } else {
+            GlassPalette.update(GlassPalette.fallbackAccent);
+          }
+      }
+    } catch (_) {
+      GlassPalette.update(GlassPalette.fallbackAccent);
+    }
+  }
+
+  Future<void> _extractFromProvider(ImageProvider provider) async {
+    final palette = await PaletteGenerator.fromImageProvider(
+      provider,
+      size: const Size(100, 100),
+      maximumColorCount: 8,
+    );
+    final picked = palette.lightMutedColor?.color ??
+        palette.mutedColor?.color ??
+        palette.lightVibrantColor?.color ??
+        palette.dominantColor?.color;
+    GlassPalette.update(picked ?? GlassPalette.fallbackAccent);
   }
 
   /// Get the cached image provider for the current wallpaper image.
@@ -227,23 +251,9 @@ class WallpaperService extends ChangeNotifier {
       ),
     );
   }
-
-  /// Compute adaptive glass color based on wallpaper brightness.
-  /// Returns white tint with adjusted alpha for the given elevation alpha.
-  Color adaptiveGlassTint(double baseAlpha) {
-    final adjusted = (baseAlpha * _brightness.glassTintMultiplier).clamp(0.0, 0.6);
-    return Colors.white.withValues(alpha: adjusted);
-  }
-
-  /// Compute adaptive glass border color.
-  Color adaptiveGlassBorder(double baseAlpha) {
-    final adjusted = (baseAlpha * _brightness.glassBorderMultiplier).clamp(0.0, 0.5);
-    return Colors.white.withValues(alpha: adjusted);
-  }
 }
 
 /// Internal stateless widget that renders the wallpaper layer.
-/// Wrapped in RepaintBoundary by the service for 60fps performance.
 class _WallpaperLayer extends StatelessWidget {
   final WallpaperType type;
   final Color color;
@@ -259,7 +269,6 @@ class _WallpaperLayer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // OLED base: true black for power efficiency
     if (type == WallpaperType.color) {
       return SizedBox.expand(
         child: ColoredBox(color: color),
@@ -269,8 +278,8 @@ class _WallpaperLayer extends StatelessWidget {
     if (imageProvider == null) {
       return SizedBox.expand(
         child: ColoredBox(
-          color: type == WallpaperType.system 
-              ? Colors.transparent 
+          color: type == WallpaperType.system
+              ? Colors.transparent
               : (isOLED ? Colors.black : color),
         ),
       );

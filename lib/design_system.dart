@@ -37,7 +37,10 @@ class CASIColors {
   static const Color textSecondary = Color(0xB3FFFFFF);         // 70% white
   static const Color textTertiary = Color(0x66FFFFFF);          // 40% white
 
-  // Glass surface colors (white with alpha)
+  // Flat (non-glass) surface overlays — white with alpha. Use these for
+  // small decorative containers that sit on top of a glass surface (album
+  // art placeholders, section dividers, etc.). For frosted glass itself
+  // always use [GlassSurface].
   static const Color glassCard = Color(0x1FFFFFFF);             // 12% white
   static const Color glassElevated = Color(0x2EFFFFFF);         // 18% white
   static const Color glassDivider = Color(0x0DFFFFFF);          // 5% white
@@ -170,9 +173,11 @@ class CASISpacing {
   static const double minTouchTarget = 48;   // Minimum 48dp touch target
 }
 
-// ─── 5. Elevation & Depth ────────────────────────────────────────────────────
-
-/// Glass elevation levels — opacity increases with elevation.
+// ─── 5. Flat-overlay opacity tokens ──────────────────────────────────────────
+//
+// These are NOT glass — they're for small decorative containers that sit on
+// top of an existing glass surface (e.g. album art placeholders, section
+// dividers). Frosted glass goes through [GlassSurface].
 enum CASIElevation {
   ground(bgAlpha: 0.0, borderAlpha: 0.0),
   base(bgAlpha: 0.05, borderAlpha: 0.0),
@@ -186,33 +191,99 @@ enum CASIElevation {
   const CASIElevation({required this.bgAlpha, required this.borderAlpha});
 }
 
-// ─── 6. The Frosted Glass System ─────────────────────────────────────────────
-
-/// Glass variant definitions.
+// ─── 6. The visionOS Glass System ────────────────────────────────────────────
+//
+// One material, applied consistently across every frosted surface in the
+// app. The only thing that varies per surface is the tint opacity (see
+// [GlassRole]) and the corner radius — blur, border, shadow, and accent
+// behavior are identical everywhere.
+//
+// Spec:
+//   blur:    sigmaX = sigmaY = 22 (visionOS range 20–24)
+//   border:  0.5 px, white @ 8% opacity — nearly invisible
+//   tint:    mostly white, faintly biased toward the wallpaper accent
+//            (see [GlassPalette]) at [accentMix]
+//   shadow:  none
+//
 class CASIGlass {
   CASIGlass._();
 
-  // Blur radii (sigmaX/sigmaY for Flutter's ImageFilter.blur)
-  static const double blurStandard = 20;   // Home screen cards, app drawer
-  static const double blurHeavy = 32;      // Search bar, AI card, active states
-  static const double blurLight = 12;      // Subtle groupings, hover
-  static const double blurSheet = 40;      // Bottom sheets, drawers, modals
-  static const double blurFrosted = 48;    // Critical modals, confirmation dialogs
-  static const double blurBackground = 30; // App drawer background
+  /// visionOS blur sigma — the single blur value used by every glass surface.
+  static const double blur = 22;
 
-  // Tint alpha values
-  static const double tintStandard = 0.12; // Standard glass cards
-  static const double tintHeavy = 0.18;    // Search bar, AI card
-  static const double tintLight = 0.08;    // Subtle groupings
-  static const double tintSheet = 0.20;    // Bottom sheets
-  static const double tintFrosted = 0.24;  // Critical modals
+  /// Hairline border thickness.
+  static const double borderWidth = 0.5;
 
-  // Corner radii
+  /// Border tint (white @ 8% opacity).
+  static const double borderAlpha = 0.08;
+
+  /// How much of the wallpaper accent bleeds into the otherwise-white tint.
+  /// 0.0 = pure white, 1.0 = pure accent. Spec calls for a "nearly white or
+  /// very faint sky-blue" look, so this stays low.
+  static const double accentMix = 0.15;
+
+  // ── Corner radii (shape only — the material itself is uniform) ──────────
   static const double cornerStandard = 16; // Standard cards
   static const double cornerChip = 8;      // Small chips/tags
   static const double cornerPill = 50;     // Pill shape (search bar)
   static const double cornerSheet = 24;    // Bottom sheets (top corners)
   static const double cornerModal = 24;    // Modals
+}
+
+/// Per-surface tint opacity. This is the only knob that varies between
+/// glass surfaces — everything else (blur, border, accent) is fixed.
+///
+/// Values come directly from the product spec:
+///   dock       — home dock row
+///   drawer     — app drawer background
+///   foresight  — Foresight dock + notification stack
+///   pill       — notification/status pills
+///   modal      — context menus, dialogs, bottom sheets, media cards
+enum GlassRole {
+  dock(0.12),
+  drawer(0.18),
+  foresight(0.15),
+  pill(0.10),
+  modal(0.15);
+
+  final double opacity;
+  const GlassRole(this.opacity);
+}
+
+/// Holds the single live accent color used by every glass surface.
+///
+/// Updated once per wallpaper change by [WallpaperService] (via its palette
+/// extraction pass). [GlassSurface] listens to [accent] directly, so a new
+/// wallpaper re-tints the whole UI without any plumbing through widget trees.
+class GlassPalette {
+  GlassPalette._();
+
+  /// Faint sky-blue fallback — used before the first extraction completes,
+  /// and whenever extraction fails or produces an unusably low-saturation
+  /// color.
+  static const Color fallbackAccent = Color(0xFFCFE4FF);
+
+  /// The live wallpaper accent. Always a visible color — never transparent.
+  static final ValueNotifier<Color> accent =
+      ValueNotifier<Color>(fallbackAccent);
+
+  /// Replace the current accent with [color]. Falls back to [fallbackAccent]
+  /// when [color] is too desaturated or too dark to read well against white.
+  static void update(Color color) {
+    final hsl = HSLColor.fromColor(color);
+    // Guard against wallpapers that produce muddy / near-grey accents —
+    // those read worse than the fallback.
+    if (hsl.saturation < 0.08 || hsl.lightness < 0.15) {
+      accent.value = fallbackAccent;
+      return;
+    }
+    // Normalize the accent to a consistently light pastel so the tint
+    // stays subtle no matter how saturated the wallpaper is.
+    accent.value = hsl
+        .withSaturation((hsl.saturation * 0.6).clamp(0.15, 0.7))
+        .withLightness(0.82)
+        .toColor();
+  }
 }
 
 // ─── 7. Motion & Animation ──────────────────────────────────────────────────
@@ -250,7 +321,8 @@ class CASIIcons {
 
 // ─── 8. Core Component Specs ────────────────────────────────────────────────
 
-/// Search bar dimensions (section 8.2).
+/// Search bar dimensions (section 8.2). Blur/tint come from the unified
+/// glass material — this spec only owns geometry.
 class CASISearchBarSpec {
   CASISearchBarSpec._();
 
@@ -258,9 +330,6 @@ class CASISearchBarSpec {
   static const double cornerRadius = 28;   // Pill shape
   static const double horizontalPadding = 20;
   static const double iconSize = 20;
-  static const double focusBorderWidth = 1.5;
-  static const double blurRadius = 24;     // Heavier than standard
-  static const double tintAlpha = 0.18;    // glass.heavy
 }
 
 /// App icon / drawer row specs (section 4.4, 8.3).
@@ -276,119 +345,256 @@ class CASIAppIconSpec {
   static const double iconToLabelPadding = 16; // space.md
 }
 
-// ─── 6b. Glass Surface Widget ───────────────────────────────────────────────
+// ─── 6b. GlassSurface Widget ────────────────────────────────────────────────
 
-/// Reusable frosted glass container that encapsulates the
-/// ClipRRect → BackdropFilter → Container pattern from the design system.
+/// The single visionOS-style frosted-glass surface used everywhere in the
+/// app. Every frosted widget in CASI should be built on top of this — no
+/// raw [BackdropFilter] + [ImageFilter.blur] in feature code.
 ///
-/// Supports adaptive opacity via [tintMultiplier] and [borderMultiplier]
-/// which are driven by wallpaper brightness analysis.
+/// The material is uniform (blur 22, 0.5 px @ 8% white border, no shadow,
+/// tint biased faintly toward the wallpaper accent). The only per-surface
+/// knob is the tint *opacity*, which comes from [GlassRole] or an explicit
+/// [opacity] override.
 ///
-/// Wrapped in [RepaintBoundary] to isolate blur repaint cost from
-/// surrounding widget tree, helping maintain 60fps on all devices.
+/// Wraps its subtree in a [RepaintBoundary] to isolate the blur's repaint
+/// cost from the rest of the widget tree.
 class GlassSurface extends StatelessWidget {
+  /// Child widget placed inside the glass container.
   final Widget child;
-  final double blur;
-  final double tintAlpha;
-  final double borderAlpha;
+
+  /// Tint opacity — the fraction of the (white + accent) tint shown. Use
+  /// [GlassRole] values where possible; this parameter lets ad-hoc
+  /// surfaces opt into a specific spec opacity without inventing a role.
+  final double opacity;
+
+  /// Corner radius. Shape is NOT part of the glass material (dock is pill,
+  /// drawer is rounded-top sheet, cards are 16, etc.), so each call site
+  /// picks the right radius for its context.
   final double cornerRadius;
+
+  /// Optional directional corner radii (e.g. rounded-top bottom sheets).
+  /// When non-null, takes precedence over [cornerRadius].
+  final BorderRadiusGeometry? borderRadiusOverride;
+
+  /// Padding inside the glass container (applied to [child]).
   final EdgeInsetsGeometry? padding;
+
+  /// Margin outside the glass container.
   final EdgeInsetsGeometry? margin;
 
-  /// Multiplier from wallpaper brightness (1.0 = no adjustment).
-  final double tintMultiplier;
-  final double borderMultiplier;
+  /// Optional fixed width.
+  final double? width;
 
-  /// Optional explicit background color override (e.g. for hover states).
-  final Color? colorOverride;
+  /// Optional fixed height.
+  final double? height;
+
+  /// Replaces the standard tint color with an arbitrary color (e.g. for
+  /// hover or active states that need to flash a semantic color through
+  /// the glass). The provided color should already include its alpha.
+  final Color? tintOverride;
+
+  /// Replaces the standard border color. Pass a semantic color when a
+  /// surface needs to highlight (drag-target hover, destructive action,
+  /// etc.). Defaults to white @ 8% opacity.
+  final Color? borderOverride;
 
   const GlassSurface({
     super.key,
     required this.child,
-    this.blur = CASIGlass.blurStandard,
-    this.tintAlpha = CASIGlass.tintStandard,
-    this.borderAlpha = 0.06,
+    this.opacity = 0.12,
     this.cornerRadius = CASIGlass.cornerStandard,
+    this.borderRadiusOverride,
     this.padding,
     this.margin,
-    this.tintMultiplier = 1.0,
-    this.borderMultiplier = 1.0,
-    this.colorOverride,
+    this.width,
+    this.height,
+    this.tintOverride,
+    this.borderOverride,
   });
 
-  /// Convenience: card elevation glass surface.
-  factory GlassSurface.card({
+  // ── Role factories ────────────────────────────────────────────────────
+
+  factory GlassSurface.dock({
     Key? key,
     required Widget child,
+    double cornerRadius = CASIGlass.cornerStandard,
+    BorderRadiusGeometry? borderRadiusOverride,
     EdgeInsetsGeometry? padding,
     EdgeInsetsGeometry? margin,
-    double tintMultiplier = 1.0,
-    double borderMultiplier = 1.0,
-  }) {
-    return GlassSurface(
-      key: key,
-      blur: CASIGlass.blurStandard,
-      tintAlpha: CASIElevation.card.bgAlpha,
-      borderAlpha: CASIElevation.card.borderAlpha,
-      padding: padding,
-      margin: margin,
-      tintMultiplier: tintMultiplier,
-      borderMultiplier: borderMultiplier,
-      child: child,
-    );
-  }
+    double? width,
+    double? height,
+    Color? tintOverride,
+    Color? borderOverride,
+  }) =>
+      GlassSurface(
+        key: key,
+        opacity: GlassRole.dock.opacity,
+        cornerRadius: cornerRadius,
+        borderRadiusOverride: borderRadiusOverride,
+        padding: padding,
+        margin: margin,
+        width: width,
+        height: height,
+        tintOverride: tintOverride,
+        borderOverride: borderOverride,
+        child: child,
+      );
 
-  /// Convenience: sheet / modal elevation glass surface.
-  factory GlassSurface.sheet({
+  factory GlassSurface.drawer({
     Key? key,
     required Widget child,
+    double cornerRadius = CASIGlass.cornerSheet,
+    BorderRadiusGeometry? borderRadiusOverride,
     EdgeInsetsGeometry? padding,
-    double tintMultiplier = 1.0,
-    double borderMultiplier = 1.0,
-  }) {
-    return GlassSurface(
-      key: key,
-      blur: CASIGlass.blurSheet,
-      tintAlpha: CASIGlass.tintSheet,
-      borderAlpha: CASIElevation.float_.borderAlpha,
-      cornerRadius: CASIGlass.cornerSheet,
-      padding: padding,
-      tintMultiplier: tintMultiplier,
-      borderMultiplier: borderMultiplier,
-      child: child,
-    );
-  }
+    EdgeInsetsGeometry? margin,
+    double? width,
+    double? height,
+    Color? tintOverride,
+    Color? borderOverride,
+  }) =>
+      GlassSurface(
+        key: key,
+        opacity: GlassRole.drawer.opacity,
+        cornerRadius: cornerRadius,
+        borderRadiusOverride: borderRadiusOverride,
+        padding: padding,
+        margin: margin,
+        width: width,
+        height: height,
+        tintOverride: tintOverride,
+        borderOverride: borderOverride,
+        child: child,
+      );
+
+  factory GlassSurface.foresight({
+    Key? key,
+    required Widget child,
+    double cornerRadius = CASIGlass.cornerPill,
+    BorderRadiusGeometry? borderRadiusOverride,
+    EdgeInsetsGeometry? padding,
+    EdgeInsetsGeometry? margin,
+    double? width,
+    double? height,
+    Color? tintOverride,
+    Color? borderOverride,
+  }) =>
+      GlassSurface(
+        key: key,
+        opacity: GlassRole.foresight.opacity,
+        cornerRadius: cornerRadius,
+        borderRadiusOverride: borderRadiusOverride,
+        padding: padding,
+        margin: margin,
+        width: width,
+        height: height,
+        tintOverride: tintOverride,
+        borderOverride: borderOverride,
+        child: child,
+      );
+
+  factory GlassSurface.pill({
+    Key? key,
+    required Widget child,
+    double cornerRadius = CASIGlass.cornerPill,
+    BorderRadiusGeometry? borderRadiusOverride,
+    EdgeInsetsGeometry? padding,
+    EdgeInsetsGeometry? margin,
+    double? width,
+    double? height,
+    Color? tintOverride,
+    Color? borderOverride,
+  }) =>
+      GlassSurface(
+        key: key,
+        opacity: GlassRole.pill.opacity,
+        cornerRadius: cornerRadius,
+        borderRadiusOverride: borderRadiusOverride,
+        padding: padding,
+        margin: margin,
+        width: width,
+        height: height,
+        tintOverride: tintOverride,
+        borderOverride: borderOverride,
+        child: child,
+      );
+
+  factory GlassSurface.modal({
+    Key? key,
+    required Widget child,
+    double cornerRadius = CASIGlass.cornerModal,
+    BorderRadiusGeometry? borderRadiusOverride,
+    EdgeInsetsGeometry? padding,
+    EdgeInsetsGeometry? margin,
+    double? width,
+    double? height,
+    Color? tintOverride,
+    Color? borderOverride,
+  }) =>
+      GlassSurface(
+        key: key,
+        opacity: GlassRole.modal.opacity,
+        cornerRadius: cornerRadius,
+        borderRadiusOverride: borderRadiusOverride,
+        padding: padding,
+        margin: margin,
+        width: width,
+        height: height,
+        tintOverride: tintOverride,
+        borderOverride: borderOverride,
+        child: child,
+      );
 
   @override
   Widget build(BuildContext context) {
-    final effectiveTint = colorOverride ??
-        Colors.white.withValues(
-          alpha: (tintAlpha * tintMultiplier).clamp(0.0, 0.6),
-        );
-    final effectiveBorder = Colors.white.withValues(
-      alpha: (borderAlpha * borderMultiplier).clamp(0.0, 0.5),
-    );
+    return ValueListenableBuilder<Color>(
+      valueListenable: GlassPalette.accent,
+      builder: (context, accent, _) {
+        final BorderRadiusGeometry radius =
+            borderRadiusOverride ?? BorderRadius.circular(cornerRadius);
 
-    Widget surface = ClipRRect(
-      borderRadius: BorderRadius.circular(cornerRadius),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-        child: Container(
-          padding: padding,
-          decoration: BoxDecoration(
-            color: effectiveTint,
-            borderRadius: BorderRadius.circular(cornerRadius),
-            border: Border.all(color: effectiveBorder, width: 1.0),
+        // Unified tint: mostly white with a faint accent bleed, then
+        // scaled to the requested per-surface opacity.
+        final Color baseTint =
+            Color.lerp(Colors.white, accent, CASIGlass.accentMix) ??
+                Colors.white;
+        final Color tint = tintOverride ?? baseTint.withValues(alpha: opacity);
+        final Color border = borderOverride ??
+            Colors.white.withValues(alpha: CASIGlass.borderAlpha);
+
+        Widget surface = ClipRRect(
+          borderRadius: radius is BorderRadius
+              ? radius
+              : BorderRadius.circular(cornerRadius),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(
+              sigmaX: CASIGlass.blur,
+              sigmaY: CASIGlass.blur,
+            ),
+            child: Container(
+              width: width,
+              height: height,
+              padding: padding,
+              decoration: BoxDecoration(
+                color: tint,
+                borderRadius: radius is BorderRadius
+                    ? radius
+                    : BorderRadius.circular(cornerRadius),
+                border: Border.all(
+                  color: border,
+                  width: CASIGlass.borderWidth,
+                ),
+              ),
+              child: child,
+            ),
           ),
-          child: child,
-        ),
-      ),
+        );
+
+        if (margin != null) {
+          surface = Padding(padding: margin!, child: surface);
+        }
+
+        return RepaintBoundary(child: surface);
+      },
     );
-
-    if (margin != null) {
-      surface = Padding(padding: margin!, child: surface);
-    }
-
-    return RepaintBoundary(child: surface);
   }
 }

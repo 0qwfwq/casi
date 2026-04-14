@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -141,30 +140,16 @@ class _SongPlayerState extends State<SongPlayer> with WidgetsBindingObserver {
     final double progress = (_duration > 0) ? (_position / _duration).clamp(0.0, 1.0) : 0.0;
 
     return Container(
-      height: 70,
       margin: const EdgeInsets.symmetric(horizontal: 40),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(35),
-        border: Border.all(color: Colors.white.withValues(alpha: CASIElevation.float_.borderAlpha), width: 1.0),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha:0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          )
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(34),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: CASIGlass.blurHeavy, sigmaY: CASIGlass.blurHeavy),
-          child: Stack(
-            children: [
-              // Main content container
-              Container(
-                color: Colors.white.withValues(alpha: CASIElevation.raised.bgAlpha),
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                child: Row(
+      child: GlassSurface.modal(
+        cornerRadius: 35,
+        height: 70,
+        child: Stack(
+          children: [
+            // Main content container
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: Row(
                   children: [
                     // Tappable Area: Album Art & Text
                     Expanded(
@@ -284,8 +269,7 @@ class _SongPlayerState extends State<SongPlayer> with WidgetsBindingObserver {
                   ),
                 ),
               ),
-            ],
-          ),
+          ],
         ),
       ),
     );

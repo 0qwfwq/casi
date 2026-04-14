@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
@@ -469,42 +468,32 @@ class _WeatherPillState extends State<WeatherPill> with WidgetsBindingObserver {
       onTap: _expand,
       onLongPress: _openWeatherApp,
       child: Center(
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(CASIGlass.cornerPill),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: CASIGlass.blurStandard, sigmaY: CASIGlass.blurStandard),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: CASIElevation.card.bgAlpha),
-                borderRadius: BorderRadius.circular(CASIGlass.cornerPill),
-                border: Border.all(color: Colors.white.withValues(alpha: CASIElevation.card.borderAlpha)),
+        child: GlassSurface.pill(
+          cornerRadius: CASIGlass.cornerPill,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(_currentIcon, color: _currentIconColor, size: 16),
+              const SizedBox(width: 6),
+              Text(
+                "${_temperature ?? '--'}$_unitLabel",
+                style: const TextStyle(
+                  color: CASIColors.textPrimary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(_currentIcon, color: _currentIconColor, size: 16),
-                  const SizedBox(width: 6),
-                  Text(
-                    "${_temperature ?? '--'}$_unitLabel",
-                    style: const TextStyle(
-                      color: CASIColors.textPrimary,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    _currentDescription,
-                    style: const TextStyle(
-                      color: CASIColors.textSecondary,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w400,
-                    ),
-                  ),
-                ],
+              const SizedBox(width: 4),
+              Text(
+                _currentDescription,
+                style: const TextStyle(
+                  color: CASIColors.textSecondary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w400,
+                ),
               ),
-            ),
+            ],
           ),
         ),
       ),
@@ -515,47 +504,25 @@ class _WeatherPillState extends State<WeatherPill> with WidgetsBindingObserver {
     return GestureDetector(
       key: key,
       onVerticalDragEnd: (_) => _collapse(),
-      child: Container(
+      child: GlassSurface.modal(
+        cornerRadius: CASIGlass.cornerSheet,
         width: double.infinity,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(CASIGlass.cornerSheet),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: CASIElevation.float_.borderAlpha),
-            width: 1.0,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.1),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(CASIGlass.cornerSheet - 1),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: CASIGlass.blurSheet, sigmaY: CASIGlass.blurSheet),
-            child: Container(
-              color: Colors.white.withValues(alpha: CASIGlass.tintSheet),
-              child: AnimatedOpacity(
-                opacity: _isCollapsing ? 0.0 : 1.0,
-                duration: const Duration(milliseconds: 150),
-                child: WeatherForecastWidget(
-                  forecastData: _forecastData,
-                  hourlyData: _hourlyData,
-                  currentTemp: "${_temperature ?? '--'}$_unitLabel",
-                  currentDescription: _currentDescription,
-                  currentIcon: _currentIcon,
-                  currentIconColor: _currentIconColor,
-                  feelsLike: _feelsLike,
-                  wind: _wind,
-                  precipitation: _precipitation,
-                  humidity: _humidity,
-                  uvIndex: _uvIndex,
-                  sunrise: _sunrise,
-                ),
-              ),
-            ),
+        child: AnimatedOpacity(
+          opacity: _isCollapsing ? 0.0 : 1.0,
+          duration: const Duration(milliseconds: 150),
+          child: WeatherForecastWidget(
+            forecastData: _forecastData,
+            hourlyData: _hourlyData,
+            currentTemp: "${_temperature ?? '--'}$_unitLabel",
+            currentDescription: _currentDescription,
+            currentIcon: _currentIcon,
+            currentIconColor: _currentIconColor,
+            feelsLike: _feelsLike,
+            wind: _wind,
+            precipitation: _precipitation,
+            humidity: _humidity,
+            uvIndex: _uvIndex,
+            sunrise: _sunrise,
           ),
         ),
       ),

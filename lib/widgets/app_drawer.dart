@@ -1,5 +1,4 @@
 import 'dart:math';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:installed_apps/app_info.dart';
@@ -272,24 +271,10 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                     child: Center(
                       child: SizedBox(
                         width: screenWidth * 0.6,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(CASISearchBarSpec.cornerRadius),
-                          child: BackdropFilter(
-                            filter: ImageFilter.blur(
-                              sigmaX: CASISearchBarSpec.blurRadius,
-                              sigmaY: CASISearchBarSpec.blurRadius,
-                            ),
-                            child: Container(
-                              height: CASISearchBarSpec.height,
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: CASISearchBarSpec.tintAlpha),
-                                borderRadius: BorderRadius.circular(CASISearchBarSpec.cornerRadius),
-                                border: Border.all(
-                                  color: Colors.white.withValues(alpha: CASIElevation.card.borderAlpha),
-                                  width: CASISearchBarSpec.focusBorderWidth,
-                                ),
-                              ),
-                              child: TextField(
+                        child: GlassSurface.drawer(
+                          cornerRadius: CASISearchBarSpec.cornerRadius,
+                          height: CASISearchBarSpec.height,
+                          child: TextField(
                                 controller: _searchController,
                                 focusNode: _searchFocusNode,
                                 onChanged: _updateSearch,
@@ -348,8 +333,6 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                                   ),
                                 ),
                               ),
-                            ),
-                          ),
                         ),
                       ),
                     ),
@@ -648,46 +631,12 @@ class _GradientBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const double topAlpha = 0.0;
-    final double midHiAlpha = CASIElevation.base.bgAlpha;
-    const double midLoAlpha = CASIGlass.tintLight;
-    const double bottomAlpha = CASIGlass.tintStandard;
-
     return Positioned.fill(
-      child: ClipRRect(
-        borderRadius: const BorderRadius.vertical(
+      child: GlassSurface.drawer(
+        borderRadiusOverride: const BorderRadius.vertical(
           top: Radius.circular(CASIGlass.cornerSheet),
         ),
-        child: Stack(
-          children: [
-            // Full blur layer (frosted glass effect)
-            Positioned.fill(
-              child: BackdropFilter(
-                filter: ImageFilter.blur(
-                  sigmaX: CASIGlass.blurBackground,
-                  sigmaY: CASIGlass.blurBackground,
-                ),
-                child: Container(color: Colors.transparent),
-              ),
-            ),
-            // Frosted tint: transparent at top → visible frost at bottom
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.white.withValues(alpha: topAlpha),
-                    Colors.white.withValues(alpha: midHiAlpha),
-                    Colors.white.withValues(alpha: midLoAlpha),
-                    Colors.white.withValues(alpha: bottomAlpha),
-                  ],
-                  stops: const [0.0, 0.3, 0.6, 1.0],
-                ),
-              ),
-            ),
-          ],
-        ),
+        child: const SizedBox.expand(),
       ),
     );
   }
@@ -799,53 +748,37 @@ class _ContextMenuContent extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: Colors.transparent,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(CASIGlass.cornerStandard),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(
-            sigmaX: CASIGlass.blurHeavy,
-            sigmaY: CASIGlass.blurHeavy,
-          ),
-          child: Container(
-            width: 200,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: CASIElevation.float_.bgAlpha),
-              borderRadius: BorderRadius.circular(CASIGlass.cornerStandard),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: CASIElevation.float_.borderAlpha),
-                width: 1.0,
+      child: GlassSurface.modal(
+        cornerRadius: CASIGlass.cornerStandard,
+        width: 200,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _ContextMenuItem(
+              icon: Icons.add_to_home_screen_outlined,
+              label: 'Add to Home',
+              onTap: onAddToHome,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(CASIGlass.cornerStandard),
               ),
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _ContextMenuItem(
-                  icon: Icons.add_to_home_screen_outlined,
-                  label: 'Add to Home',
-                  onTap: onAddToHome,
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(CASIGlass.cornerStandard),
-                  ),
-                ),
-                _divider(),
-                _ContextMenuItem(
-                  icon: Icons.info_outline,
-                  label: 'App Info',
-                  onTap: onAppInfo,
-                ),
-                _divider(),
-                _ContextMenuItem(
-                  icon: Icons.delete_outline,
-                  label: 'Uninstall',
-                  onTap: onUninstall,
-                  color: CASIColors.alert,
-                  borderRadius: const BorderRadius.vertical(
-                    bottom: Radius.circular(CASIGlass.cornerStandard),
-                  ),
-                ),
-              ],
+            _divider(),
+            _ContextMenuItem(
+              icon: Icons.info_outline,
+              label: 'App Info',
+              onTap: onAppInfo,
             ),
-          ),
+            _divider(),
+            _ContextMenuItem(
+              icon: Icons.delete_outline,
+              label: 'Uninstall',
+              onTap: onUninstall,
+              color: CASIColors.alert,
+              borderRadius: const BorderRadius.vertical(
+                bottom: Radius.circular(CASIGlass.cornerStandard),
+              ),
+            ),
+          ],
         ),
       ),
     );

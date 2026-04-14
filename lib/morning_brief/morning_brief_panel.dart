@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:casi/design_system.dart';
@@ -74,28 +73,10 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 32),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(CASIGlass.cornerSheet),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: CASIGlass.blurSheet, sigmaY: CASIGlass.blurSheet),
-          child: Container(
-            width: panelWidth,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: CASIGlass.tintSheet),
-              borderRadius: BorderRadius.circular(CASIGlass.cornerSheet),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: CASIElevation.float_.borderAlpha),
-                width: 1.0,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.1),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: GestureDetector(
+      child: GlassSurface.modal(
+        cornerRadius: CASIGlass.cornerSheet,
+        width: panelWidth,
+        child: GestureDetector(
               onVerticalDragEnd: (details) {
                 if (details.primaryVelocity != null && details.primaryVelocity! < -300) {
                   widget.onDismiss();
@@ -122,8 +103,6 @@ class _MorningBriefPanelState extends State<MorningBriefPanel> {
                   const SizedBox(height: 12),
                 ],
               ),
-            ),
-          ),
         ),
       ),
     );

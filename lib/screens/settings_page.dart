@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'dart:ui';
+import 'dart:ui' show ImageByteFormat;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -456,28 +456,14 @@ class _AppPickerDialogState extends State<_AppPickerDialog> {
   Widget build(BuildContext context) {
     return Dialog(
       backgroundColor: Colors.transparent,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(CASIGlass.cornerStandard),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(
-            sigmaX: CASIGlass.blurHeavy,
-            sigmaY: CASIGlass.blurHeavy,
-          ),
-          child: Container(
-            width: 320,
-            constraints: const BoxConstraints(maxHeight: 460),
-            decoration: BoxDecoration(
-              color:
-                  Colors.white.withValues(alpha: CASIElevation.float_.bgAlpha),
-              borderRadius: BorderRadius.circular(CASIGlass.cornerStandard),
-              border: Border.all(
-                color: Colors.white
-                    .withValues(alpha: CASIElevation.float_.borderAlpha),
-              ),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
+      child: GlassSurface.modal(
+        cornerRadius: CASIGlass.cornerStandard,
+        width: 320,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 460),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
                 Padding(
                   padding: const EdgeInsets.all(16),
                   child: TextField(
@@ -539,8 +525,7 @@ class _AppPickerDialogState extends State<_AppPickerDialog> {
             ),
           ),
         ),
-      ),
-    );
+      );
   }
 }
 
@@ -678,59 +663,47 @@ class _BackgroundSettingsPageState extends State<BackgroundSettingsPage> {
                 const SizedBox(height: 16),
 
                 // Background Type Selector — glass card
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: CASIGlass.blurLight, sigmaY: CASIGlass.blurLight),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: CASIElevation.card.bgAlpha),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: CASIElevation.card.borderAlpha),
+                GlassSurface.modal(
+                  cornerRadius: 12,
+                  child: Column(
+                    children: [
+                      RadioListTile<String>(
+                        title: const Text("Solid Color", style: TextStyle(color: Colors.white)),
+                        value: 'color',
+                        groupValue: _backgroundType,
+                        onChanged: (value) {
+                          setState(() => _backgroundType = value!);
+                          _saveSettings();
+                        },
+                        activeColor: CASIColors.accentPrimary,
+                      ),
+                      RadioListTile<String>(
+                        title: const Text("Image", style: TextStyle(color: Colors.white)),
+                        value: 'image',
+                        groupValue: _backgroundType,
+                        onChanged: (value) {
+                          setState(() => _backgroundType = value!);
+                          _saveSettings();
+                        },
+                        activeColor: CASIColors.accentPrimary,
+                      ),
+                      RadioListTile<String>(
+                        title: const Text("System Wallpaper", style: TextStyle(color: Colors.white)),
+                        subtitle: Text(
+                          _wallpaperService.hasSystemWallpaper
+                              ? "Uses your device wallpaper"
+                              : "Live wallpaper pass-through",
+                          style: const TextStyle(color: CASIColors.textSecondary, fontSize: 12),
                         ),
+                        value: 'system',
+                        groupValue: _backgroundType,
+                        onChanged: (value) {
+                          setState(() => _backgroundType = value!);
+                          _saveSettings();
+                        },
+                        activeColor: CASIColors.accentPrimary,
                       ),
-                      child: Column(
-                        children: [
-                          RadioListTile<String>(
-                            title: const Text("Solid Color", style: TextStyle(color: Colors.white)),
-                            value: 'color',
-                            groupValue: _backgroundType,
-                            onChanged: (value) {
-                              setState(() => _backgroundType = value!);
-                              _saveSettings();
-                            },
-                            activeColor: CASIColors.accentPrimary,
-                          ),
-                          RadioListTile<String>(
-                            title: const Text("Image", style: TextStyle(color: Colors.white)),
-                            value: 'image',
-                            groupValue: _backgroundType,
-                            onChanged: (value) {
-                              setState(() => _backgroundType = value!);
-                              _saveSettings();
-                            },
-                            activeColor: CASIColors.accentPrimary,
-                          ),
-                          RadioListTile<String>(
-                            title: const Text("System Wallpaper", style: TextStyle(color: Colors.white)),
-                            subtitle: Text(
-                              _wallpaperService.hasSystemWallpaper
-                                  ? "Uses your device wallpaper"
-                                  : "Live wallpaper pass-through",
-                              style: const TextStyle(color: CASIColors.textSecondary, fontSize: 12),
-                            ),
-                            value: 'system',
-                            groupValue: _backgroundType,
-                            onChanged: (value) {
-                              setState(() => _backgroundType = value!);
-                              _saveSettings();
-                            },
-                            activeColor: CASIColors.accentPrimary,
-                          ),
-                        ],
-                      ),
-                    ),
+                    ],
                   ),
                 ),
 
@@ -753,24 +726,20 @@ class _BackgroundSettingsPageState extends State<BackgroundSettingsPage> {
                       ),
                       const SizedBox(width: 16),
                       Expanded(
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: BackdropFilter(
-                            filter: ImageFilter.blur(sigmaX: CASIGlass.blurLight, sigmaY: CASIGlass.blurLight),
-                            child: TextField(
-                              controller: _hexController,
-                              style: const TextStyle(color: Colors.white),
-                              decoration: InputDecoration(
-                                prefixText: '# ',
-                                prefixStyle: const TextStyle(color: CASIColors.textSecondary),
-                                filled: true,
-                                fillColor: Colors.white.withValues(alpha: CASIElevation.card.bgAlpha),
-                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                                hintText: '000000',
-                                hintStyle: TextStyle(color: CASIColors.textTertiary),
-                              ),
-                              onChanged: _updateColorFromHex,
+                        child: GlassSurface.modal(
+                          cornerRadius: 8,
+                          child: TextField(
+                            controller: _hexController,
+                            style: const TextStyle(color: Colors.white),
+                            decoration: const InputDecoration(
+                              prefixText: '# ',
+                              prefixStyle: TextStyle(color: CASIColors.textSecondary),
+                              border: InputBorder.none,
+                              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                              hintText: '000000',
+                              hintStyle: TextStyle(color: CASIColors.textTertiary),
                             ),
+                            onChanged: _updateColorFromHex,
                           ),
                         ),
                       ),
@@ -781,39 +750,31 @@ class _BackgroundSettingsPageState extends State<BackgroundSettingsPage> {
                   const SizedBox(height: 8),
                   GestureDetector(
                     onTap: _pickImage,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: CASIGlass.blurLight, sigmaY: CASIGlass.blurLight),
-                        child: Container(
-                          height: 200,
-                          width: double.infinity,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: CASIElevation.card.bgAlpha),
+                    child: _backgroundImagePath != null
+                        ? ClipRRect(
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.white.withValues(alpha: CASIElevation.card.borderAlpha)),
-                            image: _backgroundImagePath != null
-                                ? DecorationImage(
-                                    image: FileImage(File(_backgroundImagePath!)),
-                                    fit: BoxFit.cover,
-                                  )
-                                : null,
+                            child: Image.file(
+                              File(_backgroundImagePath!),
+                              height: 200,
+                              width: double.infinity,
+                              fit: BoxFit.cover,
+                            ),
+                          )
+                        : GlassSurface.modal(
+                            cornerRadius: 12,
+                            height: 200,
+                            width: double.infinity,
+                            child: const Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.add_photo_alternate, color: CASIColors.textSecondary, size: 40),
+                                  SizedBox(height: 8),
+                                  Text("Tap to pick image", style: TextStyle(color: CASIColors.textSecondary)),
+                                ],
+                              ),
+                            ),
                           ),
-                          child: _backgroundImagePath == null
-                              ? const Center(
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(Icons.add_photo_alternate, color: CASIColors.textSecondary, size: 40),
-                                      SizedBox(height: 8),
-                                      Text("Tap to pick image", style: TextStyle(color: CASIColors.textSecondary)),
-                                    ],
-                                  ),
-                                )
-                              : null,
-                        ),
-                      ),
-                    ),
                   ),
                   if (_backgroundImagePath != null)
                     Padding(
@@ -828,40 +789,30 @@ class _BackgroundSettingsPageState extends State<BackgroundSettingsPage> {
                     ),
                 ] else if (_backgroundType == 'system') ...[
                   // System wallpaper info
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: CASIGlass.blurLight, sigmaY: CASIGlass.blurLight),
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: CASIElevation.card.bgAlpha),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.white.withValues(alpha: CASIElevation.card.borderAlpha)),
+                  GlassSurface.modal(
+                    cornerRadius: 12,
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      children: [
+                        Icon(
+                          Icons.wallpaper_rounded,
+                          color: CASIColors.accentPrimary,
+                          size: 40,
                         ),
-                        child: Column(
-                          children: [
-                            Icon(
-                              Icons.wallpaper_rounded,
-                              color: CASIColors.accentPrimary,
-                              size: 40,
-                            ),
-                            const SizedBox(height: 12),
-                            Text(
-                              _wallpaperService.hasSystemWallpaper
-                                  ? "Your device wallpaper will show through all glass surfaces"
-                                  : "The Android window is transparent — your system wallpaper (including live wallpapers) shows directly behind the launcher",
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: CASIColors.textSecondary,
-                                fontSize: 13,
-                                height: 1.4,
-                              ),
-                            ),
-                          ],
+                        const SizedBox(height: 12),
+                        Text(
+                          _wallpaperService.hasSystemWallpaper
+                              ? "Your device wallpaper will show through all glass surfaces"
+                              : "The Android window is transparent — your system wallpaper (including live wallpapers) shows directly behind the launcher",
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: CASIColors.textSecondary,
+                            fontSize: 13,
+                            height: 1.4,
+                          ),
                         ),
-                      ),
+                      ],
                     ),
                   ),
                 ],
