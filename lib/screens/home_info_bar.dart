@@ -28,6 +28,9 @@ import '../services/wallpaper_service.dart';
 import 'package:casi/services/foresight_service.dart';
 import 'package:casi/services/notification_pill_service.dart';
 import '../widgets/foresight_pill.dart';
+import '../widgets/notification_stack_pill.dart';
+import '../widgets/timer_pill.dart';
+import '../widgets/alarm_pill.dart';
 
 class AppTimer {
   int totalSeconds;
@@ -87,6 +90,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   Timer? _alarmTimer;
   Timer? _notificationPollTimer;
   String? _lastRungAlarmTime;
+
+  // Tracks which schedule-row pill is currently ringing (so we can render
+  // its red bell-shake state in place). Exactly one of these is set when
+  // `_isAlarmRinging` is true.
+  String? _ringingAlarmLabel;
+  int? _ringingTimerIndex;
 
   // --- Audio States ---
   final AudioPlayer _audioPlayer = AudioPlayer();
@@ -411,17 +420,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
 
       setState(() {
         _isAlarmRinging = true;
-        _showPill = true;
-        _isAlarmMode = false;
-        _isStopwatchMode = false;
-        _isTimerMode = false;
-        _isCalendarMode = false;
-        _isViewingEvents = false;
-        _selectedAlarmIndex = null;
-        _selectedEventIndex = null;
-        _lastRungAlarmTime = matchedAlarm; 
+        _ringingAlarmLabel = matchedAlarm;
+        _lastRungAlarmTime = matchedAlarm;
       });
-      _startAlarmSound(); 
+      _startAlarmSound();
     }
   }
 
@@ -443,6 +445,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
 
     setState(() {
       _isAlarmRinging = false;
+      _ringingAlarmLabel = null;
       _showPill = false;
       if (!_activeAlarms.contains(snoozeTime)) {
         _activeAlarms.add(snoozeTime);
@@ -454,11 +457,52 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   }
 
   void _stopAlarm() {
-    _stopAlarmSound(); 
+    _stopAlarmSound();
     setState(() {
-      _isAlarmRinging = false;
+      _ringingAlarmLabel = null;
+      // Another ringing source (e.g. a timer) may still be active.
+      _isAlarmRinging = _ringingTimerIndex != null;
       _showPill = false;
     });
+  }
+
+  /// Stop a ringing timer: clear the ringing state, reset the timer to its
+  /// starting value, and remove it from the schedule row. Also stops the
+  /// alarm sound if this was the only ringing source.
+  void _stopRingingTimer(int index) {
+    if (index < 0 || index >= _appTimers.length) {
+      setState(() {
+        _ringingTimerIndex = null;
+        _isAlarmRinging = _ringingAlarmLabel != null;
+      });
+      if (!_isAlarmRinging) _stopAlarmSound();
+      return;
+    }
+    setState(() {
+      final t = _appTimers[index];
+      t.isRunning = false;
+      t.endTime = null;
+      t.remainingSeconds = t.totalSeconds;
+      _ringingTimerIndex = null;
+      _isAlarmRinging = _ringingAlarmLabel != null;
+    });
+    if (!_isAlarmRinging) _stopAlarmSound();
+    _saveTimers();
+  }
+
+  /// Stop-and-reset from a left-to-right swipe on a non-ringing timer pill.
+  /// The timer is reset to its full value and stops, which removes it from
+  /// the schedule row (since it is no longer active).
+  void _stopAndResetTimer(int index) {
+    if (index < 0 || index >= _appTimers.length) return;
+    setState(() {
+      final t = _appTimers[index];
+      t.isRunning = false;
+      t.endTime = null;
+      t.remainingSeconds = t.totalSeconds;
+      if (_selectedTimerIndex == index) _selectedTimerIndex = null;
+    });
+    _saveTimers();
   }
 
   // --- Stopwatch Logic ---
@@ -513,28 +557,30 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
 
   void _tickTimers() {
     bool anyRunning = false;
-    bool triggerRing = false;
+    int? ringingIdx;
     final now = DateTime.now();
-    
-    for (var t in _appTimers) {
+
+    for (int i = 0; i < _appTimers.length; i++) {
+      final t = _appTimers[i];
       if (t.isRunning && t.endTime != null) {
         anyRunning = true;
         t.remainingSeconds = t.endTime!.difference(now).inSeconds;
-        
+
         if (t.remainingSeconds <= 0) {
-          t.remainingSeconds = t.totalSeconds; // Reset to total so it can be restarted easily
+          // Keep at zero (not reset) so the ringing pill shows 00:00 until
+          // the user taps to stop. The reset happens in _stopRingingTimer.
+          t.remainingSeconds = 0;
           t.isRunning = false;
           t.endTime = null;
-          triggerRing = true;
+          ringingIdx ??= i;
         }
       }
     }
 
-    if (triggerRing) {
+    if (ringingIdx != null) {
       setState(() {
         _isAlarmRinging = true;
-        _showPill = true;
-        _isTimerMode = false;
+        _ringingTimerIndex = ringingIdx;
       });
       _startAlarmSound();
       _saveTimers();
@@ -1127,6 +1173,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                                   )
                                                 : const SizedBox.shrink(key: ValueKey('no_brief')),
                                           ),
+                                          // Schedule status row — Timer (left) & Alarm (right)
+                                          // pills above the music player. Stays visible with
+                                          // weather expanded or clock/timer panels open.
+                                          _buildScheduleStatusRow(),
                                           // Music Player
                                           Offstage(
                                             offstage: !_isPlayerVisible || _isAlarmRinging,
@@ -1142,6 +1192,23 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                                 },
                                               ),
                                             ),
+                                          ),
+                                          // Notification stack pill — sits just below the
+                                          // Music Player, matching its width/height. Collapses
+                                          // smoothly when there are no active notifications.
+                                          AnimatedSize(
+                                            duration: CASIMotion.standard,
+                                            curve: Curves.easeOutCubic,
+                                            alignment: Alignment.topCenter,
+                                            child: (_notificationPillApps.isNotEmpty && !_isAlarmRinging)
+                                                ? Padding(
+                                                    padding: const EdgeInsets.only(top: 12),
+                                                    child: NotificationStackPill(
+                                                      entries: _notificationPillApps,
+                                                      onTap: _onNotificationPillTap,
+                                                    ),
+                                                  )
+                                                : const SizedBox(width: double.infinity, height: 0),
                                           ),
                                         ],
                                       ),
@@ -1187,7 +1254,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                                   child: child,
                                                 ),
                                               ),
-                                              child: ((_foresightPredictions.isNotEmpty || _notificationPillApps.isNotEmpty) &&
+                                              child: (_foresightPredictions.isNotEmpty &&
                                                       _showForesight &&
                                                       _homeApps.isNotEmpty &&
                                                       !_isAlarmRinging &&
@@ -1199,8 +1266,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                                         predictions: _foresightPredictions,
                                                         onAppTap: _onForesightAppTap,
                                                         maxForesight: _foresightDockCount,
-                                                        notificationApps: _notificationPillApps,
-                                                        onNotificationTap: _onNotificationPillTap,
                                                         onLongPress: _onForesightLongPress,
                                                       ),
                                                     )
@@ -1246,15 +1311,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                                 _draggingApp = app;
                                               }),
                                               draggingApp: _draggingApp,
-                                              emptyDockWidget: ((_foresightPredictions.isNotEmpty || _notificationPillApps.isNotEmpty) &&
+                                              emptyDockWidget: (_foresightPredictions.isNotEmpty &&
                                                       _showForesight &&
                                                       !_isAlarmRinging)
                                                   ? ForesightPill(
                                                       predictions: _foresightPredictions,
                                                       onAppTap: _onForesightAppTap,
                                                       maxForesight: _foresightDockCount,
-                                                      notificationApps: _notificationPillApps,
-                                                      onNotificationTap: _onNotificationPillTap,
                                                       onLongPress: _onForesightLongPress,
                                                     )
                                                   : null,
@@ -1660,13 +1723,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   }
 
   // --- Nearest active timer (returns index, or null) ---
+  // A timer counts as active if it is running OR it has been paused mid-run
+  // (so paused timers remain on the home screen per the swipe-to-pause flow).
   int? _nearestTimerIndex() {
     if (_appTimers.isEmpty) return null;
     int? bestIdx;
     int bestRemaining = 999999999;
     for (int i = 0; i < _appTimers.length; i++) {
       final t = _appTimers[i];
-      if (t.isRunning && t.remainingSeconds < bestRemaining) {
+      final bool isActive = t.isRunning ||
+          (t.remainingSeconds > 0 && t.remainingSeconds < t.totalSeconds);
+      if (isActive && t.remainingSeconds < bestRemaining) {
         bestRemaining = t.remainingSeconds;
         bestIdx = i;
       }
@@ -1674,20 +1741,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     return bestIdx;
   }
 
-  // Fixed width for alarm & timer status pills so they always match
-  static const double _statusPillWidth = 105.0;
-
   Widget _buildPillRow() {
-    // Build small status pills: Alarm (left) | Weather (center) | Timer (right)
-    final nearestAlarm = _nearestAlarmLabel();
-    final nearestTimer = _nearestTimerIndex();
-    final bool hasAlarm = nearestAlarm != null;
-    final bool hasTimer = nearestTimer != null;
-
-    // Hide status pills during alarm ringing or expanded weather (but keep them
-    // visible when panels like timer/alarm/calendar are open)
-    final bool showStatusPills = !_isAlarmRinging && !_isForecastVisible;
-
     // GlobalKey preserves WeatherPill state (including _isExpanded) across layout changes
     final weatherPill = WeatherPill(
       key: _weatherPillKey,
@@ -1696,133 +1750,108 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
       },
     );
 
-    final bool showAlarm = showStatusPills && hasAlarm;
-    final bool showTimer = showStatusPills && hasTimer;
-
-    // Centered row: visible pills group together and center as a unit.
-    // AnimatedSize collapses hidden pills to zero width; AnimatedOpacity fades them.
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: _isForecastVisible ? 40 : 20),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Alarm pill — collapses to zero width when hidden
-          AnimatedSize(
-            duration: CASIMotion.standard,
-            curve: Curves.easeOutCubic,
-            alignment: Alignment.centerRight,
-            child: showAlarm
-                ? AnimatedOpacity(
-                    opacity: 1.0,
-                    duration: CASIMotion.standard,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        SizedBox(
-                          width: _statusPillWidth,
-                          child: _buildStatusPill(
-                            icon: Icons.alarm,
-                            label: nearestAlarm,
-                            onTap: () {
-                              setState(() {
-                                _showPill = true;
-                                _isAlarmMode = true;
-                                _isStopwatchMode = false;
-                                _isTimerMode = false;
-                                _isCalendarMode = false;
-                                _isViewingEvents = false;
-                                _selectedAlarmIndex = null;
-                              });
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                      ],
-                    ),
-                  )
-                : const SizedBox.shrink(),
-          ),
-          // Weather pill — Expanded only when forecast is open (needs bounded width
-          // for its double.infinity Container); unwrapped when collapsed so pills
-          // group tightly and center as a unit.
-          if (_isForecastVisible) Expanded(child: weatherPill)
-          else weatherPill,
-          // Timer pill — collapses to zero width when hidden
-          AnimatedSize(
-            duration: CASIMotion.standard,
-            curve: Curves.easeOutCubic,
-            alignment: Alignment.centerLeft,
-            child: showTimer
-                ? AnimatedOpacity(
-                    opacity: 1.0,
-                    duration: CASIMotion.standard,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const SizedBox(width: 4),
-                        SizedBox(
-                          width: _statusPillWidth,
-                          child: _buildStatusPill(
-                            icon: Icons.timer,
-                            label: _formatTimerTime(_appTimers[nearestTimer].remainingSeconds),
-                            textAlignment: Alignment.centerRight,
-                            onTap: () {
-                              setState(() {
-                                _showPill = true;
-                                _isTimerMode = true;
-                                _isStopwatchMode = false;
-                                _isAlarmMode = false;
-                                _isCalendarMode = false;
-                                _isViewingEvents = false;
-                                _isCreatingTimer = false;
-                                _isEditingTimer = false;
-                                _selectedTimerIndex = nearestTimer;
-                              });
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                : const SizedBox.shrink(),
-          ),
-        ],
-      ),
+      child: _isForecastVisible
+          ? Row(children: [Expanded(child: weatherPill)])
+          : Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [weatherPill],
+            ),
     );
   }
 
-  Widget _buildStatusPill({
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-    VoidCallback? onLongPress,
-    Alignment textAlignment = Alignment.centerLeft,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      onLongPress: onLongPress,
-      child: GlassSurface.pill(
-        cornerRadius: CASIGlass.cornerPill,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        child: Row(
-          children: [
-            Icon(icon, color: CASIColors.textPrimary, size: 13),
-            const SizedBox(width: 4),
-            Expanded(
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: textAlignment,
-                child: Text(
-                  label,
-                  style: const TextStyle(color: CASIColors.textPrimary, fontSize: 11, fontWeight: FontWeight.w500),
-                  maxLines: 1,
-                ),
+  // Schedule status row: alarm & timer pills above the music player.
+  // Visible whenever there's a nearest alarm and/or active timer, or when
+  // either is currently ringing (so the bell-shake ringing UI shows here
+  // in place of the old bottom-of-screen going-off panel).
+  Widget _buildScheduleStatusRow() {
+    final String? nearestAlarm = _ringingAlarmLabel ?? _nearestAlarmLabel();
+    final int? nearestTimer = _ringingTimerIndex ?? _nearestTimerIndex();
+    final bool hasAlarm = nearestAlarm != null;
+    final bool hasTimer = nearestTimer != null;
+    final bool show = hasAlarm || hasTimer;
+
+    Widget? timerPillWidget;
+    if (hasTimer) {
+      final t = _appTimers[nearestTimer];
+      final bool isThisRinging = _ringingTimerIndex == nearestTimer;
+      timerPillWidget = TimerPill(
+        timeText: _formatTimerTime(t.remainingSeconds),
+        isRunning: t.isRunning,
+        isRinging: isThisRinging,
+        onLongPressOpen: () {
+          setState(() {
+            _showPill = true;
+            _isTimerMode = true;
+            _isStopwatchMode = false;
+            _isAlarmMode = false;
+            _isCalendarMode = false;
+            _isViewingEvents = false;
+            _isCreatingTimer = false;
+            _isEditingTimer = false;
+            _selectedTimerIndex = nearestTimer;
+          });
+        },
+        onTogglePause: () => _toggleTimer(nearestTimer),
+        onStop: () {
+          if (isThisRinging) {
+            _stopRingingTimer(nearestTimer);
+          } else {
+            _stopAndResetTimer(nearestTimer);
+          }
+        },
+      );
+    }
+
+    Widget? alarmPillWidget;
+    if (hasAlarm) {
+      final bool isThisRinging = _ringingAlarmLabel == nearestAlarm;
+      alarmPillWidget = AlarmPill(
+        title: nearestAlarm,
+        isRinging: isThisRinging,
+        onLongPressOpen: () {
+          setState(() {
+            _showPill = true;
+            _isAlarmMode = true;
+            _isStopwatchMode = false;
+            _isTimerMode = false;
+            _isCalendarMode = false;
+            _isViewingEvents = false;
+            _selectedAlarmIndex = null;
+          });
+        },
+        onStop: _stopAlarm,
+      );
+    }
+
+    Widget content;
+    if (timerPillWidget != null && alarmPillWidget != null) {
+      content = Row(
+        children: [
+          Expanded(child: timerPillWidget),
+          const SizedBox(width: 12),
+          Expanded(child: alarmPillWidget),
+        ],
+      );
+    } else {
+      content = timerPillWidget ?? alarmPillWidget ?? const SizedBox.shrink();
+    }
+
+    return AnimatedSize(
+      duration: CASIMotion.standard,
+      curve: Curves.easeOutCubic,
+      alignment: Alignment.topCenter,
+      child: show
+          ? Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 40),
+                child: content,
               ),
-            ),
-          ],
-        ),
-      ),
+            )
+          : const SizedBox(width: double.infinity, height: 0),
     );
   }
 
