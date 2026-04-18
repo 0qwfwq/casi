@@ -5,7 +5,6 @@ import 'package:installed_apps/installed_apps.dart';
 import 'package:casi/design_system.dart';
 
 // --- Custom notifications that bubble up to the Hub ---
-class ClockTapNotification extends Notification {}
 class CalendarTapNotification extends Notification {}
 
 class ClockCapsule extends StatefulWidget {
@@ -21,7 +20,6 @@ class _ClockCapsuleState extends State<ClockCapsule> {
   late Timer _timer;
 
   DateTime _now = DateTime.now();
-  String? _clockPackage;
   String? _calendarPackage;
 
   @override
@@ -54,13 +52,6 @@ class _ClockCapsuleState extends State<ClockCapsule> {
         ).firstOrNull;
         return app?.packageName;
       }
-
-      _clockPackage = findPackage([
-        'com.google.android.deskclock',
-        'com.android.deskclock',
-        'com.sec.android.app.clockpackage',
-        'com.oneplus.deskclock',
-      ], 'clock');
 
       _calendarPackage = findPackage([
         'com.google.android.calendar',
@@ -132,13 +123,14 @@ class _ClockCapsuleState extends State<ClockCapsule> {
           ),
         ),
 
-        // 2. The Clock — type.display scale (Inter, ExtraLight for premium airy look)
+        // 2. The Clock — non-interactive. Tapping and long-press are
+        // intentionally disabled; users manage alarms/timers in the
+        // Widgets Screen (long-press the wallpaper) and open the system
+        // clock from the app drawer.
         SizedBox(
           height: screenHeight * 0.17,
           width: double.infinity,
-          child: GestureDetector(
-            onTap: () => ClockTapNotification().dispatch(context),
-            onLongPress: () => _launchApp(_clockPackage),
+          child: IgnorePointer(
             child: FittedBox(
               fit: BoxFit.contain,
               child: Padding(

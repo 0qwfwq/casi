@@ -17,7 +17,6 @@ import '../widgets/song_player.dart';
 import '../widgets/clock_capsule.dart';
 import '../widgets/weather_pill.dart';
 import '../pills/dynamic_pill.dart';
-import '../pills/d_clock_pill.dart';
 import '../pills/d_calendar_pill.dart';
 import '../utils/app_launcher.dart';
 import '../widgets/notify_pill.dart';
@@ -31,35 +30,8 @@ import '../widgets/foresight_pill.dart';
 import '../widgets/notification_stack_pill.dart';
 import '../widgets/timer_pill.dart';
 import '../widgets/alarm_pill.dart';
-
-class AppTimer {
-  int totalSeconds;
-  int remainingSeconds;
-  bool isRunning;
-  DateTime? endTime;
-
-  AppTimer({required this.totalSeconds})
-    : remainingSeconds = totalSeconds,
-      isRunning = false;
-
-  Map<String, dynamic> toJson() => {
-    'totalSeconds': totalSeconds,
-    'remainingSeconds': remainingSeconds,
-    'isRunning': isRunning,
-    'endTime': endTime?.millisecondsSinceEpoch,
-  };
-
-  factory AppTimer.fromJson(Map<String, dynamic> json) {
-    final t = AppTimer(totalSeconds: json['totalSeconds'] as int);
-    t.remainingSeconds = json['remainingSeconds'] as int;
-    t.isRunning = json['isRunning'] as bool;
-    final endMs = json['endTime'] as int?;
-    if (endMs != null) {
-      t.endTime = DateTime.fromMillisecondsSinceEpoch(endMs);
-    }
-    return t;
-  }
-}
+import '../models/widget_items.dart';
+import 'widgets_screen.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -81,12 +53,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
 
   // --- Pill & Alarm State ---
   bool _showPill = false;
-  bool _isAlarmMode = false;
 
-  // --- Advanced Alarm States ---
-  List<String> _activeAlarms = [];
+  // --- Alarm list (each alarm carries its own isActive flag) ---
+  List<AppAlarm> _alarms = [];
   bool _isAlarmRinging = false;
-  int? _selectedAlarmIndex;
   Timer? _alarmTimer;
   Timer? _notificationPollTimer;
   String? _lastRungAlarmTime;
@@ -103,31 +73,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   Timer? _vibrationTimer;
   double? _previousVolume;
 
-  // --- Time Scroller States ---
-  int _scrolledHour = 1;
-  int _scrolledMinute = 0;
-  String _scrolledAmPm = 'AM';
-  List<String> _selectedDays = []; 
-
-  // --- Stopwatch States ---
-  bool _isStopwatchMode = false;
-  final Stopwatch _stopwatch = Stopwatch();
-  Timer? _stopwatchTimer;
-  String _stopwatchTime = "00:00.00";
-  final List<String> _stopwatchLaps = [];
-
-  // --- Advanced Timer States ---
-  bool _isTimerMode = false;
-  bool _isCreatingTimer = false;
-  bool _isEditingTimer = false; 
-  
-  List<AppTimer> _appTimers = []; 
-  int? _selectedTimerIndex;
+  // --- Timer list ---
+  List<AppTimer> _appTimers = [];
   Timer? _countdownTimer;
-
-  int _scrolledTimerHour = 0;
-  int _scrolledTimerMinute = 5;
-  int _scrolledTimerSecond = 0;
 
   // --- Calendar States ---
   bool _isCalendarMode = false;
@@ -276,7 +224,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     WidgetsBinding.instance.removeObserver(this);
     _alarmTimer?.cancel();
     _notificationPollTimer?.cancel();
-    _stopwatchTimer?.cancel();
     _countdownTimer?.cancel();
     _stopAlarmSound();
     _audioPlayer.dispose();
@@ -413,11 +360,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     String currentTimeStr = "$currentDay $hour:$minuteStr $ampm";
     String dailyTimeStr = "Daily $hour:$minuteStr $ampm";
 
-    if ((_activeAlarms.contains(currentTimeStr) && _lastRungAlarmTime != currentTimeStr) ||
-        (_activeAlarms.contains(dailyTimeStr) && _lastRungAlarmTime != dailyTimeStr)) {
-      
-      String matchedAlarm = _activeAlarms.contains(currentTimeStr) ? currentTimeStr : dailyTimeStr;
+    final activeLabels =
+        _alarms.where((a) => a.isActive).map((a) => a.label).toSet();
 
+    final matchesCurrent = activeLabels.contains(currentTimeStr) &&
+        _lastRungAlarmTime != currentTimeStr;
+    final matchesDaily = activeLabels.contains(dailyTimeStr) &&
+        _lastRungAlarmTime != dailyTimeStr;
+
+    if (matchesCurrent || matchesDaily) {
+      final matchedAlarm = matchesCurrent ? currentTimeStr : dailyTimeStr;
       setState(() {
         _isAlarmRinging = true;
         _ringingAlarmLabel = matchedAlarm;
@@ -447,8 +399,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
       _isAlarmRinging = false;
       _ringingAlarmLabel = null;
       _showPill = false;
-      if (!_activeAlarms.contains(snoozeTime)) {
-        _activeAlarms.add(snoozeTime);
+      final existing =
+          _alarms.indexWhere((a) => a.label == snoozeTime);
+      if (existing == -1) {
+        _alarms.add(AppAlarm(label: snoozeTime, isActive: true));
+      } else {
+        _alarms[existing].isActive = true;
       }
     });
     _saveAlarms();
@@ -491,8 +447,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   }
 
   /// Stop-and-reset from a left-to-right swipe on a non-ringing timer pill.
-  /// The timer is reset to its full value and stops, which removes it from
-  /// the schedule row (since it is no longer active).
+  /// Resets the timer to its full value and stops it. The timer stays on
+  /// the home screen (since it is still active) but in a paused state.
   void _stopAndResetTimer(int index) {
     if (index < 0 || index >= _appTimers.length) return;
     setState(() {
@@ -500,47 +456,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
       t.isRunning = false;
       t.endTime = null;
       t.remainingSeconds = t.totalSeconds;
-      if (_selectedTimerIndex == index) _selectedTimerIndex = null;
     });
     _saveTimers();
-  }
-
-  // --- Stopwatch Logic ---
-  void _startStopwatchTimer() {
-    _stopwatchTimer?.cancel();
-    _stopwatchTimer = Timer.periodic(const Duration(milliseconds: 30), (timer) {
-      if (_stopwatch.isRunning && mounted) {
-        setState(() {
-          _stopwatchTime = _formatStopwatchTime(_stopwatch.elapsed);
-        });
-      }
-    });
-  }
-
-  String _formatStopwatchTime(Duration d) {
-    String mins = d.inMinutes.toString().padLeft(2, '0');
-    String secs = (d.inSeconds % 60).toString().padLeft(2, '0');
-    String ms = ((d.inMilliseconds % 1000) ~/ 10).toString().padLeft(2, '0');
-    return "$mins:$secs.$ms";
-  }
-
-  void _toggleStopwatch() {
-    setState(() {
-      if (_stopwatch.isRunning) {
-        _stopwatch.stop();
-      } else {
-        _stopwatch.start();
-        _startStopwatchTimer(); 
-      }
-    });
-  }
-
-  void _lapStopwatch() {
-    if (_stopwatch.isRunning) {
-      setState(() {
-        _stopwatchLaps.insert(0, _stopwatchTime); 
-      });
-    }
   }
 
   // --- Advanced Background Timer Logic ---
@@ -562,6 +479,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
 
     for (int i = 0; i < _appTimers.length; i++) {
       final t = _appTimers[i];
+      // Inactive timers are frozen — skip entirely.
+      if (!t.isActive) continue;
       if (t.isRunning && t.endTime != null) {
         anyRunning = true;
         t.remainingSeconds = t.endTime!.difference(now).inSeconds;
@@ -597,8 +516,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
 
   void _syncTimersOnResume() {
     _tickTimers();
-    if (_appTimers.any((t) => t.isRunning) && (_countdownTimer == null || !_countdownTimer!.isActive)) {
-      _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) => _tickTimers());
+    if (_appTimers.any((t) => t.isActive && t.isRunning) &&
+        (_countdownTimer == null || !_countdownTimer!.isActive)) {
+      _countdownTimer =
+          Timer.periodic(const Duration(seconds: 1), (_) => _tickTimers());
     }
   }
 
@@ -619,18 +540,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
           _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) => _tickTimers());
         }
       }
-    });
-    _saveTimers();
-  }
-
-  void _stopTimer() {
-    if (_selectedTimerIndex == null || _appTimers.isEmpty) return;
-
-    setState(() {
-      var t = _appTimers[_selectedTimerIndex!];
-      t.isRunning = false;
-      t.endTime = null;
-      t.remainingSeconds = t.totalSeconds;
     });
     _saveTimers();
   }
@@ -872,17 +781,31 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
 
   Future<void> _saveAlarms() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList('active_alarms', _activeAlarms);
+    final jsonList =
+        _alarms.map((a) => jsonEncode(a.toJson())).toList();
+    await prefs.setStringList('active_alarms', jsonList);
   }
 
   Future<void> _loadAlarms() async {
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getStringList('active_alarms');
-    if (saved != null) {
-      setState(() {
-        _activeAlarms = saved;
-      });
+    if (saved == null) return;
+    final loaded = <AppAlarm>[];
+    for (final entry in saved) {
+      try {
+        // New-format entries are JSON objects; legacy rows are plain
+        // label strings. Legacy rows migrate in as Active so existing
+        // alarms keep ringing through the upgrade.
+        if (entry.startsWith('{')) {
+          loaded.add(AppAlarm.fromJson(jsonDecode(entry)));
+        } else {
+          loaded.add(AppAlarm(label: entry, isActive: true));
+        }
+      } catch (e) {
+        debugPrint('Error loading alarm "$entry": $e');
+      }
     }
+    setState(() => _alarms = loaded);
   }
 
   Future<void> _saveTimers() async {
@@ -899,7 +822,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
       final loaded = <AppTimer>[];
       for (final jsonStr in saved) {
         try {
-          final t = AppTimer.fromJson(jsonDecode(jsonStr));
+          final map = jsonDecode(jsonStr) as Map<String, dynamic>;
+          // Legacy rows have no `isActive` field; migrate as Active so
+          // any in-flight timers keep ticking after the upgrade.
+          final hadIsActive = map.containsKey('isActive');
+          final t = AppTimer.fromJson(map);
+          if (!hadIsActive) t.isActive = true;
+
           if (t.isRunning && t.endTime != null) {
             final remaining = t.endTime!.difference(now).inSeconds;
             if (remaining <= 0) {
@@ -918,8 +847,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
       setState(() {
         _appTimers = loaded;
       });
-      if (_appTimers.any((t) => t.isRunning)) {
-        _countdownTimer ??= Timer.periodic(const Duration(seconds: 1), (_) => _tickTimers());
+      if (_appTimers.any((t) => t.isActive && t.isRunning)) {
+        _countdownTimer ??= Timer.periodic(
+            const Duration(seconds: 1), (_) => _tickTimers());
       }
     }
   }
@@ -981,38 +911,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     setState(() {
       _showPill = true;
       _isCalendarMode = true;
-      _isViewingEvents = false; 
+      _isViewingEvents = false;
       _selectedEventIndex = null;
-      _isAlarmMode = false;
-      _isStopwatchMode = false;
-      _isTimerMode = false;
     });
   }
 
   void _dismissPill() {
     setState(() {
       _showPill = false;
-      _isAlarmMode = false;
-      _selectedAlarmIndex = null;
-      _selectedDays = [];
-
-      // CALENDAR CLEANUP
       _isCalendarMode = false;
       _isViewingEvents = false;
       _selectedEventIndex = null;
-
-      // STOPWATCH CLEANUP
-      _isStopwatchMode = false;
-      _stopwatch.stop();
-      _stopwatch.reset();
-      _stopwatchTimer?.cancel();
-      _stopwatchTime = "00:00.00";
-      _stopwatchLaps.clear();
-
-      // TIMER UI CLEANUP (But keeps running in background!)
-      _isTimerMode = false;
-      _isCreatingTimer = false;
-      _isEditingTimer = false;
     });
   }
 
@@ -1051,6 +960,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                 return;
               }
               const MethodChannel('casi.launcher/apps').invokeMethod('lockScreen');
+            },
+            onLongPress: () {
+              if (_drawerProgress.value > 0.05 || _showPill || _isAlarmRinging ||
+                  _isForecastVisible) {
+                return;
+              }
+              _openWidgetsScreen();
             },
             onVerticalDragStart: (details) {
               _dragStartY = details.globalPosition.dy;
@@ -1096,31 +1012,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                 } else {
                   _toggleCalendar();
                 }
-                return true; 
+                return true;
               },
-              child: NotificationListener<ClockTapNotification>(
-                onNotification: (notification) {
-                  if (_showPill && !_isStopwatchMode && !_isTimerMode && !_isCalendarMode) {
-                    _dismissPill();
-                  } else {
-                    setState(() {
-                      _showPill = true;
-                      _isAlarmMode = false;
-                      _isCalendarMode = false;
-                      _isViewingEvents = false;
-                      _selectedEventIndex = null;
-                      _isStopwatchMode = false;
-                      _isTimerMode = false;
-                      _selectedAlarmIndex = null;
-                      _selectedDays = [];
-                      _scrolledHour = 1;
-                      _scrolledMinute = 0;
-                      _scrolledAmPm = 'AM';
-                    });
-                  }
-                  return true; 
-                },
-                child: SafeArea(
+              child: SafeArea(
                   child: _isLoading
                       ? const Center(child: CircularProgressIndicator())
                       : Stack(
@@ -1324,8 +1218,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                               activePill: _showPill
                                                   ? DynamicPill(
                                                       key: const ValueKey('main_dynamic_pill'),
-                                                      child: _isCalendarMode 
-                                                        ? DCalendarPill(
+                                                      child: DCalendarPill(
                                                             focusedDay: _calendarFocusedDay,
                                                             isViewingEvents: _isViewingEvents,
                                                             events: _calendarEvents,
@@ -1361,254 +1254,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                                               _isViewingEvents = false;
                                                               _selectedEventIndex = null;
                                                             }),
-                                                          )
-                                                        : DClockPill(
-                                                            isAlarmMode: _isAlarmMode,
-                                                            isAlarmRinging: _isAlarmRinging,
-                                                            activeAlarms: _activeAlarms,
-                                                            selectedIndex: _selectedAlarmIndex,
-                                                            selectedDays: _selectedDays,
-                                                            isStopwatchMode: _isStopwatchMode,
-                                                            isStopwatchRunning: _stopwatch.isRunning,
-                                                            stopwatchTime: _stopwatchTime,
-                                                            stopwatchLaps: _stopwatchLaps,
-                                                            isTimerMode: _isTimerMode,
-                                                            isCreatingTimer: _isCreatingTimer,
-                                                            isEditingTimer: _isEditingTimer,
-                                                            savedTimersTimes: _appTimers.map((t) => _formatTimerTime(t.remainingSeconds)).toList(),
-                                                            savedTimersRunning: _appTimers.map((t) => t.isRunning).toList(),
-                                                            savedTimersAtStart: _appTimers.map((t) => t.remainingSeconds == t.totalSeconds).toList(),
-                                                            selectedTimerIndex: _selectedTimerIndex,
-                                                            initialHour: _scrolledHour,
-                                                            initialMinute: _scrolledMinute,
-                                                            initialAmPm: _scrolledAmPm,
-                                                            initialTimerHour: _scrolledTimerHour,
-                                                            initialTimerMinute: _scrolledTimerMinute,
-                                                            initialTimerSecond: _scrolledTimerSecond,
-
-                                                            // --- Alarm Callbacks ---
-                                                            onAlarmTapped: () => setState(() {
-                                                              _isAlarmMode = false;
-                                                              _isStopwatchMode = false;
-                                                              _isTimerMode = false;
-                                                              _selectedAlarmIndex = null;
-                                                              _selectedDays = [];
-                                                              _scrolledHour = 1;
-                                                              _scrolledMinute = 0;
-                                                              _scrolledAmPm = 'AM';
-                                                            }),
-                                                            onAlarmRowTapped: (index) {
-                                                              setState(() {
-                                                                _selectedAlarmIndex = _selectedAlarmIndex == index ? null : index;
-                                                              });
-                                                            },
-                                                            onAddNewAlarmTapped: () => setState(() {
-                                                              _selectedAlarmIndex = null;
-                                                              _selectedDays = [
-                                                                const ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][DateTime.now().weekday - 1]
-                                                              ];
-                                                              _scrolledHour = 8;
-                                                              _scrolledMinute = 0;
-                                                              _scrolledAmPm = 'AM';
-                                                              _isAlarmMode = true;
-                                                            }),
-                                                            onEditSelectedAlarm: () {
-                                                              if (_selectedAlarmIndex == null) return;
-                                                              final alarm = _activeAlarms[_selectedAlarmIndex!];
-                                                              final parts = alarm.split(' ');
-                                                              setState(() {
-                                                                if (parts.length == 3) {
-                                                                  _selectedDays = [parts[0]];
-                                                                  final timeParts = parts[1].split(':');
-                                                                  _scrolledHour = int.parse(timeParts[0]);
-                                                                  _scrolledMinute = int.parse(timeParts[1]);
-                                                                  _scrolledAmPm = parts[2];
-                                                                } else if (parts.length == 2) {
-                                                                  _selectedDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-                                                                  final timeParts = parts[0].split(':');
-                                                                  _scrolledHour = int.parse(timeParts[0]);
-                                                                  _scrolledMinute = int.parse(timeParts[1]);
-                                                                  _scrolledAmPm = parts[1];
-                                                                }
-                                                                _isAlarmMode = true;
-                                                              });
-                                                            },
-                                                            onCancelAlarmTapped: () => setState(() {
-                                                              _isAlarmMode = false;
-                                                              _selectedDays = [];
-                                                            }),
-                                                            onSaveAlarmTapped: () {
-                                                              setState(() {
-                                                                String minStr = _scrolledMinute.toString().padLeft(2, '0');
-                                                                String timeStr = "$_scrolledHour:$minStr $_scrolledAmPm";
-
-                                                                if (_selectedAlarmIndex != null) {
-                                                                  // Editing: replace the single selected alarm
-                                                                  if (_selectedDays.length == 7) {
-                                                                    _activeAlarms[_selectedAlarmIndex!] = timeStr;
-                                                                  } else if (_selectedDays.isNotEmpty) {
-                                                                    _activeAlarms[_selectedAlarmIndex!] = "${_selectedDays.first} $timeStr";
-                                                                    // Add extra alarms for additional selected days
-                                                                    for (int i = 1; i < _selectedDays.length; i++) {
-                                                                      String extra = "${_selectedDays[i]} $timeStr";
-                                                                      if (!_activeAlarms.contains(extra)) {
-                                                                        _activeAlarms.add(extra);
-                                                                      }
-                                                                    }
-                                                                  }
-                                                                } else {
-                                                                  // Creating new alarms
-                                                                  if (_selectedDays.length == 7) {
-                                                                    if (!_activeAlarms.contains(timeStr)) {
-                                                                      _activeAlarms.add(timeStr);
-                                                                    }
-                                                                  } else {
-                                                                    for (final day in _selectedDays) {
-                                                                      String newAlarm = "$day $timeStr";
-                                                                      if (!_activeAlarms.contains(newAlarm)) {
-                                                                        _activeAlarms.add(newAlarm);
-                                                                      }
-                                                                    }
-                                                                  }
-                                                                }
-
-                                                                _isAlarmMode = false;
-                                                                _selectedAlarmIndex = null;
-                                                                _selectedDays = [];
-                                                              });
-                                                              _saveAlarms();
-                                                            },
-                                                            onDeleteAlarm: (index) {
-                                                              setState(() {
-                                                                _activeAlarms.removeAt(index);
-                                                                if (_selectedAlarmIndex == index) {
-                                                                  _selectedAlarmIndex = null;
-                                                                } else if (_selectedAlarmIndex != null && _selectedAlarmIndex! > index) {
-                                                                  _selectedAlarmIndex = _selectedAlarmIndex! - 1;
-                                                                }
-                                                              });
-                                                              _saveAlarms();
-                                                            },
-                                                            onDaysChanged: (days) => setState(() => _selectedDays = days),
-                                                            onAmPmChanged: (val) => _scrolledAmPm = val,
-                                                            onHourChanged: (val) => _scrolledHour = val,
-                                                            onMinuteChanged: (val) => _scrolledMinute = val,
-
-                                                            // --- Stopwatch Callbacks (unchanged) ---
-                                                            onStopwatchTapped: () => setState(() {
-                                                              _isStopwatchMode = true;
-                                                              _isAlarmMode = false;
-                                                              _isTimerMode = false;
-                                                              _selectedAlarmIndex = null;
-                                                            }),
-                                                            onStopwatchToggle: _toggleStopwatch,
-                                                            onStopwatchLap: _lapStopwatch,
-                                                            onStopwatchReset: () {
-                                                              setState(() {
-                                                                _stopwatch.stop();
-                                                                _stopwatch.reset();
-                                                                _stopwatchTimer?.cancel();
-                                                                _stopwatchTime = "00:00.00";
-                                                                _stopwatchLaps.clear();
-                                                              });
-                                                            },
-
-                                                            // --- Timer Callbacks ---
-                                                            onTimerTapped: () => setState(() {
-                                                              _isTimerMode = true;
-                                                              _isStopwatchMode = false;
-                                                              _isAlarmMode = false;
-                                                              _isCreatingTimer = false;
-                                                              _isEditingTimer = false;
-                                                              _selectedAlarmIndex = null;
-                                                              if (_appTimers.isNotEmpty && _selectedTimerIndex == null) {
-                                                                _selectedTimerIndex = 0;
-                                                              }
-                                                            }),
-                                                            onTimerRowTapped: (index) {
-                                                              setState(() {
-                                                                _selectedTimerIndex = _selectedTimerIndex == index ? null : index;
-                                                              });
-                                                            },
-                                                            onToggleTimer: (index) => _toggleTimer(index),
-                                                            onTimerReset: _stopTimer,
-                                                            onAddNewTimerTapped: () => setState(() {
-                                                              _isCreatingTimer = true;
-                                                              _isEditingTimer = false;
-                                                              _scrolledTimerHour = 0;
-                                                              _scrolledTimerMinute = 5;
-                                                              _scrolledTimerSecond = 0;
-                                                            }),
-                                                            onCancelTimerTapped: () => setState(() {
-                                                              _isCreatingTimer = false;
-                                                              _isEditingTimer = false;
-                                                              if (_appTimers.isEmpty) {
-                                                                _isTimerMode = false;
-                                                                _showPill = false;
-                                                              }
-                                                            }),
-                                                            onSaveTimerTapped: () {
-                                                              setState(() {
-                                                                int totalSecs = _scrolledTimerHour * 3600 + _scrolledTimerMinute * 60 + _scrolledTimerSecond;
-                                                                if (totalSecs > 0) {
-                                                                  if (_isEditingTimer && _selectedTimerIndex != null) {
-                                                                    var t = _appTimers[_selectedTimerIndex!];
-                                                                    t.totalSeconds = totalSecs;
-                                                                    t.remainingSeconds = totalSecs;
-                                                                    t.isRunning = true;
-                                                                    t.endTime = DateTime.now().add(Duration(seconds: totalSecs));
-                                                                  } else {
-                                                                    var newT = AppTimer(totalSeconds: totalSecs);
-                                                                    newT.isRunning = true;
-                                                                    newT.endTime = DateTime.now().add(Duration(seconds: totalSecs));
-                                                                    _appTimers.add(newT);
-                                                                    _selectedTimerIndex = _appTimers.length - 1;
-                                                                  }
-                                                                  _isCreatingTimer = false;
-                                                                  _isEditingTimer = false;
-                                                                  if (_countdownTimer == null || !_countdownTimer!.isActive) {
-                                                                    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) => _tickTimers());
-                                                                  }
-                                                                } else {
-                                                                  _isCreatingTimer = false;
-                                                                  _isEditingTimer = false;
-                                                                }
-                                                              });
-                                                              _saveTimers();
-                                                            },
-                                                            onDeleteTimer: (index) {
-                                                              setState(() {
-                                                                _appTimers.removeAt(index);
-                                                                if (_selectedTimerIndex == index) {
-                                                                  _selectedTimerIndex = _appTimers.isNotEmpty ? 0 : null;
-                                                                  if (_appTimers.isEmpty) {
-                                                                    _isCreatingTimer = false;
-                                                                  }
-                                                                } else if (_selectedTimerIndex != null && _selectedTimerIndex! > index) {
-                                                                  _selectedTimerIndex = _selectedTimerIndex! - 1;
-                                                                }
-                                                              });
-                                                              _saveTimers();
-                                                            },
-                                                            onLongPressTimer: (index) {
-                                                              setState(() {
-                                                                _selectedTimerIndex = index;
-                                                                var t = _appTimers[index];
-                                                                _scrolledTimerHour = t.totalSeconds ~/ 3600;
-                                                                _scrolledTimerMinute = (t.totalSeconds % 3600) ~/ 60;
-                                                                _scrolledTimerSecond = t.totalSeconds % 60;
-                                                                _isCreatingTimer = true;
-                                                                _isEditingTimer = true;
-                                                              });
-                                                            },
-                                                            onTimerHourChanged: (val) => _scrolledTimerHour = val,
-                                                            onTimerMinuteChanged: (val) => _scrolledTimerMinute = val,
-                                                            onTimerSecondChanged: (val) => _scrolledTimerSecond = val,
-
-                                                            // --- Ringing Callbacks (unchanged) ---
-                                                            onSnoozeRinging: _snoozeAlarm,
-                                                            onCancelRinging: _stopAlarm,
-                                                          ),
+                                                      ),
                                                     )
                                                   : null,
                                             ),
@@ -1655,7 +1301,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                             ),
                           ],
                       ),
-                ),
               ),
             ),
           ),
@@ -1667,14 +1312,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
 
   // --- Nearest active alarm (returns time string like "Mon 8:30 AM", or null) ---
   String? _nearestAlarmLabel() {
-    if (_activeAlarms.isEmpty) return null;
+    final activeLabels =
+        _alarms.where((a) => a.isActive).map((a) => a.label).toList();
+    if (activeLabels.isEmpty) return null;
     final now = DateTime.now();
     const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
     Duration? bestDiff;
     String? bestLabel;
 
-    for (final alarm in _activeAlarms) {
+    for (final alarm in activeLabels) {
       final parts = alarm.split(' ');
       String dayPart;
       String timePart;
@@ -1723,22 +1370,102 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   }
 
   // --- Nearest active timer (returns index, or null) ---
-  // A timer counts as active if it is running OR it has been paused mid-run
-  // (so paused timers remain on the home screen per the swipe-to-pause flow).
+  // A timer shows on the home screen when the user has marked it Active in
+  // the Widgets Screen. Among active timers, we surface the one with the
+  // fewest remaining seconds.
   int? _nearestTimerIndex() {
     if (_appTimers.isEmpty) return null;
     int? bestIdx;
     int bestRemaining = 999999999;
     for (int i = 0; i < _appTimers.length; i++) {
       final t = _appTimers[i];
-      final bool isActive = t.isRunning ||
-          (t.remainingSeconds > 0 && t.remainingSeconds < t.totalSeconds);
-      if (isActive && t.remainingSeconds < bestRemaining) {
+      if (!t.isActive) continue;
+      if (t.remainingSeconds < bestRemaining) {
         bestRemaining = t.remainingSeconds;
         bestIdx = i;
       }
     }
     return bestIdx;
+  }
+
+  // Push the Widgets Screen over the home route. The screen owns its
+  // drag/drop UI and mutates this state via callbacks; we persist on every
+  // change so the home screen reflects new isActive/delete/create flags
+  // the moment the user drops or saves.
+  void _openWidgetsScreen() {
+    HapticFeedback.mediumImpact();
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        opaque: false,
+        barrierColor: Colors.transparent,
+        transitionDuration: const Duration(milliseconds: 220),
+        reverseTransitionDuration: const Duration(milliseconds: 180),
+        pageBuilder: (ctx, a, b) => WidgetsScreen(
+          alarms: _alarms,
+          timers: _appTimers,
+          onSetAlarmActive: (i, active) {
+            setState(() => _alarms[i].isActive = active);
+            _saveAlarms();
+          },
+          onSetTimerActive: (i, active) {
+            setState(() {
+              final t = _appTimers[i];
+              t.isActive = active;
+              // Going inactive freezes the timer: stop the running clock
+              // but preserve the remaining seconds so resuming later picks
+              // up where the user left off.
+              if (!active && t.isRunning) {
+                t.isRunning = false;
+                t.endTime = null;
+              }
+            });
+            _saveTimers();
+            _syncTimersOnResume();
+          },
+          onDeleteAlarm: (i) {
+            setState(() => _alarms.removeAt(i));
+            _saveAlarms();
+          },
+          onDeleteTimer: (i) {
+            setState(() => _appTimers.removeAt(i));
+            _saveTimers();
+          },
+          onReorderAlarm: (from, to) {
+            setState(() {
+              final item = _alarms.removeAt(from);
+              _alarms.insert(to, item);
+            });
+            _saveAlarms();
+          },
+          onReorderTimer: (from, to) {
+            setState(() {
+              final item = _appTimers.removeAt(from);
+              _appTimers.insert(to, item);
+            });
+            _saveTimers();
+          },
+          onCreateAlarms: (labels) {
+            setState(() {
+              for (final label in labels) {
+                if (_alarms.any((a) => a.label == label)) continue;
+                _alarms.add(AppAlarm(label: label, isActive: false));
+              }
+            });
+            _saveAlarms();
+          },
+          onCreateTimer: (totalSeconds) {
+            setState(() {
+              _appTimers.add(AppTimer(totalSeconds: totalSeconds));
+            });
+            _saveTimers();
+          },
+        ),
+        transitionsBuilder: (ctx, animation, _, child) => FadeTransition(
+          opacity: animation,
+          child: child,
+        ),
+      ),
+    );
   }
 
   Widget _buildPillRow() {
@@ -1781,19 +1508,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
         timeText: _formatTimerTime(t.remainingSeconds),
         isRunning: t.isRunning,
         isRinging: isThisRinging,
-        onLongPressOpen: () {
-          setState(() {
-            _showPill = true;
-            _isTimerMode = true;
-            _isStopwatchMode = false;
-            _isAlarmMode = false;
-            _isCalendarMode = false;
-            _isViewingEvents = false;
-            _isCreatingTimer = false;
-            _isEditingTimer = false;
-            _selectedTimerIndex = nearestTimer;
-          });
-        },
+        onLongPressOpen: _openWidgetsScreen,
         onTogglePause: () => _toggleTimer(nearestTimer),
         onStop: () {
           if (isThisRinging) {
@@ -1811,17 +1526,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
       alarmPillWidget = AlarmPill(
         title: nearestAlarm,
         isRinging: isThisRinging,
-        onLongPressOpen: () {
-          setState(() {
-            _showPill = true;
-            _isAlarmMode = true;
-            _isStopwatchMode = false;
-            _isTimerMode = false;
-            _isCalendarMode = false;
-            _isViewingEvents = false;
-            _selectedAlarmIndex = null;
-          });
-        },
+        onLongPressOpen: _openWidgetsScreen,
         onStop: _stopAlarm,
       );
     }
