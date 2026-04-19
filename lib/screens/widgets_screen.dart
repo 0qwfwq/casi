@@ -132,9 +132,9 @@ class _WidgetsScreenState extends State<WidgetsScreen> {
               ),
             ),
           ),
-          // Bottom-left: add/delete circular button
+          // Bottom-right: add/delete circular button
           Positioned(
-            left: 24,
+            right: 24,
             bottom: 24 + media.padding.bottom,
             child: _buildAddOrDeleteButton(),
           ),
@@ -143,13 +143,13 @@ class _WidgetsScreenState extends State<WidgetsScreen> {
           // clipped by the 56×56 button frame.
           if (_isAddMenuOpen && !_isDragging && _creatorMode == null)
             Positioned(
-              left: 24,
+              right: 24,
               bottom: 24 + media.padding.bottom + 70,
               child: _buildAddMenu(),
             ),
-          // Bottom-right: checkmark close button
+          // Bottom-left: glass back button
           Positioned(
-            right: 24,
+            left: 24,
             bottom: 24 + media.padding.bottom,
             child: _buildCheckButton(),
           ),
@@ -450,7 +450,7 @@ class _WidgetsScreenState extends State<WidgetsScreen> {
   Widget _buildAddMenu() {
     return Column(
       mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         _addMenuItem(
           label: "Alarm",
@@ -525,21 +525,16 @@ class _WidgetsScreenState extends State<WidgetsScreen> {
         }
         Navigator.of(context).maybePop();
       },
-      child: Container(
+      child: GlassSurface.pill(
+        cornerRadius: 28,
         width: 56,
         height: 56,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: CASIColors.confirm.withValues(alpha: 0.2),
-          border: Border.all(
-            color: CASIColors.confirm.withValues(alpha: 0.65),
-            width: 1.5,
+        child: const Center(
+          child: Icon(
+            Icons.chevron_left_rounded,
+            color: Colors.white,
+            size: 32,
           ),
-        ),
-        child: const Icon(
-          Icons.check_rounded,
-          color: CASIColors.confirm,
-          size: 30,
         ),
       ),
     );

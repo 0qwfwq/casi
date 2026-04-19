@@ -110,8 +110,9 @@ class _NotificationStackPillState extends State<NotificationStackPill> {
       behindEntries.add(entries[i]);
     }
 
-    final double stackHeight =
-        _kStackPillHeight + behindCount * _kBehindVerticalGap;
+    // Keep the SizedBox fixed at front height so the front card's position
+    // stays stable regardless of how many behind cards sit in the deck.
+    final double stackHeight = _kStackPillHeight;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: _kStackHorizontalMargin),

@@ -61,11 +61,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   Timer? _notificationPollTimer;
   String? _lastRungAlarmTime;
 
-  // Tracks which schedule-row pill is currently ringing (so we can render
-  // its red bell-shake state in place). Exactly one of these is set when
-  // `_isAlarmRinging` is true.
+  // Tracks which schedule-row pill(s) are currently ringing so we can
+  // render the red bell-shake state in place. A set of timer indices
+  // (multiple timers can ring simultaneously); alarms ring one at a time.
   String? _ringingAlarmLabel;
-  int? _ringingTimerIndex;
+  Set<int> _ringingTimerIndices = {};
 
   // --- Audio States ---
   final AudioPlayer _audioPlayer = AudioPlayer();
@@ -413,33 +413,30 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   }
 
   void _stopAlarm() {
-    _stopAlarmSound();
     setState(() {
       _ringingAlarmLabel = null;
       // Another ringing source (e.g. a timer) may still be active.
-      _isAlarmRinging = _ringingTimerIndex != null;
+      _isAlarmRinging = _ringingTimerIndices.isNotEmpty;
       _showPill = false;
     });
+    if (!_isAlarmRinging) _stopAlarmSound();
   }
 
-  /// Stop a ringing timer: clear the ringing state, reset the timer to its
-  /// starting value, and remove it from the schedule row. Also stops the
-  /// alarm sound if this was the only ringing source.
-  void _stopRingingTimer(int index) {
-    if (index < 0 || index >= _appTimers.length) {
-      setState(() {
-        _ringingTimerIndex = null;
-        _isAlarmRinging = _ringingAlarmLabel != null;
-      });
-      if (!_isAlarmRinging) _stopAlarmSound();
-      return;
-    }
+  /// Stop every timer currently going off. Resets each to its starting
+  /// value and clears the ringing set. If no alarm is also ringing, this
+  /// also stops the alarm sound. Called by a single tap on the timer pill
+  /// while any timer is ringing — one tap kills the whole chorus.
+  void _stopAllRingingTimers() {
+    if (_ringingTimerIndices.isEmpty) return;
     setState(() {
-      final t = _appTimers[index];
-      t.isRunning = false;
-      t.endTime = null;
-      t.remainingSeconds = t.totalSeconds;
-      _ringingTimerIndex = null;
+      for (final idx in _ringingTimerIndices) {
+        if (idx < 0 || idx >= _appTimers.length) continue;
+        final t = _appTimers[idx];
+        t.isRunning = false;
+        t.endTime = null;
+        t.remainingSeconds = t.totalSeconds;
+      }
+      _ringingTimerIndices = {};
       _isAlarmRinging = _ringingAlarmLabel != null;
     });
     if (!_isAlarmRinging) _stopAlarmSound();
@@ -474,7 +471,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
 
   void _tickTimers() {
     bool anyRunning = false;
-    int? ringingIdx;
+    final newlyRinging = <int>{};
     final now = DateTime.now();
 
     for (int i = 0; i < _appTimers.length; i++) {
@@ -487,21 +484,26 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
 
         if (t.remainingSeconds <= 0) {
           // Keep at zero (not reset) so the ringing pill shows 00:00 until
-          // the user taps to stop. The reset happens in _stopRingingTimer.
+          // the user taps to stop. The reset happens in
+          // _stopAllRingingTimers.
           t.remainingSeconds = 0;
           t.isRunning = false;
           t.endTime = null;
-          ringingIdx ??= i;
+          newlyRinging.add(i);
         }
       }
     }
 
-    if (ringingIdx != null) {
+    if (newlyRinging.isNotEmpty) {
+      final wasRinging = _isAlarmRinging;
       setState(() {
+        _ringingTimerIndices = _ringingTimerIndices.union(newlyRinging);
         _isAlarmRinging = true;
-        _ringingTimerIndex = ringingIdx;
       });
-      _startAlarmSound();
+      // Only (re)start the alarm chorus if nothing was already ringing —
+      // otherwise the currently-playing sound keeps going and additional
+      // timers join the same ringing session.
+      if (!wasRinging) _startAlarmSound();
       _saveTimers();
     }
 
@@ -1369,23 +1371,19 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     return bestLabel;
   }
 
-  // --- Nearest active timer (returns index, or null) ---
+  // --- Active timer indices, sorted lowest→highest remaining seconds ---
   // A timer shows on the home screen when the user has marked it Active in
-  // the Widgets Screen. Among active timers, we surface the one with the
-  // fewest remaining seconds.
-  int? _nearestTimerIndex() {
-    if (_appTimers.isEmpty) return null;
-    int? bestIdx;
-    int bestRemaining = 999999999;
+  // the Widgets Screen. Multiple active timers render as a deck pill; this
+  // returns their indices in display order (front = lowest remaining).
+  List<int> _activeTimerIndicesSorted() {
+    final entries = <({int index, int remaining})>[];
     for (int i = 0; i < _appTimers.length; i++) {
       final t = _appTimers[i];
       if (!t.isActive) continue;
-      if (t.remainingSeconds < bestRemaining) {
-        bestRemaining = t.remainingSeconds;
-        bestIdx = i;
-      }
+      entries.add((index: i, remaining: t.remainingSeconds));
     }
-    return bestIdx;
+    entries.sort((a, b) => a.remaining.compareTo(b.remaining));
+    return entries.map((e) => e.index).toList();
   }
 
   // Push the Widgets Screen over the home route. The screen owns its
@@ -1495,28 +1493,29 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   // in place of the old bottom-of-screen going-off panel).
   Widget _buildScheduleStatusRow() {
     final String? nearestAlarm = _ringingAlarmLabel ?? _nearestAlarmLabel();
-    final int? nearestTimer = _ringingTimerIndex ?? _nearestTimerIndex();
+    final List<int> activeTimerIndices = _activeTimerIndicesSorted();
     final bool hasAlarm = nearestAlarm != null;
-    final bool hasTimer = nearestTimer != null;
+    final bool hasTimer = activeTimerIndices.isNotEmpty;
     final bool show = hasAlarm || hasTimer;
 
     Widget? timerPillWidget;
     if (hasTimer) {
-      final t = _appTimers[nearestTimer];
-      final bool isThisRinging = _ringingTimerIndex == nearestTimer;
+      final deckEntries = activeTimerIndices.map((idx) {
+        final t = _appTimers[idx];
+        return TimerDeckEntry(
+          timerIndex: idx,
+          timeText: _formatTimerTime(t.remainingSeconds),
+          isRunning: t.isRunning,
+          isRinging: _ringingTimerIndices.contains(idx),
+        );
+      }).toList();
       timerPillWidget = TimerPill(
-        timeText: _formatTimerTime(t.remainingSeconds),
-        isRunning: t.isRunning,
-        isRinging: isThisRinging,
+        entries: deckEntries,
+        anyRinging: _ringingTimerIndices.isNotEmpty,
         onLongPressOpen: _openWidgetsScreen,
-        onTogglePause: () => _toggleTimer(nearestTimer),
-        onStop: () {
-          if (isThisRinging) {
-            _stopRingingTimer(nearestTimer);
-          } else {
-            _stopAndResetTimer(nearestTimer);
-          }
-        },
+        onTogglePause: _toggleTimer,
+        onStopSingle: _stopAndResetTimer,
+        onStopAllRinging: _stopAllRingingTimers,
       );
     }
 
