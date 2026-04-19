@@ -9,6 +9,28 @@ import 'package:casi/models/widget_items.dart';
 const double kWidgetPillHeight = 70.0;
 const double kWidgetPillCorner = 35.0;
 
+// Per-type accent colors so the user can tell pills apart at a glance
+// in the Active / Inactive grids.
+const Color kAlarmPillAccent = CASIColors.confirm;        // green
+const Color kTimerPillAccent = CASIColors.caution;        // orange
+const Color kWeatherPillAccent = CASIColors.accentPrimary; // pulse blue
+
+/// Wrap the standard foresight-glass pill with a tinted border + faint
+/// fill so each widget type carries an unambiguous color cue.
+Widget _accentedPill({
+  required Color accent,
+  required Widget child,
+}) {
+  return GlassSurface.foresight(
+    cornerRadius: kWidgetPillCorner,
+    height: kWidgetPillHeight,
+    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+    tintOverride: accent.withValues(alpha: 0.18),
+    borderOverride: accent.withValues(alpha: 0.55),
+    child: child,
+  );
+}
+
 class WidgetScreenAlarmPill extends StatelessWidget {
   final AppAlarm alarm;
 
@@ -30,10 +52,8 @@ class WidgetScreenAlarmPill extends StatelessWidget {
       timeLabel = "";
     }
 
-    return GlassSurface.foresight(
-      cornerRadius: kWidgetPillCorner,
-      height: kWidgetPillHeight,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+    return _accentedPill(
+      accent: kAlarmPillAccent,
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -103,10 +123,8 @@ class WidgetScreenTimerPill extends StatelessWidget {
     final text =
         "${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}";
 
-    return GlassSurface.foresight(
-      cornerRadius: kWidgetPillCorner,
-      height: kWidgetPillHeight,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+    return _accentedPill(
+      accent: kTimerPillAccent,
       child: Center(
         child: Text(
           text,
@@ -118,6 +136,48 @@ class WidgetScreenTimerPill extends StatelessWidget {
             height: 1.0,
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// The Weather widget pill. Always present in either Active or Inactive,
+/// never deletable, never created from the + menu.
+class WidgetScreenWeatherPill extends StatelessWidget {
+  const WidgetScreenWeatherPill({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return _accentedPill(
+      accent: kWeatherPillAccent,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: const [
+          Text(
+            "Weather",
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              height: 1.15,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          SizedBox(height: 2),
+          Text(
+            "Widget",
+            style: TextStyle(
+              color: CASIColors.textSecondary,
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              height: 1.2,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
       ),
     );
   }

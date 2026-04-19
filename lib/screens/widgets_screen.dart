@@ -8,8 +8,9 @@ import 'package:casi/widgets/timer_creator.dart';
 
 // Identifies a draggable item by its type and index within the parent's
 // alarm/timer list. The index is stable for the duration of a drag.
+// The Weather widget is a singleton pill (no list) — its index is unused.
 class _WidgetRef {
-  final String type; // 'alarm' | 'timer'
+  final String type; // 'alarm' | 'timer' | 'weather'
   final int index;
   const _WidgetRef(this.type, this.index);
 }
@@ -19,11 +20,13 @@ enum _HoverZone { none, active, inactive, delete }
 class WidgetsScreen extends StatefulWidget {
   final List<AppAlarm> alarms;
   final List<AppTimer> timers;
+  final bool weatherActive;
 
   // Mutations are pushed to the parent which owns persistence. The parent
   // re-passes updated lists via constructor on rebuild.
   final void Function(int index, bool isActive) onSetAlarmActive;
   final void Function(int index, bool isActive) onSetTimerActive;
+  final void Function(bool isActive) onSetWeatherActive;
   final void Function(int index) onDeleteAlarm;
   final void Function(int index) onDeleteTimer;
   final void Function(int fromIndex, int toIndex) onReorderAlarm;
@@ -35,8 +38,10 @@ class WidgetsScreen extends StatefulWidget {
     super.key,
     required this.alarms,
     required this.timers,
+    required this.weatherActive,
     required this.onSetAlarmActive,
     required this.onSetTimerActive,
+    required this.onSetWeatherActive,
     required this.onDeleteAlarm,
     required this.onDeleteTimer,
     required this.onReorderAlarm,
@@ -55,6 +60,12 @@ class _WidgetsScreenState extends State<WidgetsScreen> {
   bool _isAddMenuOpen = false;
   // Creator popup: 'alarm' | 'timer' | null
   String? _creatorMode;
+
+  // Local mirror of the weather pill's active flag. Alarms/timers are
+  // mutable objects in a list we hold by reference, so filtering them
+  // always reflects current state; a plain bool captured from the parent
+  // would stay frozen after this route was pushed, so we track it here.
+  late bool _weatherActive = widget.weatherActive;
 
   static const int _maxAlarms = 9;
   static const int _maxTimers = 9;
@@ -113,6 +124,7 @@ class _WidgetsScreenState extends State<WidgetsScreen> {
                             zone: _HoverZone.active,
                             alarms: _activeAlarms,
                             timers: _activeTimers,
+                            includeWeather: _weatherActive,
                             isActiveSection: true,
                           ),
                           const SizedBox(height: 28),
@@ -121,6 +133,7 @@ class _WidgetsScreenState extends State<WidgetsScreen> {
                             zone: _HoverZone.inactive,
                             alarms: _inactiveAlarms,
                             timers: _inactiveTimers,
+                            includeWeather: !_weatherActive,
                             isActiveSection: false,
                           ),
                           SizedBox(height: screenHeight * 0.1),
@@ -167,9 +180,11 @@ class _WidgetsScreenState extends State<WidgetsScreen> {
     required _HoverZone zone,
     required List<AppAlarm> alarms,
     required List<AppTimer> timers,
+    required bool includeWeather,
     required bool isActiveSection,
   }) {
-    final hasContent = alarms.isNotEmpty || timers.isNotEmpty;
+    final hasContent =
+        alarms.isNotEmpty || timers.isNotEmpty || includeWeather;
     final showingGhost = _isDragging && _hover == zone;
     final ghostColor =
         isActiveSection ? CASIColors.confirm : CASIColors.alert;
@@ -209,6 +224,7 @@ class _WidgetsScreenState extends State<WidgetsScreen> {
                 _buildPillGrid(
                   alarms: alarms,
                   timers: timers,
+                  includeWeather: includeWeather,
                   showGhost: showingGhost,
                   ghostColor: ghostColor,
                 ),
@@ -238,11 +254,14 @@ class _WidgetsScreenState extends State<WidgetsScreen> {
   Widget _buildPillGrid({
     required List<AppAlarm> alarms,
     required List<AppTimer> timers,
+    required bool includeWeather,
     required bool showGhost,
     required Color ghostColor,
   }) {
     // Build the ordered list of tiles (alarms first, then timers — matches
-    // grouping in the home schedule row).
+    // grouping in the home schedule row). The Weather pill, when present
+    // in this section, sits at the end so it never displaces user-created
+    // pills.
     final tiles = <Widget>[];
 
     for (final a in alarms) {
@@ -252,6 +271,9 @@ class _WidgetsScreenState extends State<WidgetsScreen> {
     for (final t in timers) {
       final globalIdx = _timerGlobalIndex(t);
       tiles.add(_draggableTimerTile(t, globalIdx));
+    }
+    if (includeWeather) {
+      tiles.add(_draggableWeatherTile());
     }
     if (showGhost) {
       tiles.add(GhostPill(color: ghostColor));
@@ -297,6 +319,17 @@ class _WidgetsScreenState extends State<WidgetsScreen> {
     return _wrapAsDraggable(
       ref: ref,
       pill: WidgetScreenTimerPill(timer: timer),
+    );
+  }
+
+  // Weather is a singleton widget — there's no list, so the index is
+  // unused. It uses the same drag mechanics as other pills, but the
+  // bottom-right delete drop zone refuses it (see _buildAddOrDeleteButton).
+  Widget _draggableWeatherTile() {
+    const ref = _WidgetRef('weather', 0);
+    return _wrapAsDraggable(
+      ref: ref,
+      pill: const WidgetScreenWeatherPill(),
     );
   }
 
@@ -355,26 +388,33 @@ class _WidgetsScreenState extends State<WidgetsScreen> {
   }
 
   bool _sameSection(_WidgetRef a, _WidgetRef b) {
-    bool aActive;
-    bool bActive;
-    if (a.type == 'alarm') {
-      aActive = widget.alarms[a.index].isActive;
-    } else {
-      aActive = widget.timers[a.index].isActive;
+    return _refIsActive(a) == _refIsActive(b);
+  }
+
+  bool _refIsActive(_WidgetRef ref) {
+    switch (ref.type) {
+      case 'alarm':
+        return widget.alarms[ref.index].isActive;
+      case 'timer':
+        return widget.timers[ref.index].isActive;
+      case 'weather':
+        return _weatherActive;
     }
-    if (b.type == 'alarm') {
-      bActive = widget.alarms[b.index].isActive;
-    } else {
-      bActive = widget.timers[b.index].isActive;
-    }
-    return aActive == bActive;
+    return false;
   }
 
   void _handleSectionDrop(_WidgetRef ref, bool isActive) {
-    if (ref.type == 'alarm') {
-      widget.onSetAlarmActive(ref.index, isActive);
-    } else {
-      widget.onSetTimerActive(ref.index, isActive);
+    switch (ref.type) {
+      case 'alarm':
+        widget.onSetAlarmActive(ref.index, isActive);
+        break;
+      case 'timer':
+        widget.onSetTimerActive(ref.index, isActive);
+        break;
+      case 'weather':
+        setState(() => _weatherActive = isActive);
+        widget.onSetWeatherActive(isActive);
+        break;
     }
   }
 
@@ -391,7 +431,10 @@ class _WidgetsScreenState extends State<WidgetsScreen> {
 
   Widget _buildAddOrDeleteButton() {
     return DragTarget<_WidgetRef>(
+      // Refuse Weather drops — the Weather widget is permanent and can
+      // only move between Active and Inactive.
       onWillAcceptWithDetails: (details) {
+        if (details.data.type == 'weather') return false;
         setState(() => _hover = _HoverZone.delete);
         return true;
       },
@@ -403,7 +446,7 @@ class _WidgetsScreenState extends State<WidgetsScreen> {
       onAcceptWithDetails: (details) {
         if (details.data.type == 'alarm') {
           widget.onDeleteAlarm(details.data.index);
-        } else {
+        } else if (details.data.type == 'timer') {
           widget.onDeleteTimer(details.data.index);
         }
       },
@@ -435,11 +478,13 @@ class _WidgetsScreenState extends State<WidgetsScreen> {
               ),
             ),
             child: Icon(
-              isDelete ? Icons.remove_rounded : Icons.add_rounded,
+              isDelete
+                  ? Icons.delete_outline_rounded
+                  : Icons.add_rounded,
               color: isDelete
                   ? CASIColors.alert
                   : CASIColors.accentPrimary,
-              size: 30,
+              size: isDelete ? 28 : 30,
             ),
           ),
         );

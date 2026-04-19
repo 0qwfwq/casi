@@ -15,7 +15,8 @@ import '../widgets/app_drawer.dart';
 import '../widgets/screen_dock.dart';
 import '../widgets/song_player.dart';
 import '../widgets/clock_capsule.dart';
-import '../widgets/weather_pill.dart';
+import '../widgets/weather_forecast_widget.dart';
+import '../services/weather_service.dart';
 import '../pills/dynamic_pill.dart';
 import '../pills/d_calendar_pill.dart';
 import '../utils/app_launcher.dart';
@@ -90,10 +91,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   int _morningBriefKey = 0; // incremented to force panel reset to page 0
   WeatherBriefData? _weatherBriefData;
   CalendarBriefData? _calendarBriefData;
-  bool _isForecastVisible = false;
-  final GlobalKey _weatherPillKey = GlobalKey();
-
   String _temperatureUnit = 'C';
+
+  // Whether the user has placed the Weather widget in the Active section
+  // of the Widgets Screen. When true, the expanded WeatherForecastWidget
+  // renders on the home screen; when false, only the inline weather text
+  // beside the date is visible. Persisted to SharedPreferences.
+  bool _weatherWidgetActive = false;
 
   // --- Foresight State ---
   List<ForesightPrediction> _foresightPredictions = [];
@@ -143,6 +147,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     _loadTimers();
     _loadMorningBriefState();
     _loadForesightState();
+    _loadWeatherWidgetState();
+    WeatherService.instance.initialize();
     _refreshWeatherBrief();
     _refreshCalendarBrief();
 
@@ -247,6 +253,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
       _syncTimersOnResume();
       _refreshWeatherBrief();
       _refreshCalendarBrief();
+      WeatherService.instance.reloadUnitAndRefresh();
 
       // Notification pill: re-evaluate queue on return
       _refreshNotificationPill().then((_) {
@@ -708,6 +715,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     }
   }
 
+  Future<void> _loadWeatherWidgetState() async {
+    final prefs = await SharedPreferences.getInstance();
+    final active = prefs.getBool('weather_widget_active') ?? false;
+    if (mounted) setState(() => _weatherWidgetActive = active);
+  }
+
+  Future<void> _saveWeatherWidgetState() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('weather_widget_active', _weatherWidgetActive);
+  }
+
   /// Launches the user's chosen "foresight long-press" app. An empty
   /// package string means "open the system's default browser" via an
   /// http: intent that Android resolves to whatever browser the user
@@ -957,15 +975,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
           GestureDetector(
             behavior: HitTestBehavior.translucent,
             onDoubleTap: () {
-              if (_drawerProgress.value > 0.05 || _showPill || _isAlarmRinging ||
-                  _isForecastVisible) {
+              if (_drawerProgress.value > 0.05 || _showPill || _isAlarmRinging) {
                 return;
               }
               const MethodChannel('casi.launcher/apps').invokeMethod('lockScreen');
             },
             onLongPress: () {
-              if (_drawerProgress.value > 0.05 || _showPill || _isAlarmRinging ||
-                  _isForecastVisible) {
+              if (_drawerProgress.value > 0.05 || _showPill || _isAlarmRinging) {
                 return;
               }
               _openWidgetsScreen();
@@ -1401,6 +1417,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
         pageBuilder: (ctx, a, b) => WidgetsScreen(
           alarms: _alarms,
           timers: _appTimers,
+          weatherActive: _weatherWidgetActive,
+          onSetWeatherActive: (active) {
+            setState(() => _weatherWidgetActive = active);
+            _saveWeatherWidgetState();
+          },
           onSetAlarmActive: (i, active) {
             setState(() => _alarms[i].isActive = active);
             _saveAlarms();
@@ -1466,24 +1487,44 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     );
   }
 
+  // The home-screen weather slot. Renders the expanded forecast widget
+  // only when the user has placed the Weather widget in Active in the
+  // Widgets Screen — otherwise the slot collapses to zero so the Morning
+  // Brief / clock layout stays tight. The inline temperature beside the
+  // date in [ClockCapsule] is what's shown in the inactive case.
   Widget _buildPillRow() {
-    // GlobalKey preserves WeatherPill state (including _isExpanded) across layout changes
-    final weatherPill = WeatherPill(
-      key: _weatherPillKey,
-      onExpandedChanged: (expanded) {
-        setState(() => _isForecastVisible = expanded);
-      },
-    );
-
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: _isForecastVisible ? 40 : 20),
-      child: _isForecastVisible
-          ? Row(children: [Expanded(child: weatherPill)])
-          : Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: MainAxisSize.min,
-              children: [weatherPill],
-            ),
+    return AnimatedSize(
+      duration: CASIMotion.standard,
+      curve: Curves.easeOutCubic,
+      alignment: Alignment.topCenter,
+      child: _weatherWidgetActive
+          ? Padding(
+              padding: const EdgeInsets.fromLTRB(40, 8, 40, 0),
+              child: ValueListenableBuilder<WeatherSnapshot>(
+                valueListenable: WeatherService.instance.snapshot,
+                builder: (context, snap, _) {
+                  return GlassSurface.modal(
+                    cornerRadius: CASIGlass.cornerSheet,
+                    width: double.infinity,
+                    child: WeatherForecastWidget(
+                      forecastData: snap.daily,
+                      hourlyData: snap.hourly,
+                      currentTemp: snap.tempLabel,
+                      currentDescription: snap.description,
+                      currentIcon: snap.icon,
+                      currentIconColor: snap.iconColor,
+                      feelsLike: snap.feelsLike,
+                      wind: snap.wind,
+                      precipitation: snap.precipitation,
+                      humidity: snap.humidity,
+                      uvIndex: snap.uvIndex,
+                      sunrise: snap.sunrise,
+                    ),
+                  );
+                },
+              ),
+            )
+          : const SizedBox(width: double.infinity, height: 0),
     );
   }
 
