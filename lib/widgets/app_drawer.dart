@@ -209,8 +209,17 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
             width: screenWidth,
             child: Stack(
               children: [
-                // Background - frosted glass with gradient opacity
-                _GradientBackground(progress: progress),
+                // Transparent hit-test backdrop — no glass tint. The home
+                // wallpaper shows through at 100% opacity (OneUI-style).
+                // The GestureDetector absorbs stray taps on empty drawer
+                // space so they don't fall through to the homescreen below.
+                Positioned.fill(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {},
+                    child: const SizedBox.expand(),
+                  ),
+                ),
                 // Main scrollable content
                 Positioned.fill(
                   top: 0,
@@ -622,27 +631,6 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
             ),
           );
         },
-      ),
-    );
-  }
-}
-
-// ─── Gradient Background ────────────────────────────────────────────────────
-// Frosted glass: high opacity at bottom → transparent at top
-
-class _GradientBackground extends StatelessWidget {
-  final double progress;
-
-  const _GradientBackground({required this.progress});
-
-  @override
-  Widget build(BuildContext context) {
-    return Positioned.fill(
-      child: GlassSurface.drawer(
-        borderRadiusOverride: const BorderRadius.vertical(
-          top: Radius.circular(CASIGlass.cornerSheet),
-        ),
-        child: const SizedBox.expand(),
       ),
     );
   }

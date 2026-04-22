@@ -1040,7 +1040,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                             ValueListenableBuilder<double>(
                               valueListenable: _drawerProgress,
                               builder: (context, progress, child) {
-                                return Stack(
+                                // Crossfade: homescreen widgets soften to
+                                // invisible as the drawer rises, exposing the
+                                // wallpaper at 100% opacity behind the apps
+                                // (OneUI-style — no glass tint on the drawer).
+                                final double homeOpacity =
+                                    (1.0 - progress / 0.5).clamp(0.0, 1.0);
+                                return IgnorePointer(
+                                  ignoring: progress > 0.05,
+                                  child: Opacity(
+                                    opacity: homeOpacity,
+                                    child: Stack(
                                   children: [
                                     const SizedBox.expand(),
                                     // TOP: Clock + Weather Pill + Brief + Music
@@ -1282,6 +1292,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                       ),
                                     ),
                                   ],
+                                ),
+                                  ),
                                 );
                               },
                             ),
