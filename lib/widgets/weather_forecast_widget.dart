@@ -23,12 +23,14 @@ class HourlyForecastData {
   final IconData icon;
   final Color iconColor;
   final String temp;
+  final String uv;
 
   const HourlyForecastData({
     required this.time,
     required this.icon,
     required this.iconColor,
     required this.temp,
+    this.uv = "--",
   });
 }
 
@@ -232,19 +234,27 @@ class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
         child: Center(child: CircularProgressIndicator(color: CASIColors.textSecondary)),
       );
     }
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: widget.hourlyData.map((data) {
-        return Column(
-          children: [
-            Text(data.time, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Colors.white)),
-            const SizedBox(height: 10),
-            Icon(data.icon, color: data.iconColor, size: 24),
-            const SizedBox(height: 10),
-            Text(data.temp, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
-          ],
-        );
-      }).toList(),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: widget.hourlyData.map((data) {
+          return Column(
+            children: [
+              Text(data.time, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Colors.white)),
+              const SizedBox(height: 10),
+              Icon(data.icon, color: data.iconColor, size: 24),
+              const SizedBox(height: 10),
+              Text(data.temp, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
+              const SizedBox(height: 6),
+              Text(
+                "UV ${data.uv}",
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: CASIColors.textSecondary),
+              ),
+            ],
+          );
+        }).toList(),
+      ),
     );
   }
 

@@ -181,7 +181,7 @@ class WeatherService {
       final url = Uri.parse(
           'https://api.open-meteo.com/v1/forecast?latitude=${pos.latitude}&longitude=${pos.longitude}'
           '&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weathercode,wind_speed_10m,wind_direction_10m'
-          '&hourly=temperature_2m,weathercode,is_day,precipitation_probability'
+          '&hourly=temperature_2m,weathercode,is_day,precipitation_probability,uv_index'
           '&daily=weathercode,temperature_2m_max,temperature_2m_min,sunrise,uv_index_max'
           '&wind_speed_unit=mph&timezone=auto');
 
@@ -254,6 +254,7 @@ class WeatherService {
       final temps = hourly['temperature_2m'] as List;
       final isDays = hourly['is_day'] as List;
       final precips = hourly['precipitation_probability'] as List;
+      final uvs = hourly['uv_index'] as List?;
       final now = DateTime.now();
       var startIdx = 0;
       for (var i = 0; i < times.length; i++) {
@@ -269,11 +270,15 @@ class WeatherService {
         final hCode = (codes[i] as num).toInt();
         final hTemp = _toDisplay(temps[i] as num);
         final hIsDay = (isDays[i] as num).toInt() == 1;
+        final hUv = (uvs != null && i < uvs.length && uvs[i] != null)
+            ? (uvs[i] as num).round().toString()
+            : "--";
         hourlyList.add(HourlyForecastData(
           time: _getFormattedHour(t),
           icon: _getWeatherIcon(hCode, hIsDay),
           iconColor: _getWeatherIconColor(hCode, hIsDay),
           temp: "$hTemp°$_unit",
+          uv: hUv,
         ));
       }
     }

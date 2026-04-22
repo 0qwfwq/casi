@@ -235,9 +235,9 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                       SliverToBoxAdapter(
                         child: SizedBox(
                           // Reserve room for the floating search bar while
-                          // fully expanded.
+                          // fully expanded (bottom gap 50 + height 54 + buffer).
                           height: _isFullyExpanded
-                              ? MediaQuery.of(context).viewInsets.bottom + 80
+                              ? MediaQuery.of(context).viewInsets.bottom + 120
                               : 0,
                         ),
                       ),
@@ -264,7 +264,12 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                 Positioned(
                   left: 0,
                   right: 0,
-                  bottom: MediaQuery.of(context).viewInsets.bottom + CASISpacing.md,
+                  // Match the foresight dock's distance from the bottom of the
+                  // screen when no apps are on the homescreen:
+                  //   ScreenDock outer bottom padding (xl + sm = 40)
+                  // + home-row inner bottom padding (10)
+                  bottom: MediaQuery.of(context).viewInsets.bottom +
+                      CASISpacing.xl + CASISpacing.sm + 10,
                   child: AnimatedOpacity(
                     opacity: _isFullyExpanded ? contentOpacity : 0.0,
                     duration: CASIMotion.fast,
@@ -273,7 +278,8 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                         width: screenWidth * 0.6,
                         child: GlassSurface.drawer(
                           cornerRadius: CASISearchBarSpec.cornerRadius,
-                          height: CASISearchBarSpec.height,
+                          // Match foresight dock height (icon 34 + vertical padding 10 × 2).
+                          height: 54,
                           child: TextField(
                                 controller: _searchController,
                                 focusNode: _searchFocusNode,
