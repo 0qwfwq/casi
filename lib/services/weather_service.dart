@@ -36,6 +36,10 @@ class WeatherSnapshot {
   final String humidity;
   final String uvIndex;
   final String sunrise;
+  final String visibility;
+  final String location;
+  final DateTime? lastUpdated;
+  final bool isRefreshing;
 
   const WeatherSnapshot({
     this.temperature,
@@ -52,7 +56,37 @@ class WeatherSnapshot {
     this.humidity = '--%',
     this.uvIndex = '--',
     this.sunrise = '--:-- AM',
+    this.visibility = '-- mi',
+    this.location = 'My Location',
+    this.lastUpdated,
+    this.isRefreshing = false,
   });
+
+  WeatherSnapshot copyWith({
+    bool? isRefreshing,
+    String? location,
+  }) {
+    return WeatherSnapshot(
+      temperature: temperature,
+      weatherCode: weatherCode,
+      unit: unit,
+      description: description,
+      icon: icon,
+      iconColor: iconColor,
+      daily: daily,
+      hourly: hourly,
+      feelsLike: feelsLike,
+      wind: wind,
+      precipitation: precipitation,
+      humidity: humidity,
+      uvIndex: uvIndex,
+      sunrise: sunrise,
+      visibility: visibility,
+      location: location ?? this.location,
+      lastUpdated: lastUpdated,
+      isRefreshing: isRefreshing ?? this.isRefreshing,
+    );
+  }
 
   String get unitLabel => '°$unit';
   String get tempLabel =>
@@ -72,12 +106,28 @@ class WeatherService {
   Timer? _hourlyTimer;
   String _unit = 'C';
 
+  // Reverse-geocode cache so we don't hit BigDataCloud every fetch.
+  String? _cachedLocationName;
+  double? _cachedLocLat;
+  double? _cachedLocLon;
+  // Last successful fetch time (used as "last updated").
+  DateTime? _lastFetchAt;
+
   Future<void> initialize() async {
     if (_initialized) return;
     _initialized = true;
 
     final prefs = await SharedPreferences.getInstance();
     _unit = prefs.getString('temperature_unit') ?? 'C';
+
+    _cachedLocationName = prefs.getString('weather_location_name');
+    _cachedLocLat = prefs.getDouble('weather_location_lat');
+    _cachedLocLon = prefs.getDouble('weather_location_lon');
+
+    final lastMs = prefs.getInt('last_fetch_time_ms');
+    if (lastMs != null && lastMs > 0) {
+      _lastFetchAt = DateTime.fromMillisecondsSinceEpoch(lastMs);
+    }
 
     final cachedJson = prefs.getString('weather_json_cache');
     if (cachedJson != null) {
@@ -158,9 +208,19 @@ class WeatherService {
     }
   }
 
+  /// Public entry point for the refresh button — bypasses the 30-min cache
+  /// check and always re-fetches. Re-reads the temperature-unit pref first
+  /// so a C↔F change in settings takes effect on this refresh.
+  Future<void> forceRefresh() async {
+    final prefs = await SharedPreferences.getInstance();
+    _unit = prefs.getString('temperature_unit') ?? 'C';
+    await _fetch();
+  }
+
   Future<void> _fetch() async {
     if (_isLoading) return;
     _isLoading = true;
+    snapshot.value = snapshot.value.copyWith(isRefreshing: true);
     try {
       if (!await Geolocator.isLocationServiceEnabled()) return;
       var permission = await Geolocator.checkPermission();
@@ -178,10 +238,14 @@ class WeatherService {
           locationSettings:
               const LocationSettings(accuracy: LocationAccuracy.low));
 
+      // Resolve city name from the same coords used for the weather query —
+      // guarantees the displayed location matches the data we fetch.
+      await _resolveLocationName(pos.latitude, pos.longitude);
+
       final url = Uri.parse(
           'https://api.open-meteo.com/v1/forecast?latitude=${pos.latitude}&longitude=${pos.longitude}'
           '&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weathercode,wind_speed_10m,wind_direction_10m'
-          '&hourly=temperature_2m,weathercode,is_day,precipitation_probability,uv_index'
+          '&hourly=temperature_2m,weathercode,is_day,precipitation_probability,uv_index,visibility'
           '&daily=weathercode,temperature_2m_max,temperature_2m_min,sunrise,uv_index_max'
           '&wind_speed_unit=mph&timezone=auto');
 
@@ -190,8 +254,9 @@ class WeatherService {
         final data = jsonDecode(response.body);
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('weather_json_cache', response.body);
+        _lastFetchAt = DateTime.now();
         await prefs.setInt(
-            'last_fetch_time_ms', DateTime.now().millisecondsSinceEpoch);
+            'last_fetch_time_ms', _lastFetchAt!.millisecondsSinceEpoch);
         await prefs.setInt('last_temperature',
             (data['current']['temperature_2m'] as num).round());
         await prefs.setInt('last_weather_code',
@@ -202,6 +267,45 @@ class WeatherService {
       debugPrint("Weather fetch error: $e");
     } finally {
       _isLoading = false;
+      snapshot.value = snapshot.value.copyWith(isRefreshing: false);
+    }
+  }
+
+  /// Reverse-geocode coords → city name via BigDataCloud's free no-key
+  /// endpoint. Result is cached and only refetched if we move ~10km+.
+  Future<void> _resolveLocationName(double lat, double lon) async {
+    if (_cachedLocationName != null && _cachedLocLat != null && _cachedLocLon != null) {
+      final dDeg = (lat - _cachedLocLat!).abs() + (lon - _cachedLocLon!).abs();
+      if (dDeg < 0.1) return; // ~10km — close enough, reuse cached name
+    }
+    try {
+      final url = Uri.parse(
+          'https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=$lat&longitude=$lon&localityLanguage=en');
+      final resp = await http.get(url).timeout(const Duration(seconds: 5));
+      if (resp.statusCode != 200) return;
+      final data = jsonDecode(resp.body) as Map<String, dynamic>;
+      final candidates = [
+        data['city'],
+        data['locality'],
+        data['principalSubdivision'],
+      ];
+      String? name;
+      for (final c in candidates) {
+        if (c is String && c.trim().isNotEmpty) {
+          name = c.trim();
+          break;
+        }
+      }
+      if (name == null) return;
+      _cachedLocationName = name;
+      _cachedLocLat = lat;
+      _cachedLocLon = lon;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('weather_location_name', name);
+      await prefs.setDouble('weather_location_lat', lat);
+      await prefs.setDouble('weather_location_lon', lon);
+    } catch (e) {
+      debugPrint("Reverse geocode error: $e");
     }
   }
 
@@ -247,6 +351,7 @@ class WeatherService {
 
     final hourlyList = <HourlyForecastData>[];
     var precipProb = 0;
+    var visibilityLabel = '-- mi';
     final hourly = data['hourly'];
     if (hourly != null) {
       final times = hourly['time'] as List;
@@ -255,6 +360,7 @@ class WeatherService {
       final isDays = hourly['is_day'] as List;
       final precips = hourly['precipitation_probability'] as List;
       final uvs = hourly['uv_index'] as List?;
+      final visibilities = hourly['visibility'] as List?;
       final now = DateTime.now();
       var startIdx = 0;
       for (var i = 0; i < times.length; i++) {
@@ -265,6 +371,11 @@ class WeatherService {
         }
       }
       precipProb = (precips[startIdx] as num).round();
+      if (visibilities != null && startIdx < visibilities.length && visibilities[startIdx] != null) {
+        final visMeters = (visibilities[startIdx] as num).toDouble();
+        final visMiles = visMeters / 1609.34;
+        visibilityLabel = "${visMiles.toStringAsFixed(1)} mi";
+      }
       for (var i = startIdx; i < startIdx + 6 && i < times.length; i++) {
         final t = DateTime.parse(times[i]);
         final hCode = (codes[i] as num).toInt();
@@ -283,6 +394,14 @@ class WeatherService {
       }
     }
 
+    // Prefer the real reverse-geocoded city name; fall back to the API's
+    // timezone string if the geocode lookup hasn't completed yet.
+    final tz = data['timezone'] as String?;
+    final locationLabel =
+        (_cachedLocationName != null && _cachedLocationName!.isNotEmpty)
+            ? _cachedLocationName!
+            : _locationFromTimezone(tz);
+
     snapshot.value = WeatherSnapshot(
       temperature: _toDisplay(tempC),
       weatherCode: code,
@@ -298,7 +417,18 @@ class WeatherService {
       humidity: "$humidity%",
       uvIndex: uvLabel,
       sunrise: sunriseLabel,
+      visibility: visibilityLabel,
+      location: locationLabel,
+      lastUpdated: _lastFetchAt,
+      isRefreshing: snapshot.value.isRefreshing,
     );
+  }
+
+  String _locationFromTimezone(String? tz) {
+    if (tz == null || tz.isEmpty) return 'My Location';
+    final parts = tz.split('/');
+    final last = parts.last.replaceAll('_', ' ');
+    return last.isEmpty ? 'My Location' : last;
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────

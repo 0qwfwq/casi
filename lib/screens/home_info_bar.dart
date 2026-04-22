@@ -1531,6 +1531,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                       humidity: snap.humidity,
                       uvIndex: snap.uvIndex,
                       sunrise: snap.sunrise,
+                      visibility: snap.visibility,
+                      location: snap.location,
+                      lastUpdated: snap.lastUpdated,
+                      isRefreshing: snap.isRefreshing,
+                      onRefresh: () => WeatherService.instance.forceRefresh(),
                     ),
                   );
                 },

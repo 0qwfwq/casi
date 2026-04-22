@@ -53,6 +53,11 @@ class WeatherForecastWidget extends StatefulWidget {
   final String humidity;
   final String uvIndex;
   final String sunrise;
+  final String visibility;
+  final String location;
+  final DateTime? lastUpdated;
+  final bool isRefreshing;
+  final VoidCallback? onRefresh;
 
   const WeatherForecastWidget({
     super.key,
@@ -68,6 +73,11 @@ class WeatherForecastWidget extends StatefulWidget {
     this.humidity = "--%",
     this.uvIndex = "--",
     this.sunrise = "--:-- AM",
+    this.visibility = "-- mi",
+    this.location = "My Location",
+    this.lastUpdated,
+    this.isRefreshing = false,
+    this.onRefresh,
   });
 
   @override
@@ -149,46 +159,83 @@ class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
 
     return Row(
       key: key,
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Icon(widget.currentIcon, color: widget.currentIconColor, size: 22),
-            const SizedBox(width: 8),
-            Text(
-              "${widget.currentDescription}, ${widget.currentTemp}",
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white),
-            ),
-          ],
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                widget.location,
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: Colors.white),
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 2),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: Text(
+                      "${widget.currentDescription} • ${_formatLastUpdated(widget.lastUpdated)}",
+                      style: const TextStyle(fontSize: 12, color: CASIColors.textSecondary, fontWeight: FontWeight.w500),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: widget.isRefreshing ? null : widget.onRefresh,
+                    child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: Center(
+                        child: widget.isRefreshing
+                            ? const SizedBox(
+                                width: 12,
+                                height: 12,
+                                child: CupertinoActivityIndicator(color: CASIColors.textSecondary, radius: 6),
+                              )
+                            : const Icon(CupertinoIcons.refresh_thin, size: 14, color: CASIColors.textSecondary),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
+        // Weather icon in a circle (top-right). Tap to toggle Details ↔ Hourly.
         GestureDetector(
           onTap: () => setState(() => _todayMode = isHourly ? ForecastViewMode.details : ForecastViewMode.hourly),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            width: 56,
+            height: 56,
             decoration: BoxDecoration(
+              shape: BoxShape.circle,
               color: CASIColors.glassCard,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: CASIColors.textTertiary, width: 1),
+              border: Border.all(color: CASIColors.textTertiary.withValues(alpha: 0.4), width: 1),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  isHourly ? CupertinoIcons.info_circle_fill : CupertinoIcons.clock_fill,
-                  size: 12,
-                  color: Colors.white,
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  isHourly ? "Details" : "Hourly",
-                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.white),
-                ),
-              ],
+            child: Center(
+              child: Icon(
+                isHourly ? CupertinoIcons.clock_fill : widget.currentIcon,
+                color: isHourly ? Colors.white : widget.currentIconColor,
+                size: 30,
+              ),
             ),
           ),
         ),
       ],
     );
+  }
+
+  String _formatLastUpdated(DateTime? t) {
+    if (t == null) return '--:-- --';
+    final h24 = t.hour;
+    final hour12 = h24 == 0 ? 12 : (h24 > 12 ? h24 - 12 : h24);
+    final mm = t.minute.toString().padLeft(2, '0');
+    final hh = hour12.toString().padLeft(2, '0');
+    final ampm = h24 >= 12 ? 'PM' : 'AM';
+    return '$hh:$mm $ampm';
   }
 
   Widget _buildDailyHeader({Key? key}) {
@@ -281,46 +328,88 @@ class _WeatherForecastWidgetState extends State<WeatherForecastWidget> {
   }
 
   Widget _buildDetailsContent() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // Left: 2x2 grid of weather details
+          Expanded(
+            flex: 5,
+            child: Column(
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: _buildDetailItem(CupertinoIcons.wind, "Wind", widget.wind, const Color(0xFFB8D4E8))),
+                    Expanded(child: _buildDetailItem(CupertinoIcons.eye_fill, "Visibility", widget.visibility, const Color(0xFFB8D4E8))),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: _buildDetailItem(CupertinoIcons.drop_fill, "Humidity", widget.humidity, const Color(0xFF6BD4E8))),
+                    Expanded(child: _buildDetailItem(CupertinoIcons.cloud_rain_fill, "Precip", widget.precipitation, const Color(0xFF7EB6FF))),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          // Right: large temperature
+          Expanded(
+            flex: 4,
+            child: _buildBigTemperature(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailItem(IconData icon, String title, String value, Color iconColor) {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        IntrinsicHeight(
-          child: Row(
-            children: [
-              Expanded(child: _buildDetailItem("Feels Like", widget.feelsLike)),
-              Container(width: 1, color: CASIColors.glassDivider),
-              Expanded(child: _buildDetailItem("Wind", widget.wind)),
-              Container(width: 1, color: CASIColors.glassDivider),
-              Expanded(child: _buildDetailItem("Precipitation", widget.precipitation)),
-            ],
-          ),
-        ),
-        const Divider(color: CASIColors.glassDivider, height: 1, thickness: 1),
-        IntrinsicHeight(
-          child: Row(
-            children: [
-              Expanded(child: _buildDetailItem("Humidity", widget.humidity)),
-              Container(width: 1, color: CASIColors.glassDivider),
-              Expanded(child: _buildDetailItem("UV Index", widget.uvIndex)),
-              Container(width: 1, color: CASIColors.glassDivider),
-              Expanded(child: _buildDetailItem("Sunrise", widget.sunrise)),
-            ],
-          ),
+        Text(title, style: const TextStyle(fontSize: 12, color: CASIColors.textSecondary, fontWeight: FontWeight.w500)),
+        const SizedBox(height: 6),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: iconColor),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                value,
+                style: const TextStyle(fontSize: 14, color: Colors.white, fontWeight: FontWeight.w600),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
         ),
       ],
     );
   }
 
-  Widget _buildDetailItem(String title, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10.0),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(title, style: const TextStyle(fontSize: 11, color: CASIColors.textSecondary, fontWeight: FontWeight.w500)),
-          const SizedBox(height: 3),
-          Text(value, style: const TextStyle(fontSize: 14, color: Colors.white, fontWeight: FontWeight.w600), textAlign: TextAlign.center),
-        ],
-      ),
+  Widget _buildBigTemperature() {
+    final match = RegExp(r'^(-?\d+)').firstMatch(widget.currentTemp);
+    final number = match?.group(1) ?? widget.currentTemp;
+    final unit = widget.currentTemp.substring(number.length);
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          number,
+          style: const TextStyle(fontSize: 64, fontWeight: FontWeight.w300, color: Colors.white, height: 1.0),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Text(
+            unit,
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w500, color: Colors.white, height: 1.0),
+          ),
+        ),
+      ],
     );
   }
 
