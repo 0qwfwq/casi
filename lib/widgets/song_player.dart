@@ -9,7 +9,15 @@ import 'package:casi/design_system.dart';
 class SongPlayer extends StatefulWidget {
   final ValueChanged<bool>? onVisibilityChanged;
 
-  const SongPlayer({super.key, this.onVisibilityChanged});
+  /// Wallpaper widget the lens refracts. Pass
+  /// [WallpaperService.buildBackground].
+  final Widget backgroundWidget;
+
+  const SongPlayer({
+    super.key,
+    required this.backgroundWidget,
+    this.onVisibilityChanged,
+  });
 
   @override
   State<SongPlayer> createState() => _SongPlayerState();
@@ -141,7 +149,8 @@ class _SongPlayerState extends State<SongPlayer> with WidgetsBindingObserver {
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 40),
-      child: GlassSurface.modal(
+      child: LiquidGlassSurface.modal(
+        backgroundWidget: widget.backgroundWidget,
         cornerRadius: 35,
         height: 70,
         child: Stack(

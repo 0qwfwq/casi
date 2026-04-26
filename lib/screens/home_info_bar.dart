@@ -1105,6 +1105,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                             child: Padding(
                                               padding: const EdgeInsets.only(top: 12),
                                               child: SongPlayer(
+                                                backgroundWidget: _wallpaperService.buildBackground(),
                                                 onVisibilityChanged: (visible) {
                                                   WidgetsBinding.instance.addPostFrameCallback((_) {
                                                     if (mounted && _isPlayerVisible != visible) {
@@ -1189,6 +1190,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                                         onAppTap: _onForesightAppTap,
                                                         maxForesight: _foresightDockCount,
                                                         onLongPress: _onForesightLongPress,
+                                                        backgroundWidget: _wallpaperService.buildBackground(),
                                                       ),
                                                     )
                                                   : const SizedBox.shrink(
@@ -1241,6 +1243,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                                       onAppTap: _onForesightAppTap,
                                                       maxForesight: _foresightDockCount,
                                                       onLongPress: _onForesightLongPress,
+                                                      backgroundWidget: _wallpaperService.buildBackground(),
                                                     )
                                                   : null,
                                               activePill: _showPill
@@ -1301,6 +1304,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                               apps: _apps,
                               progressNotifier: _drawerProgress,
                               controller: _drawerController,
+                              backgroundWidget: _wallpaperService.buildBackground(),
                               onAppTap: (app) {
                                 ForesightService.instance.recordLaunch(app.packageName, appName: app.name);
                                 setState(() => _foresightPredictions = []);
@@ -1515,8 +1519,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
               child: ValueListenableBuilder<WeatherSnapshot>(
                 valueListenable: WeatherService.instance.snapshot,
                 builder: (context, snap, _) {
-                  return GlassSurface.modal(
-                    cornerRadius: CASIGlass.cornerSheet,
+                  return LiquidGlassSurface.modal(
+                    backgroundWidget: _wallpaperService.buildBackground(),
+                    cornerRadius: CASILiquidGlass.cornerSheet,
                     width: double.infinity,
                     child: WeatherForecastWidget(
                       forecastData: snap.daily,
@@ -1574,6 +1579,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
         onTogglePause: _toggleTimer,
         onStopSingle: _stopAndResetTimer,
         onStopAllRinging: _stopAllRingingTimers,
+        backgroundWidget: _wallpaperService.buildBackground(),
       );
     }
 
@@ -1585,6 +1591,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
         isRinging: isThisRinging,
         onLongPressOpen: _openWidgetsScreen,
         onStop: _stopAlarm,
+        backgroundWidget: _wallpaperService.buildBackground(),
       );
     }
 

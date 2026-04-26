@@ -10,13 +10,20 @@ import 'package:casi/design_system.dart';
 /// - Tap (idle): nothing.
 /// - Tap (ringing): stops the alarm.
 ///
-/// Ringing state turns the whole pill red and plays a repeating bell-shake
-/// rotation until the user taps to stop.
+/// Ringing state heavily tints the liquid-glass surface red, adds a glow
+/// halo, and plays a repeating bell-shake until the user taps to stop.
+/// The lens still refracts the wallpaper through the red tint, which keeps
+/// the going-off treatment continuous with the rest of the new material
+/// instead of becoming a flat colored shape.
 class AlarmPill extends StatefulWidget {
   final String title;
   final bool isRinging;
   final VoidCallback onLongPressOpen;
   final VoidCallback onStop;
+
+  /// Wallpaper widget the lens refracts. Pass
+  /// [WallpaperService.buildBackground].
+  final Widget backgroundWidget;
 
   const AlarmPill({
     super.key,
@@ -24,6 +31,7 @@ class AlarmPill extends StatefulWidget {
     required this.isRinging,
     required this.onLongPressOpen,
     required this.onStop,
+    required this.backgroundWidget,
   });
 
   @override
@@ -32,6 +40,9 @@ class AlarmPill extends StatefulWidget {
 
 class _AlarmPillState extends State<AlarmPill>
     with TickerProviderStateMixin {
+  static const double _height = 70.0;
+  static const double _cornerRadius = 35.0;
+
   late final AnimationController _ringShake;
   late final AnimationController _pressController;
   late final Animation<double> _pressScale;
@@ -101,51 +112,19 @@ class _AlarmPillState extends State<AlarmPill>
       onLongPress: _onLongPress,
       child: ScaleTransition(
         scale: _pressScale,
-        child: GlassSurface.foresight(
-          cornerRadius: 35.0,
-          height: 70.0,
+        child: LiquidGlassSurface.foresight(
+          backgroundWidget: widget.backgroundWidget,
+          cornerRadius: _cornerRadius,
+          height: _height,
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          child: Row(
-            children: [
-              const SizedBox(
-                width: 42,
-                height: 42,
-                child: Center(
-                  child:
-                      Icon(Icons.alarm, color: CASIColors.textPrimary, size: 26),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      widget.title,
-                      style: const TextStyle(
-                        color: CASIColors.textPrimary,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        height: 1.15,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 2),
-                    const Text(
-                      'Alarm',
-                      style: TextStyle(
-                        color: CASIColors.textSecondary,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w400,
-                        height: 1.2,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+          child: _buildContent(
+            icon: Icons.alarm,
+            iconColor: CASIColors.textPrimary,
+            iconSize: 26,
+            title: widget.title,
+            titleColor: CASIColors.textPrimary,
+            subtitle: 'Alarm',
+            subtitleColor: CASIColors.textSecondary,
           ),
         ),
       ),
@@ -162,11 +141,13 @@ class _AlarmPillState extends State<AlarmPill>
           final angle = math.sin(_ringShake.value * math.pi * 6) * 0.09;
           return Transform.rotate(angle: angle, child: child);
         },
-        child: Container(
-          height: 70,
+        // Glow halo sits behind the lens so the going-off color spills
+        // beyond the pill edges. The lens itself is a red-tinted
+        // LiquidGlass, not a flat fill, so refraction continues through
+        // the alarm color.
+        child: DecoratedBox(
           decoration: BoxDecoration(
-            color: CASIColors.alert,
-            borderRadius: BorderRadius.circular(35),
+            borderRadius: BorderRadius.circular(_cornerRadius),
             boxShadow: [
               BoxShadow(
                 color: CASIColors.alert.withValues(alpha: 0.5),
@@ -174,54 +155,82 @@ class _AlarmPillState extends State<AlarmPill>
                 spreadRadius: 1,
               ),
             ],
-            border: Border.all(
-                color: Colors.white.withValues(alpha: 0.25), width: 1),
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          child: Row(
+          child: LiquidGlassSurface.foresight(
+            backgroundWidget: widget.backgroundWidget,
+            cornerRadius: _cornerRadius,
+            height: _height,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            tintOverride: CASIColors.alert.withValues(alpha: 0.72),
+            borderOverride: Colors.white.withValues(alpha: 0.30),
+            child: _buildContent(
+              icon: Icons.stop_rounded,
+              iconColor: Colors.white,
+              iconSize: 32,
+              title: widget.title,
+              titleColor: Colors.white,
+              titleWeight: FontWeight.w700,
+              subtitle: 'Tap to stop',
+              subtitleColor: Colors.white.withValues(alpha: 0.9),
+              subtitleWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildContent({
+    required IconData icon,
+    required Color iconColor,
+    required double iconSize,
+    required String title,
+    required Color titleColor,
+    FontWeight titleWeight = FontWeight.w600,
+    required String subtitle,
+    required Color subtitleColor,
+    FontWeight subtitleWeight = FontWeight.w400,
+  }) {
+    return Row(
+      children: [
+        SizedBox(
+          width: 42,
+          height: 42,
+          child: Center(
+            child: Icon(icon, color: iconColor, size: iconSize),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SizedBox(
-                width: 42,
-                height: 42,
-                child: Center(
-                  child: Icon(Icons.stop_rounded,
-                      color: Colors.white, size: 32),
+              Text(
+                title,
+                style: TextStyle(
+                  color: titleColor,
+                  fontSize: 14,
+                  fontWeight: titleWeight,
+                  height: 1.15,
                 ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      widget.title,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        height: 1.15,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Tap to stop',
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.9),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        height: 1.2,
-                      ),
-                    ),
-                  ],
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  color: subtitleColor,
+                  fontSize: 12,
+                  fontWeight: subtitleWeight,
+                  height: 1.2,
                 ),
               ),
             ],
           ),
         ),
-      ),
+      ],
     );
   }
 }

@@ -17,6 +17,11 @@ class AppDrawer extends StatelessWidget {
   final VoidCallback onOpenSettings;
   final DraggableScrollableController? controller;
 
+  /// Wallpaper widget the drawer's liquid-glass surfaces (search bar, app
+  /// long-press context menu) refract. Pass
+  /// [WallpaperService.buildBackground].
+  final Widget backgroundWidget;
+
   const AppDrawer({
     super.key,
     required this.apps,
@@ -25,6 +30,7 @@ class AppDrawer extends StatelessWidget {
     required this.onAddToHome,
     required this.onUninstall,
     required this.onOpenSettings,
+    required this.backgroundWidget,
     this.controller,
   });
 
@@ -53,6 +59,7 @@ class AppDrawer extends StatelessWidget {
             onUninstall: onUninstall,
             onOpenSettings: onOpenSettings,
             progressNotifier: progressNotifier,
+            backgroundWidget: backgroundWidget,
           );
         },
       ),
@@ -70,6 +77,7 @@ class _AppDrawerSheet extends StatefulWidget {
   final Function(AppInfo) onUninstall;
   final VoidCallback onOpenSettings;
   final ValueNotifier<double> progressNotifier;
+  final Widget backgroundWidget;
 
   const _AppDrawerSheet({
     required this.apps,
@@ -79,6 +87,7 @@ class _AppDrawerSheet extends StatefulWidget {
     required this.onUninstall,
     required this.onOpenSettings,
     required this.progressNotifier,
+    required this.backgroundWidget,
   });
 
   @override
@@ -285,7 +294,8 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                     child: Center(
                       child: SizedBox(
                         width: screenWidth * 0.6,
-                        child: GlassSurface.drawer(
+                        child: LiquidGlassSurface.drawer(
+                          backgroundWidget: widget.backgroundWidget,
                           cornerRadius: CASISearchBarSpec.cornerRadius,
                           // Match foresight dock height (icon 34 + vertical padding 10 × 2).
                           height: 54,
@@ -461,12 +471,25 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
     final double alignX = ((position.dx - left) / menuWidth * 2 - 1).clamp(-1.0, 1.0);
     final double alignY = ((position.dy - top) / menuHeight * 2 - 1).clamp(-1.0, 1.0);
 
+    // The menu lens refracts the wallpaper *with* the route's 15% black
+    // scrim composited on top, so the refracted view matches what the
+    // user actually sees behind the menu (dimmed wallpaper) rather than
+    // a brighter raw-wallpaper slice that would clash with the scrim.
+    final Widget menuBackdrop = Stack(
+      fit: StackFit.expand,
+      children: [
+        widget.backgroundWidget,
+        ColoredBox(color: Colors.black.withValues(alpha: 0.15)),
+      ],
+    );
+
     Navigator.of(context).push(
       _ContextMenuRoute(
         left: left,
         top: top,
         scaleAlignment: Alignment(alignX, alignY),
         child: _ContextMenuContent(
+          backgroundWidget: menuBackdrop,
           onAddToHome: () {
             Navigator.of(context).pop();
             widget.onAddToHome(app);
@@ -731,19 +754,22 @@ class _ContextMenuContent extends StatelessWidget {
   final VoidCallback onAddToHome;
   final VoidCallback onAppInfo;
   final VoidCallback onUninstall;
+  final Widget backgroundWidget;
 
   const _ContextMenuContent({
     required this.onAddToHome,
     required this.onAppInfo,
     required this.onUninstall,
+    required this.backgroundWidget,
   });
 
   @override
   Widget build(BuildContext context) {
     return Material(
       color: Colors.transparent,
-      child: GlassSurface.modal(
-        cornerRadius: CASIGlass.cornerStandard,
+      child: LiquidGlassSurface.modal(
+        backgroundWidget: backgroundWidget,
+        cornerRadius: CASILiquidGlass.cornerStandard,
         width: 200,
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -753,7 +779,7 @@ class _ContextMenuContent extends StatelessWidget {
               label: 'Add to Home',
               onTap: onAddToHome,
               borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(CASIGlass.cornerStandard),
+                top: Radius.circular(CASILiquidGlass.cornerStandard),
               ),
             ),
             _divider(),
@@ -769,7 +795,7 @@ class _ContextMenuContent extends StatelessWidget {
               onTap: onUninstall,
               color: CASIColors.alert,
               borderRadius: const BorderRadius.vertical(
-                bottom: Radius.circular(CASIGlass.cornerStandard),
+                bottom: Radius.circular(CASILiquidGlass.cornerStandard),
               ),
             ),
           ],

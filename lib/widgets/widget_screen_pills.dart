@@ -15,13 +15,17 @@ const Color kAlarmPillAccent = CASIColors.confirm;        // green
 const Color kTimerPillAccent = CASIColors.caution;        // orange
 const Color kWeatherPillAccent = CASIColors.accentPrimary; // pulse blue
 
-/// Wrap the standard foresight-glass pill with a tinted border + faint
-/// fill so each widget type carries an unambiguous color cue.
+/// Wrap the standard foresight liquid-glass pill with a tinted border +
+/// faint colored fill so each widget type carries an unambiguous color
+/// cue. The lens still refracts the wallpaper through the accent tint —
+/// it doesn't sit as a flat colored shape on top of the glass.
 Widget _accentedPill({
   required Color accent,
   required Widget child,
+  required Widget backgroundWidget,
 }) {
-  return GlassSurface.foresight(
+  return LiquidGlassSurface.foresight(
+    backgroundWidget: backgroundWidget,
     cornerRadius: kWidgetPillCorner,
     height: kWidgetPillHeight,
     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -33,8 +37,13 @@ Widget _accentedPill({
 
 class WidgetScreenAlarmPill extends StatelessWidget {
   final AppAlarm alarm;
+  final Widget backgroundWidget;
 
-  const WidgetScreenAlarmPill({super.key, required this.alarm});
+  const WidgetScreenAlarmPill({
+    super.key,
+    required this.alarm,
+    required this.backgroundWidget,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -54,6 +63,7 @@ class WidgetScreenAlarmPill extends StatelessWidget {
 
     return _accentedPill(
       accent: kAlarmPillAccent,
+      backgroundWidget: backgroundWidget,
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -111,8 +121,13 @@ class WidgetScreenAlarmPill extends StatelessWidget {
 
 class WidgetScreenTimerPill extends StatelessWidget {
   final AppTimer timer;
+  final Widget backgroundWidget;
 
-  const WidgetScreenTimerPill({super.key, required this.timer});
+  const WidgetScreenTimerPill({
+    super.key,
+    required this.timer,
+    required this.backgroundWidget,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -125,6 +140,7 @@ class WidgetScreenTimerPill extends StatelessWidget {
 
     return _accentedPill(
       accent: kTimerPillAccent,
+      backgroundWidget: backgroundWidget,
       child: Center(
         child: Text(
           text,
@@ -144,12 +160,18 @@ class WidgetScreenTimerPill extends StatelessWidget {
 /// The Weather widget pill. Always present in either Active or Inactive,
 /// never deletable, never created from the + menu.
 class WidgetScreenWeatherPill extends StatelessWidget {
-  const WidgetScreenWeatherPill({super.key});
+  final Widget backgroundWidget;
+
+  const WidgetScreenWeatherPill({
+    super.key,
+    required this.backgroundWidget,
+  });
 
   @override
   Widget build(BuildContext context) {
     return _accentedPill(
       accent: kWeatherPillAccent,
+      backgroundWidget: backgroundWidget,
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -184,7 +206,9 @@ class WidgetScreenWeatherPill extends StatelessWidget {
 }
 
 // Ghost/outline pill shown in a drop target while dragging. Green = will
-// be moved to Active, Red = will be moved to Inactive.
+// be moved to Active, Red = will be moved to Inactive. Kept as a flat
+// outlined shape (not liquid glass) — it's a transient drop affordance,
+// not a content surface, and the strong solid color is the entire point.
 class GhostPill extends StatelessWidget {
   final Color color;
 

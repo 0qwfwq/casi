@@ -1,10 +1,61 @@
 import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
+import 'package:liquid_glass_easy/liquid_glass_easy.dart';
 
 // =============================================================================
 // CASI Design System — Flutter Implementation
 // Translated from the CASI Design System v1.0 Living Document
 // =============================================================================
+//
+// THIRD-PARTY ATTRIBUTION
+// -----------------------------------------------------------------------------
+// CASI's liquid-glass material is built on top of the [liquid_glass_easy]
+// package by Ahmed Gamil, used under the MIT License:
+//
+//   MIT License
+//   Copyright (c) 2025 Ahmed Gamil
+//
+//   Permission is hereby granted, free of charge, to any person obtaining a
+//   copy of this software and associated documentation files (the "Software"),
+//   to deal in the Software without restriction, including without limitation
+//   the rights to use, copy, modify, merge, publish, distribute, sublicense,
+//   and/or sell copies of the Software, and to permit persons to whom the
+//   Software is furnished to do so, subject to the following conditions:
+//
+//   The above copyright notice and this permission notice shall be included in
+//   all copies or substantial portions of the Software.
+//
+//   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+//   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+//   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+//   THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+//   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+//   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+//   DEALINGS IN THE SOFTWARE.
+//
+// The full LICENSE file ships inside the package (`pub.dev/packages/
+// liquid_glass_easy`) and is automatically picked up by Flutter's
+// [LicenseRegistry], so it is also surfaced to end-users through the
+// standard `showLicensePage` flow whenever CASI exposes one.
+// =============================================================================
+//
+// Material direction (in progress):
+//   The frosted-glass material is being replaced with a true *liquid glass*
+//   material driven by the [liquid_glass_easy] package — real refraction,
+//   distortion, and chromatic aberration over a captured background, instead
+//   of a flat blur. New surfaces are built with [LiquidGlassSurface] and the
+//   tokens in [CASILiquidGlass]. Older surfaces still use [GlassSurface] /
+//   [BackdropFilter]; they are migrated one feature at a time. The Weather
+//   widget is the first surface on the new material — every other glass
+//   surface in the app (dock, drawer, foresight pills, modals, etc.) will
+//   follow.
+//
+//   When adding NEW glass UI: use [LiquidGlassSurface]. Pick a [GlassRole]
+//   so the per-surface tint opacity stays consistent with the rest of the
+//   app, and pass the wallpaper widget so the lens has something to refract.
+//   Do not reach into the [liquid_glass_easy] APIs directly from feature
+//   code — every liquid-glass surface in CASI flows through this file so a
+//   single change here re-tunes the whole app.
 
 // ─── 2. Color System ─────────────────────────────────────────────────────────
 
@@ -283,6 +334,489 @@ class GlassPalette {
         .withSaturation((hsl.saturation * 0.6).clamp(0.15, 0.7))
         .withLightness(0.82)
         .toColor();
+  }
+}
+
+// ─── 6c. Liquid Glass System ────────────────────────────────────────────────
+//
+// True-physics glass material, powered by [liquid_glass_easy]. Where the
+// older [CASIGlass]/[GlassSurface] system uses a flat [BackdropFilter] blur
+// + tint, this one captures the wallpaper as a texture and refracts it
+// through a shader-driven lens with optional distortion, magnification,
+// chromatic aberration, and edge blur.
+//
+// Every liquid-glass surface in CASI is built on top of [LiquidGlassSurface]
+// using these tokens so the whole app reads as one consistent material.
+// Tweaking [distortion], [distortionWidth], or any token here re-tunes the
+// look of every liquid-glass surface project-wide.
+//
+// Token spec:
+//   distortion             — 0.08  (subtle bend; dock/cards)
+//   distortionWidth        — 40    (how far in from the edge the bend
+//                                    decays; ~edge-thickness in px)
+//   magnification          — 1.00  (no zoom — the glass is flat, not a lens)
+//   chromaticAberration    — 0.003 (whisper of color fringing on the edge)
+//   edgeBlurSigma          — 1.0   (light frosted softening on top of
+//                                    refraction; 0 = perfectly clear glass)
+//   pixelRatio             — 0.8   (capture resolution for the background
+//                                    snapshot — perf vs. detail trade-off)
+class CASILiquidGlass {
+  CASILiquidGlass._();
+
+  /// How much the lens warps the captured background near its edges.
+  /// 0 = no bend (looks like clear glass), 0.15+ reads as a fish-eye.
+  static const double distortion = 0.08;
+
+  /// Width (in px) of the edge band that carries the distortion. Smaller
+  /// values give a sharp bevel; larger values fade refraction across the
+  /// whole face of the glass.
+  static const double distortionWidth = 40;
+
+  /// Optical zoom applied through the lens. CASI glass is intentionally
+  /// flat — the wallpaper should feel like it's right *behind* the card,
+  /// not magnified.
+  static const double magnification = 1.0;
+
+  /// Color-fringing intensity at the lens edge. The package default is
+  /// 0.003; we keep that — anything higher reads as a chromatic shift,
+  /// not a glass edge.
+  static const double chromaticAberration = 0.003;
+
+  /// Sigma for the soft frosted blur on top of refraction. Set to 0 for
+  /// perfectly clear glass.
+  static const double edgeBlurSigma = 1.0;
+
+  /// Capture pixel ratio for [LiquidGlassView]. 0.8 is the recommended
+  /// general-use value (see package docs); drop to 0.5–0.7 if a surface
+  /// is performance-critical.
+  static const double pixelRatio = 0.8;
+
+  /// Hairline border thickness applied on top of the lens — kept for
+  /// continuity with [CASIGlass.borderWidth] so liquid-glass and frosted-
+  /// glass surfaces have the same edge treatment during the migration.
+  static const double borderWidth = CASIGlass.borderWidth;
+
+  /// Border alpha — same value as the frosted system.
+  static const double borderAlpha = CASIGlass.borderAlpha;
+
+  /// Wallpaper-accent bleed into the white tint. Same as the frosted
+  /// system so a partially-migrated screen reads as one material.
+  static const double accentMix = CASIGlass.accentMix;
+
+  // ── Corner radii — shared with [CASIGlass]. ─────────────────────────────
+  static const double cornerStandard = CASIGlass.cornerStandard;
+  static const double cornerChip = CASIGlass.cornerChip;
+  static const double cornerPill = CASIGlass.cornerPill;
+  static const double cornerSheet = CASIGlass.cornerSheet;
+  static const double cornerModal = CASIGlass.cornerModal;
+}
+
+/// Liquid-glass version of [GlassSurface]. Wraps [child] in a
+/// [LiquidGlassView] and places a single [LiquidGlass] lens behind it,
+/// sized to whatever the child lays out as. The lens reads pixels from
+/// [backgroundWidget] (almost always the wallpaper) and refracts them
+/// through the CASI tokens in [CASILiquidGlass].
+///
+/// Usage:
+///   LiquidGlassSurface.modal(
+///     backgroundWidget: wallpaperService.buildBackground(),
+///     child: ...,
+///   );
+///
+/// Per-surface knob is the tint *opacity* via [GlassRole] — every other
+/// parameter (distortion, magnification, blur, border, accent mix) is
+/// fixed by [CASILiquidGlass] so the whole app stays on one material.
+///
+/// Layout model:
+///   The widget renders [child] at its natural size (Stack-driven), and
+///   places the lens behind it via [Positioned.fill]. This means the
+///   surface participates in normal column/row layout — no manual width
+///   or height needed in the typical case.
+///
+/// Background alignment:
+///   [backgroundWidget] is the source the lens refracts. The package
+///   sizes the background to the [LiquidGlassView]'s own bounds, which
+///   would squish a full-screen wallpaper into the card. To keep the
+///   refraction visually aligned with what's behind the card on screen,
+///   this widget tracks its screen-space offset and renders the
+///   wallpaper at the screen's full size *inside* the view, translated
+///   by [-screenOffset]. The slice the lens captures matches the slice
+///   of wallpaper actually behind the card.
+class LiquidGlassSurface extends StatefulWidget {
+  /// Child placed in front of the lens. Drives the surface's intrinsic
+  /// size — the lens fills whatever the child lays out as.
+  final Widget child;
+
+  /// What the lens refracts. In CASI this is the wallpaper widget from
+  /// [WallpaperService.buildBackground]. The package captures this into
+  /// a texture; it is not directly composited.
+  final Widget backgroundWidget;
+
+  /// Tint opacity. Use [GlassRole] values where possible; this parameter
+  /// lets ad-hoc surfaces opt into a specific spec opacity without
+  /// inventing a role.
+  final double opacity;
+
+  /// Corner radius. Shape is NOT part of the material (dock is pill,
+  /// drawer is rounded-top sheet, cards are 16, etc.), so each call site
+  /// picks the right radius for its context.
+  final double cornerRadius;
+
+  /// Padding inside the surface, applied to [child].
+  final EdgeInsetsGeometry? padding;
+
+  /// Margin outside the surface.
+  final EdgeInsetsGeometry? margin;
+
+  /// Optional fixed width.
+  final double? width;
+
+  /// Optional fixed height.
+  final double? height;
+
+  /// Replaces the standard tint color (e.g. for hover or active states
+  /// that need a semantic color through the glass).
+  final Color? tintOverride;
+
+  /// Replaces the standard border color.
+  final Color? borderOverride;
+
+  /// Override for the lens's distortion intensity. Defaults to
+  /// [CASILiquidGlass.distortion]; raise it for hero surfaces that want a
+  /// stronger refraction read.
+  final double? distortionOverride;
+
+  const LiquidGlassSurface({
+    super.key,
+    required this.child,
+    required this.backgroundWidget,
+    this.opacity = 0.12,
+    this.cornerRadius = CASILiquidGlass.cornerStandard,
+    this.padding,
+    this.margin,
+    this.width,
+    this.height,
+    this.tintOverride,
+    this.borderOverride,
+    this.distortionOverride,
+  });
+
+  // ── Role factories — mirror the [GlassSurface] roles 1:1. ───────────────
+
+  factory LiquidGlassSurface.dock({
+    Key? key,
+    required Widget child,
+    required Widget backgroundWidget,
+    double cornerRadius = CASILiquidGlass.cornerStandard,
+    EdgeInsetsGeometry? padding,
+    EdgeInsetsGeometry? margin,
+    double? width,
+    double? height,
+    Color? tintOverride,
+    Color? borderOverride,
+  }) =>
+      LiquidGlassSurface(
+        key: key,
+        backgroundWidget: backgroundWidget,
+        opacity: GlassRole.dock.opacity,
+        cornerRadius: cornerRadius,
+        padding: padding,
+        margin: margin,
+        width: width,
+        height: height,
+        tintOverride: tintOverride,
+        borderOverride: borderOverride,
+        child: child,
+      );
+
+  factory LiquidGlassSurface.drawer({
+    Key? key,
+    required Widget child,
+    required Widget backgroundWidget,
+    double cornerRadius = CASILiquidGlass.cornerSheet,
+    EdgeInsetsGeometry? padding,
+    EdgeInsetsGeometry? margin,
+    double? width,
+    double? height,
+    Color? tintOverride,
+    Color? borderOverride,
+  }) =>
+      LiquidGlassSurface(
+        key: key,
+        backgroundWidget: backgroundWidget,
+        opacity: GlassRole.drawer.opacity,
+        cornerRadius: cornerRadius,
+        padding: padding,
+        margin: margin,
+        width: width,
+        height: height,
+        tintOverride: tintOverride,
+        borderOverride: borderOverride,
+        child: child,
+      );
+
+  factory LiquidGlassSurface.foresight({
+    Key? key,
+    required Widget child,
+    required Widget backgroundWidget,
+    double cornerRadius = CASILiquidGlass.cornerPill,
+    EdgeInsetsGeometry? padding,
+    EdgeInsetsGeometry? margin,
+    double? width,
+    double? height,
+    Color? tintOverride,
+    Color? borderOverride,
+  }) =>
+      LiquidGlassSurface(
+        key: key,
+        backgroundWidget: backgroundWidget,
+        opacity: GlassRole.foresight.opacity,
+        cornerRadius: cornerRadius,
+        padding: padding,
+        margin: margin,
+        width: width,
+        height: height,
+        tintOverride: tintOverride,
+        borderOverride: borderOverride,
+        child: child,
+      );
+
+  factory LiquidGlassSurface.pill({
+    Key? key,
+    required Widget child,
+    required Widget backgroundWidget,
+    double cornerRadius = CASILiquidGlass.cornerPill,
+    EdgeInsetsGeometry? padding,
+    EdgeInsetsGeometry? margin,
+    double? width,
+    double? height,
+    Color? tintOverride,
+    Color? borderOverride,
+  }) =>
+      LiquidGlassSurface(
+        key: key,
+        backgroundWidget: backgroundWidget,
+        opacity: GlassRole.pill.opacity,
+        cornerRadius: cornerRadius,
+        padding: padding,
+        margin: margin,
+        width: width,
+        height: height,
+        tintOverride: tintOverride,
+        borderOverride: borderOverride,
+        child: child,
+      );
+
+  factory LiquidGlassSurface.modal({
+    Key? key,
+    required Widget child,
+    required Widget backgroundWidget,
+    double cornerRadius = CASILiquidGlass.cornerModal,
+    EdgeInsetsGeometry? padding,
+    EdgeInsetsGeometry? margin,
+    double? width,
+    double? height,
+    Color? tintOverride,
+    Color? borderOverride,
+  }) =>
+      LiquidGlassSurface(
+        key: key,
+        backgroundWidget: backgroundWidget,
+        opacity: GlassRole.modal.opacity,
+        cornerRadius: cornerRadius,
+        padding: padding,
+        margin: margin,
+        width: width,
+        height: height,
+        tintOverride: tintOverride,
+        borderOverride: borderOverride,
+        child: child,
+      );
+
+  @override
+  State<LiquidGlassSurface> createState() => _LiquidGlassSurfaceState();
+}
+
+class _LiquidGlassSurfaceState extends State<LiquidGlassSurface> {
+  /// Top-left of the surface in screen coordinates. Used to translate the
+  /// wallpaper inside the [LiquidGlassView] so the slice that sits behind
+  /// the surface visually aligns with the slice the lens captures. Updated
+  /// after every frame; only triggers a rebuild when it actually changes.
+  Offset _screenOffset = Offset.zero;
+
+  /// Surface size in logical pixels. Tracked alongside [_screenOffset] so
+  /// the lens dimensions stay in sync with the rendered Stack.
+  Size _surfaceSize = Size.zero;
+
+  final GlobalKey _surfaceKey = GlobalKey();
+
+  void _syncScreenGeometry() {
+    final ctx = _surfaceKey.currentContext;
+    if (ctx == null) return;
+    final RenderObject? ro = ctx.findRenderObject();
+    if (ro is! RenderBox || !ro.hasSize || !ro.attached) return;
+    final Offset offset = ro.localToGlobal(Offset.zero);
+    final Size size = ro.size;
+    if (offset != _screenOffset || size != _surfaceSize) {
+      setState(() {
+        _screenOffset = offset;
+        _surfaceSize = size;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _syncScreenGeometry();
+    });
+
+    final MediaQueryData mq = MediaQuery.of(context);
+    final Size screenSize = mq.size;
+
+    return ValueListenableBuilder<Color>(
+      valueListenable: GlassPalette.accent,
+      builder: (context, accent, _) {
+        // Same tint formula as [GlassSurface] so the two materials read as
+        // one during the migration.
+        final Color baseTint =
+            Color.lerp(Colors.white, accent, CASILiquidGlass.accentMix) ??
+                Colors.white;
+        final Color tint =
+            widget.tintOverride ?? baseTint.withValues(alpha: widget.opacity);
+        final Color border = widget.borderOverride ??
+            Colors.white.withValues(alpha: CASILiquidGlass.borderAlpha);
+
+        final BorderRadius radius = BorderRadius.circular(widget.cornerRadius);
+
+        // Stack lays out the actual content (child) at its natural size and
+        // fills the lens + border behind/in front of it via Positioned.fill.
+        // The LayoutBuilder reads the Stack's resolved size and feeds it to
+        // the LiquidGlass lens.
+        Widget surface = Stack(
+          key: _surfaceKey,
+          children: [
+            Positioned.fill(
+              child: ClipRRect(
+                borderRadius: radius,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final double w = constraints.maxWidth;
+                    final double h = constraints.maxHeight;
+                    if (!w.isFinite || !h.isFinite || w <= 0 || h <= 0) {
+                      return const SizedBox.shrink();
+                    }
+                    return LiquidGlassView(
+                      pixelRatio: CASILiquidGlass.pixelRatio,
+                      backgroundWidget: _AlignedWallpaperBackdrop(
+                        wallpaper: widget.backgroundWidget,
+                        screenSize: screenSize,
+                        screenOffset: _screenOffset,
+                      ),
+                      children: [
+                        LiquidGlass(
+                          width: w,
+                          height: h,
+                          magnification: CASILiquidGlass.magnification,
+                          distortion: widget.distortionOverride ??
+                              CASILiquidGlass.distortion,
+                          distortionWidth: CASILiquidGlass.distortionWidth,
+                          chromaticAberration:
+                              CASILiquidGlass.chromaticAberration,
+                          blur: LiquidGlassBlur(
+                            sigmaX: CASILiquidGlass.edgeBlurSigma,
+                            sigmaY: CASILiquidGlass.edgeBlurSigma,
+                          ),
+                          color: tint,
+                          shape: RoundedRectangleShape(
+                            cornerRadius: widget.cornerRadius,
+                          ),
+                          position: LiquidGlassAlignPosition(
+                            alignment: Alignment.center,
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ),
+            // Hairline border on top — the package draws the lens but does
+            // not stroke an edge, so we paint our own to keep parity with
+            // [GlassSurface].
+            Positioned.fill(
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: radius,
+                    border: Border.all(
+                      color: border,
+                      width: CASILiquidGlass.borderWidth,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            // Content drives the Stack's intrinsic size.
+            Padding(
+              padding: widget.padding ?? EdgeInsets.zero,
+              child: widget.child,
+            ),
+          ],
+        );
+
+        if (widget.width != null || widget.height != null) {
+          surface = SizedBox(
+            width: widget.width,
+            height: widget.height,
+            child: surface,
+          );
+        }
+        if (widget.margin != null) {
+          surface = Padding(padding: widget.margin!, child: surface);
+        }
+        return RepaintBoundary(child: surface);
+      },
+    );
+  }
+}
+
+/// Renders [wallpaper] at full screen size inside a parent that's sized to
+/// the surface's bounds, translated by [-screenOffset] so the visible slice
+/// matches what's actually behind the surface on screen. Without this, the
+/// package would scale the wallpaper to fit the surface — refraction would
+/// pick up a squished copy of the whole image instead of the slice behind
+/// it.
+class _AlignedWallpaperBackdrop extends StatelessWidget {
+  final Widget wallpaper;
+  final Size screenSize;
+  final Offset screenOffset;
+
+  const _AlignedWallpaperBackdrop({
+    required this.wallpaper,
+    required this.screenSize,
+    required this.screenOffset,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRect(
+      child: OverflowBox(
+        alignment: Alignment.topLeft,
+        minWidth: screenSize.width,
+        maxWidth: screenSize.width,
+        minHeight: screenSize.height,
+        maxHeight: screenSize.height,
+        child: Transform.translate(
+          offset: -screenOffset,
+          child: SizedBox(
+            width: screenSize.width,
+            height: screenSize.height,
+            child: wallpaper,
+          ),
+        ),
+      ),
+    );
   }
 }
 

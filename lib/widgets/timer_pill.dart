@@ -36,8 +36,14 @@ class TimerDeckEntry {
 /// - Swipe left-to-right on the front card: stop+reset that timer.
 /// - Tap (when any timer is ringing): stops ALL currently-ringing timers.
 ///
-/// Ringing state turns the whole pill red and plays a repeating bell-shake
-/// rotation until the user taps to stop.
+/// Liquid-glass treatment:
+///   The front card is a [LiquidGlassSurface]. While the user swipes
+///   horizontally, the lens *tint* is shifted toward the action color
+///   (red for stop, pulse-blue for pause/resume) instead of painting an
+///   opaque overlay on top. The wallpaper keeps refracting through the
+///   tinted glass the whole time, so the swipe colors feel native to the
+///   liquid material rather than fighting it. The ringing state uses the
+///   same trick with a strong red tint plus a glow halo behind the lens.
 class TimerPill extends StatefulWidget {
   final List<TimerDeckEntry> entries;
   final bool anyRinging;
@@ -45,6 +51,10 @@ class TimerPill extends StatefulWidget {
   final void Function(int timerIndex) onTogglePause;
   final void Function(int timerIndex) onStopSingle;
   final VoidCallback onStopAllRinging;
+
+  /// Wallpaper widget the lens refracts. Pass
+  /// [WallpaperService.buildBackground].
+  final Widget backgroundWidget;
 
   const TimerPill({
     super.key,
@@ -54,6 +64,7 @@ class TimerPill extends StatefulWidget {
     required this.onTogglePause,
     required this.onStopSingle,
     required this.onStopAllRinging,
+    required this.backgroundWidget,
   });
 
   @override
@@ -243,6 +254,22 @@ class _TimerPillState extends State<TimerPill> with TickerProviderStateMixin {
     });
   }
 
+  /// Computes the lens tint while the user is mid-horizontal-swipe. Returns
+  /// null when the drag is small enough to leave the default glass tint
+  /// in place; otherwise smoothly ramps the action color in from zero
+  /// alpha so the lens transitions continuously rather than snapping into
+  /// a colored overlay. Cap is intentionally low (~0.45) so the wallpaper
+  /// still refracts visibly through the tint at full swipe — the pill
+  /// reads as "the glass changed color", not "a colored sheet was placed
+  /// on top of the glass".
+  Color? _swipeTint(double absProgress, bool swipingRight) {
+    if (absProgress < 0.02) return null;
+    final Color action =
+        swipingRight ? CASIColors.alert : CASIColors.confirm;
+    final double alpha = (0.45 * absProgress).clamp(0.0, 0.45);
+    return action.withValues(alpha: alpha);
+  }
+
   @override
   Widget build(BuildContext context) {
     if (widget.entries.isEmpty) return const SizedBox.shrink();
@@ -303,28 +330,37 @@ class _TimerPillState extends State<TimerPill> with TickerProviderStateMixin {
         scale: _pressScale,
         child: SizedBox(
           height: _frontHeight,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(_cornerRadius),
-            child: Stack(
-              children: [
-                Positioned.fill(
-                  child: GlassSurface.foresight(
-                    cornerRadius: _cornerRadius,
-                    height: _frontHeight,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 8),
-                    child: _buildIdleContent(entry, frontIndex, total),
+          child: Stack(
+            children: [
+              // The lens itself carries the swipe color via tintOverride.
+              // We don't paint a separate colored overlay on top — that
+              // would hide the refraction. As the swipe progresses, the
+              // idle content (icon, time, "Timer"/"Paused" label) fades
+              // out so it doesn't clash with the action label/icon that
+              // slides in from the side.
+              Positioned.fill(
+                child: LiquidGlassSurface.foresight(
+                  backgroundWidget: widget.backgroundWidget,
+                  cornerRadius: _cornerRadius,
+                  height: _frontHeight,
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 8),
+                  tintOverride: _swipeTint(absProgress, swipingRight),
+                  child: Opacity(
+                    opacity: (1.0 - absProgress).clamp(0.0, 1.0),
+                    child:
+                        _buildIdleContent(entry, frontIndex, total),
                   ),
                 ),
-                if (absProgress > 0.02)
-                  Positioned.fill(
-                    child: IgnorePointer(
-                      child:
-                          _buildSwipeOverlay(entry, swipingRight, absProgress),
-                    ),
+              ),
+              if (absProgress > 0.02)
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child:
+                        _buildSwipeOverlay(entry, swipingRight, absProgress),
                   ),
-              ],
-            ),
+                ),
+            ],
           ),
         ),
       ),
@@ -403,8 +439,6 @@ class _TimerPillState extends State<TimerPill> with TickerProviderStateMixin {
 
   Widget _buildSwipeOverlay(
       TimerDeckEntry entry, bool swipingRight, double progress) {
-    final Color actionColor =
-        swipingRight ? CASIColors.alert : CASIColors.pulseBlue;
     final IconData icon = swipingRight
         ? Icons.stop_rounded
         : (entry.isRunning ? Icons.pause_rounded : Icons.play_arrow_rounded);
@@ -412,10 +446,7 @@ class _TimerPillState extends State<TimerPill> with TickerProviderStateMixin {
         ? 'Stop'
         : (entry.isRunning ? 'Pause' : 'Resume');
 
-    final double fillOpacity = (0.9 * progress).clamp(0.0, 0.95);
-
-    return Container(
-      color: actionColor.withValues(alpha: fillOpacity),
+    return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 18),
       child: Align(
         alignment: swipingRight ? Alignment.centerLeft : Alignment.centerRight,
@@ -460,10 +491,10 @@ class _TimerPillState extends State<TimerPill> with TickerProviderStateMixin {
           final angle = math.sin(_ringShake.value * math.pi * 6) * 0.09;
           return Transform.rotate(angle: angle, child: child);
         },
-        child: Container(
-          height: _frontHeight,
+        // Glow halo behind the lens — same treatment as [AlarmPill] so
+        // the going-off cue is consistent.
+        child: DecoratedBox(
           decoration: BoxDecoration(
-            color: CASIColors.alert,
             borderRadius: BorderRadius.circular(_cornerRadius),
             boxShadow: [
               BoxShadow(
@@ -472,51 +503,57 @@ class _TimerPillState extends State<TimerPill> with TickerProviderStateMixin {
                 spreadRadius: 1,
               ),
             ],
-            border: Border.all(
-                color: Colors.white.withValues(alpha: 0.25), width: 1),
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          child: Row(
-            children: [
-              const SizedBox(
-                width: 42,
-                height: 42,
-                child: Center(
-                  child:
-                      Icon(Icons.stop_rounded, color: Colors.white, size: 32),
+          child: LiquidGlassSurface.foresight(
+            backgroundWidget: widget.backgroundWidget,
+            cornerRadius: _cornerRadius,
+            height: _frontHeight,
+            padding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            tintOverride: CASIColors.alert.withValues(alpha: 0.72),
+            borderOverride: Colors.white.withValues(alpha: 0.30),
+            child: Row(
+              children: [
+                const SizedBox(
+                  width: 42,
+                  height: 42,
+                  child: Center(
+                    child: Icon(Icons.stop_rounded,
+                        color: Colors.white, size: 32),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      entry.timeText,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        height: 1.15,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        entry.timeText,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          height: 1.15,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Tap to stop',
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.9),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        height: 1.2,
+                      const SizedBox(height: 2),
+                      Text(
+                        'Tap to stop',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.9),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          height: 1.2,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -524,6 +561,12 @@ class _TimerPillState extends State<TimerPill> with TickerProviderStateMixin {
   }
 }
 
+/// Decorative stack-hint card behind the front card. Intentionally uses
+/// the lighter [GlassSurface] (flat blur) instead of [LiquidGlassSurface]:
+/// each liquid lens captures the wallpaper into its own texture and runs
+/// a shader, and a 3-deep deck of those would multiply that cost for a
+/// surface the user can't even read. The front card — which the user
+/// actually interacts with — gets the full liquid material.
 class _BehindCard extends StatelessWidget {
   final int depth;
   const _BehindCard({required this.depth});

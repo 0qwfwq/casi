@@ -21,10 +21,16 @@ class ForesightPill extends StatelessWidget {
   /// Long-press anywhere on the foresight dock fires this callback.
   final VoidCallback? onLongPress;
 
+  /// Wallpaper widget the lens refracts. Pass
+  /// [WallpaperService.buildBackground]; the dock can't render its
+  /// liquid-glass material without it.
+  final Widget backgroundWidget;
+
   const ForesightPill({
     super.key,
     required this.predictions,
     required this.onAppTap,
+    required this.backgroundWidget,
     this.maxForesight = 5,
     this.onLongPress,
   });
@@ -40,8 +46,9 @@ class ForesightPill extends StatelessWidget {
     return PressPulse(
       onLongPress: onLongPress,
       behavior: HitTestBehavior.opaque,
-      child: GlassSurface.foresight(
-        cornerRadius: CASIGlass.cornerPill,
+      child: LiquidGlassSurface.foresight(
+        backgroundWidget: backgroundWidget,
+        cornerRadius: CASILiquidGlass.cornerPill,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Row(
           mainAxisSize: MainAxisSize.min,

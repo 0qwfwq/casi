@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:installed_apps/app_info.dart';
 import 'package:installed_apps/installed_apps.dart';
 import 'package:casi/design_system.dart';
-import 'package:casi/services/weather_service.dart';
 
 // --- Custom notifications that bubble up to the Hub ---
 class CalendarTapNotification extends Notification {}
@@ -113,51 +112,14 @@ class _ClockCapsuleState extends State<ClockCapsule> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // 1. The Date + inline Weather. Tapping the date area still opens
-        // the calendar pill; long-press still launches the calendar app.
-        // The weather text sits to the right of the date, separated by a
-        // thin divider so the two read as distinct fields.
+        // 1. The Date. Tap opens the calendar pill; long-press launches
+        // the calendar app.
         GestureDetector(
           onTap: () => CalendarTapNotification().dispatch(context),
           onLongPress: () => _launchApp(_calendarPackage),
           child: Padding(
             padding: const EdgeInsets.only(bottom: CASISpacing.sm),
-            child: ValueListenableBuilder<WeatherSnapshot>(
-              valueListenable: WeatherService.instance.snapshot,
-              builder: (context, snap, _) {
-                return Row(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Text(_getFormattedDate(), style: dateStyle),
-                    if (snap.hasData) ...[
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                        child: Container(
-                          width: 1,
-                          height: 16,
-                          color: CASIColors.textTertiary,
-                        ),
-                      ),
-                      Icon(
-                        snap.icon,
-                        color: snap.iconColor,
-                        size: 16,
-                        shadows: [
-                          Shadow(
-                            offset: const Offset(0, 2),
-                            blurRadius: 4.0,
-                            color: Colors.black.withValues(alpha: 0.4),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(width: 6),
-                      Text(snap.tempLabel, style: dateStyle),
-                    ],
-                  ],
-                );
-              },
-            ),
+            child: Text(_getFormattedDate(), style: dateStyle),
           ),
         ),
 

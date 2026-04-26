@@ -5,6 +5,7 @@ import 'package:casi/models/widget_items.dart';
 import 'package:casi/widgets/widget_screen_pills.dart';
 import 'package:casi/widgets/alarm_creator.dart';
 import 'package:casi/widgets/timer_creator.dart';
+import 'package:casi/services/wallpaper_service.dart';
 
 // Identifies a draggable item by its type and index within the parent's
 // alarm/timer list. The index is stable for the duration of a drag.
@@ -61,6 +62,11 @@ class _WidgetsScreenState extends State<WidgetsScreen> {
   // Creator popup: 'alarm' | 'timer' | null
   String? _creatorMode;
 
+  // Wallpaper used as the refraction source for every liquid-glass pill
+  // rendered inside this screen. Initialized once and reused — every pill
+  // call site reads from [_wallpaperService.buildBackground].
+  final WallpaperService _wallpaperService = WallpaperService();
+
   // Local mirror of the weather pill's active flag. Alarms/timers are
   // mutable objects in a list we hold by reference, so filtering them
   // always reflects current state; a plain bool captured from the parent
@@ -86,6 +92,18 @@ class _WidgetsScreenState extends State<WidgetsScreen> {
       widget.alarms.indexWhere((x) => identical(x, a));
   int _timerGlobalIndex(AppTimer t) =>
       widget.timers.indexWhere((x) => identical(x, t));
+
+  @override
+  void initState() {
+    super.initState();
+    _wallpaperService.initialize();
+  }
+
+  @override
+  void dispose() {
+    _wallpaperService.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -310,7 +328,10 @@ class _WidgetsScreenState extends State<WidgetsScreen> {
     final ref = _WidgetRef('alarm', globalIndex);
     return _wrapAsDraggable(
       ref: ref,
-      pill: WidgetScreenAlarmPill(alarm: alarm),
+      pill: WidgetScreenAlarmPill(
+        alarm: alarm,
+        backgroundWidget: _wallpaperService.buildBackground(),
+      ),
     );
   }
 
@@ -318,7 +339,10 @@ class _WidgetsScreenState extends State<WidgetsScreen> {
     final ref = _WidgetRef('timer', globalIndex);
     return _wrapAsDraggable(
       ref: ref,
-      pill: WidgetScreenTimerPill(timer: timer),
+      pill: WidgetScreenTimerPill(
+        timer: timer,
+        backgroundWidget: _wallpaperService.buildBackground(),
+      ),
     );
   }
 
@@ -329,7 +353,9 @@ class _WidgetsScreenState extends State<WidgetsScreen> {
     const ref = _WidgetRef('weather', 0);
     return _wrapAsDraggable(
       ref: ref,
-      pill: const WidgetScreenWeatherPill(),
+      pill: WidgetScreenWeatherPill(
+        backgroundWidget: _wallpaperService.buildBackground(),
+      ),
     );
   }
 
