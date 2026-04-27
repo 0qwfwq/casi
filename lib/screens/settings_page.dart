@@ -27,6 +27,8 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _briefDismissedToday = false;
   String _foresightLongPressPackage = '';
   String _foresightLongPressLabel = 'Default Browser';
+  bool _showClock = true;
+  bool _showDate = true;
   final WallpaperService _wallpaperService = WallpaperService();
   final TextEditingController _nameController = TextEditingController();
 
@@ -57,6 +59,8 @@ class _SettingsPageState extends State<SettingsPage> {
       _briefDismissedToday =
           (prefs.getInt('morning_brief_dismiss_day') ?? -1) == today;
       _foresightLongPressPackage = longPressPkg;
+      _showClock = prefs.getBool('show_clock') ?? true;
+      _showDate = prefs.getBool('show_date') ?? true;
     });
     // Resolve a human-readable label for the long-press target.
     if (longPressPkg.isNotEmpty) {
@@ -80,6 +84,18 @@ class _SettingsPageState extends State<SettingsPage> {
     setState(() => _showForesight = value);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('foresight_hidden', !value);
+  }
+
+  Future<void> _toggleShowClock(bool value) async {
+    setState(() => _showClock = value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('show_clock', value);
+  }
+
+  Future<void> _toggleShowDate(bool value) async {
+    setState(() => _showDate = value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('show_date', value);
   }
 
   Future<void> _setForesightDockCount(int count) async {
@@ -276,6 +292,36 @@ class _SettingsPageState extends State<SettingsPage> {
                       Text('°F', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
                     ],
                   ),
+                ),
+
+                // ─── Clock ─────────────────────────────────────────
+                _sectionDivider(),
+                _sectionHeader('Clock'),
+                SwitchListTile(
+                  title: const Text("Show Clock",
+                      style: TextStyle(color: Colors.white)),
+                  subtitle: const Text(
+                      "Show the time digits at the top of the home screen",
+                      style: TextStyle(
+                          color: CASIColors.textSecondary, fontSize: 12)),
+                  secondary: const Icon(Icons.schedule_outlined,
+                      color: Colors.white),
+                  value: _showClock,
+                  onChanged: _toggleShowClock,
+                  activeThumbColor: CASIColors.accentPrimary,
+                ),
+                SwitchListTile(
+                  title: const Text("Show Date",
+                      style: TextStyle(color: Colors.white)),
+                  subtitle: const Text(
+                      "Show the day and date above the clock",
+                      style: TextStyle(
+                          color: CASIColors.textSecondary, fontSize: 12)),
+                  secondary: const Icon(Icons.calendar_today_outlined,
+                      color: Colors.white),
+                  value: _showDate,
+                  onChanged: _toggleShowDate,
+                  activeThumbColor: CASIColors.accentPrimary,
                 ),
 
                 // ─── Foresight ─────────────────────────────────────

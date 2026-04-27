@@ -115,6 +115,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   final WallpaperService _wallpaperService = WallpaperService();
   bool _immersiveMode = false;
 
+  // Clock + date visibility (Settings → Clock). Date slot height is
+  // always reserved by [ClockCapsule] — only the glyph rendering toggles
+  // — so widgets below the capsule never drift up into the date band.
+  bool _showClock = true;
+  bool _showDate = true;
+
   int _lastCheckedDay = DateTime.now().day;
 
   // --- Layout Constants ---
@@ -641,6 +647,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     setState(() {
       _immersiveMode = prefs.getBool('immersive_mode') ?? false;
       _temperatureUnit = prefs.getString('temperature_unit') ?? 'C';
+      _showClock = prefs.getBool('show_clock') ?? true;
+      _showDate = prefs.getBool('show_date') ?? true;
     });
     _applyImmersiveMode();
     await _wallpaperService.initialize();
@@ -1061,7 +1069,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                       child: Column(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
-                                          GlassStatusBar(opacity: 1.0),
+                                          GlassStatusBar(
+                                            opacity: 1.0,
+                                            showClock: _showClock,
+                                            showDate: _showDate,
+                                          ),
                                           const SizedBox(height: 4),
                                           // Pill row: Alarm > Weather > Timer (clipped to prevent transient overflow)
                                           ClipRect(child: _buildPillRow()),
