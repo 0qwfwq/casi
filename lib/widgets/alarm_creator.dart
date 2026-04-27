@@ -8,11 +8,14 @@ typedef AlarmCreatorSave = void Function(List<String> labels);
 class AlarmCreator extends StatefulWidget {
   final AlarmCreatorSave onSave;
   final VoidCallback onCancel;
+  // Source the cancel/save buttons and the time-row highlight refract.
+  final Widget backgroundWidget;
 
   const AlarmCreator({
     super.key,
     required this.onSave,
     required this.onCancel,
+    required this.backgroundWidget,
   });
 
   @override
@@ -20,7 +23,6 @@ class AlarmCreator extends StatefulWidget {
 }
 
 class _AlarmCreatorState extends State<AlarmCreator> {
-  static const Color _cAlarm = CASIColors.confirm;
   static const List<String> _allDays = [
     'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'
   ];
@@ -58,10 +60,10 @@ class _AlarmCreatorState extends State<AlarmCreator> {
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.add_alarm, color: _cAlarm, size: 18),
-            const SizedBox(width: 8),
-            const Text(
+          children: const [
+            Icon(Icons.add_alarm, color: Colors.white, size: 18),
+            SizedBox(width: 8),
+            Text(
               "New Alarm",
               style: TextStyle(
                 color: Colors.white,
@@ -79,12 +81,13 @@ class _AlarmCreatorState extends State<AlarmCreator> {
           child: Stack(
             alignment: Alignment.center,
             children: [
-              Container(
-                height: 52,
-                margin: const EdgeInsets.symmetric(horizontal: 24),
-                decoration: BoxDecoration(
-                  color: _cAlarm.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(16),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: LiquidGlassSurface.pill(
+                  backgroundWidget: widget.backgroundWidget,
+                  cornerRadius: 16,
+                  height: 52,
+                  child: const SizedBox.expand(),
                 ),
               ),
               Row(
@@ -130,35 +133,30 @@ class _AlarmCreatorState extends State<AlarmCreator> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
-            _actionButton(
-              "Cancel", Icons.close, CASIColors.textSecondary, widget.onCancel),
-            _actionButton("Save", Icons.check, _cAlarm, _save),
+            _actionButton("Cancel", Icons.close, widget.onCancel),
+            _actionButton("Save", Icons.check, _save),
           ],
         ),
       ],
     );
   }
 
-  Widget _actionButton(
-      String label, IconData icon, Color color, VoidCallback onTap) {
-    return InkWell(
+  Widget _actionButton(String label, IconData icon, VoidCallback onTap) {
+    return GestureDetector(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(22),
-      child: Container(
+      child: LiquidGlassSurface.pill(
+        backgroundWidget: widget.backgroundWidget,
+        cornerRadius: 22,
         padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.2),
-          borderRadius: BorderRadius.circular(22),
-        ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: color, size: 18),
+            Icon(icon, color: Colors.white, size: 18),
             const SizedBox(width: 8),
             Text(
               label,
-              style: TextStyle(
-                color: color,
+              style: const TextStyle(
+                color: Colors.white,
                 fontSize: 14,
                 fontWeight: FontWeight.bold,
               ),
@@ -193,12 +191,12 @@ class _AlarmCreatorState extends State<AlarmCreator> {
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: allSelected
-                  ? _cAlarm.withValues(alpha: 0.25)
+                  ? Colors.white.withValues(alpha: 0.22)
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
                 color: allSelected
-                    ? _cAlarm.withValues(alpha: 0.6)
+                    ? Colors.white.withValues(alpha: 0.55)
                     : CASIColors.glassDivider,
               ),
             ),
@@ -238,12 +236,12 @@ class _AlarmCreatorState extends State<AlarmCreator> {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: isSelected
-                      ? _cAlarm.withValues(alpha: 0.25)
+                      ? Colors.white.withValues(alpha: 0.22)
                       : Colors.transparent,
                   shape: BoxShape.circle,
                   border: Border.all(
                     color: isSelected
-                        ? _cAlarm.withValues(alpha: 0.6)
+                        ? Colors.white.withValues(alpha: 0.55)
                         : CASIColors.glassDivider,
                   ),
                 ),

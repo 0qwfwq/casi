@@ -9,18 +9,10 @@ import 'package:casi/models/widget_items.dart';
 const double kWidgetPillHeight = 70.0;
 const double kWidgetPillCorner = 35.0;
 
-// Per-type accent colors so the user can tell pills apart at a glance
-// in the Active / Inactive grids.
-const Color kAlarmPillAccent = CASIColors.confirm;        // green
-const Color kTimerPillAccent = CASIColors.caution;        // orange
-const Color kWeatherPillAccent = CASIColors.accentPrimary; // pulse blue
-
-/// Wrap the standard foresight liquid-glass pill with a tinted border +
-/// faint colored fill so each widget type carries an unambiguous color
-/// cue. The lens still refracts the wallpaper through the accent tint —
-/// it doesn't sit as a flat colored shape on top of the glass.
-Widget _accentedPill({
-  required Color accent,
+/// Plain liquid-glass pill used by every widget tile (alarm, timer,
+/// weather). Per-type accent tints were removed so the grid reads as one
+/// unified liquid-glass material — content alone differentiates the tiles.
+Widget _glassPill({
   required Widget child,
   required Widget backgroundWidget,
 }) {
@@ -29,8 +21,6 @@ Widget _accentedPill({
     cornerRadius: kWidgetPillCorner,
     height: kWidgetPillHeight,
     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-    tintOverride: accent.withValues(alpha: 0.18),
-    borderOverride: accent.withValues(alpha: 0.55),
     child: child,
   );
 }
@@ -61,8 +51,7 @@ class WidgetScreenAlarmPill extends StatelessWidget {
       timeLabel = "";
     }
 
-    return _accentedPill(
-      accent: kAlarmPillAccent,
+    return _glassPill(
       backgroundWidget: backgroundWidget,
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -138,8 +127,7 @@ class WidgetScreenTimerPill extends StatelessWidget {
     final text =
         "${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}";
 
-    return _accentedPill(
-      accent: kTimerPillAccent,
+    return _glassPill(
       backgroundWidget: backgroundWidget,
       child: Center(
         child: Text(
@@ -169,8 +157,7 @@ class WidgetScreenWeatherPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _accentedPill(
-      accent: kWeatherPillAccent,
+    return _glassPill(
       backgroundWidget: backgroundWidget,
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,

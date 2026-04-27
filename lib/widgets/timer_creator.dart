@@ -8,11 +8,14 @@ typedef TimerCreatorSave = void Function(int totalSeconds);
 class TimerCreator extends StatefulWidget {
   final TimerCreatorSave onSave;
   final VoidCallback onCancel;
+  // Source the cancel/save buttons and the time-row highlight refract.
+  final Widget backgroundWidget;
 
   const TimerCreator({
     super.key,
     required this.onSave,
     required this.onCancel,
+    required this.backgroundWidget,
   });
 
   @override
@@ -20,8 +23,6 @@ class TimerCreator extends StatefulWidget {
 }
 
 class _TimerCreatorState extends State<TimerCreator> {
-  static const Color _cTimer = CASIColors.caution;
-
   int _hour = 0;
   int _minute = 5;
   int _second = 0;
@@ -38,10 +39,10 @@ class _TimerCreatorState extends State<TimerCreator> {
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.hourglass_empty, color: _cTimer, size: 18),
-            const SizedBox(width: 8),
-            const Text(
+          children: const [
+            Icon(Icons.hourglass_empty, color: Colors.white, size: 18),
+            SizedBox(width: 8),
+            Text(
               "New Timer",
               style: TextStyle(
                 color: Colors.white,
@@ -57,12 +58,13 @@ class _TimerCreatorState extends State<TimerCreator> {
           child: Stack(
             alignment: Alignment.center,
             children: [
-              Container(
-                height: 52,
-                margin: const EdgeInsets.symmetric(horizontal: 24),
-                decoration: BoxDecoration(
-                  color: _cTimer.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(16),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: LiquidGlassSurface.pill(
+                  backgroundWidget: widget.backgroundWidget,
+                  cornerRadius: 16,
+                  height: 52,
+                  child: const SizedBox.expand(),
                 ),
               ),
               Row(
@@ -112,9 +114,8 @@ class _TimerCreatorState extends State<TimerCreator> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
-            _actionButton(
-                "Cancel", Icons.close, CASIColors.textSecondary, widget.onCancel),
-            _actionButton("Save", Icons.check, _cTimer, _save),
+            _actionButton("Cancel", Icons.close, widget.onCancel),
+            _actionButton("Save", Icons.check, _save),
           ],
         ),
       ],
@@ -139,26 +140,22 @@ class _TimerCreatorState extends State<TimerCreator> {
     );
   }
 
-  Widget _actionButton(
-      String label, IconData icon, Color color, VoidCallback onTap) {
-    return InkWell(
+  Widget _actionButton(String label, IconData icon, VoidCallback onTap) {
+    return GestureDetector(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(22),
-      child: Container(
+      child: LiquidGlassSurface.pill(
+        backgroundWidget: widget.backgroundWidget,
+        cornerRadius: 22,
         padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.2),
-          borderRadius: BorderRadius.circular(22),
-        ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: color, size: 18),
+            Icon(icon, color: Colors.white, size: 18),
             const SizedBox(width: 8),
             Text(
               label,
-              style: TextStyle(
-                color: color,
+              style: const TextStyle(
+                color: Colors.white,
                 fontSize: 14,
                 fontWeight: FontWeight.bold,
               ),

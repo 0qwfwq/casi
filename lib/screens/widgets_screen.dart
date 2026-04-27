@@ -96,11 +96,21 @@ class _WidgetsScreenState extends State<WidgetsScreen> {
   @override
   void initState() {
     super.initState();
+    // Rebuild once the wallpaper finishes loading — without this, the
+    // first frame builds the lens against an empty (black) wallpaper and
+    // every pill renders black until some unrelated setState triggers a
+    // rebuild that picks up the loaded image.
+    _wallpaperService.addListener(_onWallpaperChanged);
     _wallpaperService.initialize();
+  }
+
+  void _onWallpaperChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
+    _wallpaperService.removeListener(_onWallpaperChanged);
     _wallpaperService.dispose();
     super.dispose();
   }
@@ -484,33 +494,28 @@ class _WidgetsScreenState extends State<WidgetsScreen> {
             if (_creatorMode != null) return;
             setState(() => _isAddMenuOpen = !_isAddMenuOpen);
           },
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeOutCubic,
+          child: LiquidGlassSurface.pill(
+            backgroundWidget: _wallpaperService.buildBackground(),
+            cornerRadius: 28,
             width: 56,
             height: 56,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: (isDelete
-                      ? CASIColors.alert
-                      : CASIColors.accentPrimary)
-                  .withValues(alpha: 0.2),
-              border: Border.all(
-                color: (isDelete
-                        ? CASIColors.alert
-                        : CASIColors.accentPrimary)
-                    .withValues(alpha: 0.65),
-                width: 1.5,
+            // Delete-mode keeps the alert color as a critical UX signal —
+            // bleeds red through the glass instead of replacing the
+            // material with a flat fill.
+            tintOverride: isDelete
+                ? CASIColors.alert.withValues(alpha: 0.20)
+                : null,
+            borderOverride: isDelete
+                ? CASIColors.alert.withValues(alpha: 0.55)
+                : null,
+            child: Center(
+              child: Icon(
+                isDelete
+                    ? Icons.delete_outline_rounded
+                    : Icons.add_rounded,
+                color: isDelete ? CASIColors.alert : Colors.white,
+                size: isDelete ? 28 : 30,
               ),
-            ),
-            child: Icon(
-              isDelete
-                  ? Icons.delete_outline_rounded
-                  : Icons.add_rounded,
-              color: isDelete
-                  ? CASIColors.alert
-                  : CASIColors.accentPrimary,
-              size: isDelete ? 28 : 30,
             ),
           ),
         );
@@ -526,7 +531,6 @@ class _WidgetsScreenState extends State<WidgetsScreen> {
         _addMenuItem(
           label: "Alarm",
           icon: Icons.alarm,
-          color: CASIColors.confirm,
           enabled: !_atAlarmLimit,
           onTap: () {
             setState(() {
@@ -539,7 +543,6 @@ class _WidgetsScreenState extends State<WidgetsScreen> {
         _addMenuItem(
           label: "Timer",
           icon: Icons.hourglass_empty,
-          color: CASIColors.caution,
           enabled: !_atTimerLimit,
           onTap: () {
             setState(() {
@@ -555,31 +558,34 @@ class _WidgetsScreenState extends State<WidgetsScreen> {
   Widget _addMenuItem({
     required String label,
     required IconData icon,
-    required Color color,
     required bool enabled,
     required VoidCallback onTap,
   }) {
     return GestureDetector(
       onTap: enabled ? onTap : null,
-      child: GlassSurface.pill(
+      child: LiquidGlassSurface.pill(
+        backgroundWidget: _wallpaperService.buildBackground(),
         cornerRadius: 26,
         height: 48,
         padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon,
-                color: enabled ? color : CASIColors.textTertiary, size: 20),
-            const SizedBox(width: 10),
-            Text(
-              enabled ? label : "$label (max)",
-              style: TextStyle(
-                color: enabled ? Colors.white : CASIColors.textTertiary,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
+        child: Center(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon,
+                  color: enabled ? Colors.white : CASIColors.textTertiary,
+                  size: 20),
+              const SizedBox(width: 10),
+              Text(
+                enabled ? label : "$label (max)",
+                style: TextStyle(
+                  color: enabled ? Colors.white : CASIColors.textTertiary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -596,7 +602,8 @@ class _WidgetsScreenState extends State<WidgetsScreen> {
         }
         Navigator.of(context).maybePop();
       },
-      child: GlassSurface.pill(
+      child: LiquidGlassSurface.pill(
+        backgroundWidget: _wallpaperService.buildBackground(),
         cornerRadius: 28,
         width: 56,
         height: 56,
@@ -631,7 +638,8 @@ class _WidgetsScreenState extends State<WidgetsScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 28),
               child: SizedBox(
                 height: popupHeight,
-                child: GlassSurface.modal(
+                child: LiquidGlassSurface.modal(
+                  backgroundWidget: _wallpaperService.buildBackground(),
                   cornerRadius: 32,
                   padding: const EdgeInsets.symmetric(
                     horizontal: 16,
@@ -639,6 +647,8 @@ class _WidgetsScreenState extends State<WidgetsScreen> {
                   ),
                   child: _creatorMode == 'alarm'
                       ? AlarmCreator(
+                          backgroundWidget:
+                              _wallpaperService.buildBackground(),
                           onSave: (labels) {
                             widget.onCreateAlarms(labels);
                             setState(() => _creatorMode = null);
@@ -647,6 +657,8 @@ class _WidgetsScreenState extends State<WidgetsScreen> {
                               setState(() => _creatorMode = null),
                         )
                       : TimerCreator(
+                          backgroundWidget:
+                              _wallpaperService.buildBackground(),
                           onSave: (total) {
                             widget.onCreateTimer(total);
                             setState(() => _creatorMode = null);
