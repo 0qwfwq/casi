@@ -33,6 +33,8 @@ class AppCapability {
   static const professional = 'professional';
   static const meeting = 'meeting';
   static const conference = 'conference';
+  static const timeClock = 'time_clock';
+  static const hrPortal = 'hr_portal';
 
   /// Time / scheduling
   static const calendar = 'calendar';
@@ -352,6 +354,82 @@ class AppCapabilityMap {
     ],
     'reminder': [
       AppCapability.reminders, AppCapability.productivity,
+    ],
+
+    // ---------- Time clock / HR / payroll ----------
+    // Apps employees use to clock in/out, view schedules, request PTO, or
+    // check pay stubs. These should surface in the morning ("time to clock
+    // in") and right at end-of-shift.
+    'ukg': [
+      AppCapability.timeClock, AppCapability.hrPortal,
+      AppCapability.professional,
+    ],
+    'ultipro': [
+      AppCapability.timeClock, AppCapability.hrPortal,
+      AppCapability.professional,
+    ],
+    'kronos': [
+      AppCapability.timeClock, AppCapability.hrPortal,
+      AppCapability.professional,
+    ],
+    'workday': [
+      AppCapability.timeClock, AppCapability.hrPortal,
+      AppCapability.professional,
+    ],
+    'adp': [ // ADP Mobile / Workforce Now
+      AppCapability.timeClock, AppCapability.hrPortal,
+      AppCapability.professional,
+    ],
+    'paychex': [
+      AppCapability.timeClock, AppCapability.hrPortal,
+      AppCapability.professional,
+    ],
+    'paycor': [
+      AppCapability.timeClock, AppCapability.hrPortal,
+      AppCapability.professional,
+    ],
+    'paylocity': [
+      AppCapability.timeClock, AppCapability.hrPortal,
+      AppCapability.professional,
+    ],
+    'gusto': [
+      AppCapability.timeClock, AppCapability.hrPortal,
+      AppCapability.professional,
+    ],
+    'bamboohr': [
+      AppCapability.timeClock, AppCapability.hrPortal,
+      AppCapability.professional,
+    ],
+    'rippling': [
+      AppCapability.timeClock, AppCapability.hrPortal,
+      AppCapability.professional,
+    ],
+    'deputy': [ // Deputy.com — shift scheduling / clock-in
+      AppCapability.timeClock, AppCapability.hrPortal,
+      AppCapability.professional,
+    ],
+    'whentowork': [
+      AppCapability.timeClock, AppCapability.hrPortal,
+      AppCapability.professional,
+    ],
+    'whenIwork': [
+      AppCapability.timeClock, AppCapability.hrPortal,
+      AppCapability.professional,
+    ],
+    'homebase': [ // Homebase — small-biz time clock
+      AppCapability.timeClock, AppCapability.hrPortal,
+      AppCapability.professional,
+    ],
+    'tsheets': [ // QuickBooks Time
+      AppCapability.timeClock, AppCapability.hrPortal,
+      AppCapability.professional,
+    ],
+    'qbtime': [
+      AppCapability.timeClock, AppCapability.hrPortal,
+      AppCapability.professional,
+    ],
+    'sap.successfactors': [
+      AppCapability.hrPortal, AppCapability.professional,
     ],
 
     // ---------- Navigation / commute ----------

@@ -130,6 +130,7 @@ class ContextInterpreter {
   static List<Need> interpret(ContextSnapshot s) {
     final needs = <Need>[];
     _calendarRules(s, needs);
+    _calendarTextRules(s, needs);
     _notificationRules(s, needs);
     _audioOutputRules(s, needs);
     _carContextRules(s, needs);
@@ -446,6 +447,7 @@ class ContextInterpreter {
 
   static void _commuteRules(ContextSnapshot s, List<Need> out) {
     if (!s.isWeekday) return;
+    if (_hasDayOffEvent(s)) return;
     final h = s.hour;
     final isMorningCommute = h >= 7 && h < 10;
     final isEveningCommute = h >= 16 && h < 19;
@@ -505,6 +507,7 @@ class ContextInterpreter {
 
   static void _workdayRules(ContextSnapshot s, List<Need> out) {
     if (!s.isWeekday) return;
+    if (_hasDayOffEvent(s)) return;
     if (s.hour < 9 || s.hour >= 17) return;
     out.add(Need(
       name: 'workday',
@@ -587,7 +590,10 @@ class ContextInterpreter {
   }
 
   // ---------------------------------------------------------------------------
-  // Morning: weekday 6–9am. Bias toward news, email, calendar, weather.
+  // Morning: 6–9am. Always surface weather + calendar + news. On weekdays
+  // (without a day-off event) also surface email, work chat (Teams/Slack),
+  // and time-clock / HR apps so the user can clock in and triage their
+  // inbox while getting ready for work.
   // ---------------------------------------------------------------------------
 
   static void _morningRules(ContextSnapshot s, List<Need> out) {
@@ -601,12 +607,6 @@ class ContextInterpreter {
       reason: 'Morning catch-up',
     ));
     out.add(Need(
-      name: 'morning_email',
-      tags: const [AppCapability.email],
-      priority: 0.7,
-      reason: 'Morning inbox',
-    ));
-    out.add(Need(
       name: 'morning_calendar',
       tags: const [AppCapability.calendar, AppCapability.scheduling],
       priority: 0.55,
@@ -617,6 +617,36 @@ class ContextInterpreter {
       tags: const [AppCapability.weather],
       priority: 0.45,
       reason: 'Weather for today',
+    ));
+
+    // Work-prep bias: only on weekdays the user actually has to work.
+    if (!s.isWeekday || _hasDayOffEvent(s)) return;
+
+    out.add(Need(
+      name: 'morning_email',
+      tags: const [AppCapability.email],
+      priority: 0.75,
+      reason: 'Morning inbox before work',
+    ));
+    out.add(Need(
+      name: 'morning_work_chat',
+      tags: const [
+        AppCapability.professional,
+        AppCapability.communication,
+        AppCapability.messaging,
+      ],
+      priority: 0.7,
+      reason: 'Catch up on work chat',
+    ));
+    out.add(Need(
+      name: 'morning_time_clock',
+      tags: const [
+        AppCapability.timeClock,
+        AppCapability.hrPortal,
+        AppCapability.professional,
+      ],
+      priority: 0.8,
+      reason: 'Clock in / view shift',
     ));
   }
 
@@ -901,5 +931,373 @@ class ContextInterpreter {
       priority: 0.2,
       reason: 'Continue from previous app',
     ));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Day-off detection. Scans today's events (and reminders, which Android
+  // surfaces as calendar events) for any all-day or full-workday item whose
+  // text describes the user *not* working. Used to suppress work-related
+  // morning, commute, and workday biases so the launcher doesn't push the
+  // inbox / Teams / time-clock at someone on PTO.
+  // ---------------------------------------------------------------------------
+
+  static const List<String> _dayOffPhrases = [
+    'day off', 'days off', 'off work', 'off today',
+    'pto', 'paid time off', 'time off',
+    'vacation', 'holiday', 'sick day', 'sick leave',
+    'out of office', 'ooo',
+    'personal day', 'mental health day',
+    'no work', 'not working', 'work cancel',
+    'bereavement', 'jury duty',
+    'maternity', 'paternity', 'parental leave',
+  ];
+
+  static bool _hasDayOffEvent(ContextSnapshot s) {
+    if (s.todayEvents.isEmpty) return false;
+    for (final event in s.todayEvents) {
+      // A 4-hour-or-longer block during work hours counts even without
+      // allDay; an "off work — flying out at 11" event still means no job.
+      final lengthMs = event.end - event.begin;
+      final coversWorkday = event.allDay || lengthMs >= 4 * 60 * 60 * 1000;
+      if (!coversWorkday) continue;
+
+      final haystack =
+          ('${event.title} ${event.description}').toLowerCase();
+      for (final phrase in _dayOffPhrases) {
+        if (haystack.contains(phrase)) return true;
+      }
+    }
+    return false;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Calendar / reminder text scan. Reads every event today (allDay events
+  // and reminders included — Android sync providers surface tasks the same
+  // way) and infers what action the user is being told to do, then biases
+  // the matching app capability. This lets a reminder titled "text mom
+  // about dinner" surface the messaging app, "send draft to Michael" the
+  // email app, "pay rent" the banking app, and so on.
+  //
+  // Matches are additive: a single event can trigger several biases (e.g.
+  // "drive to airport — bring boarding pass" lifts navigation AND travel).
+  // Priority is moderate — strong enough to outrank generic time-of-day
+  // bias, weak enough that an imminent meeting still wins.
+  // ---------------------------------------------------------------------------
+
+  static void _calendarTextRules(ContextSnapshot s, List<Need> out) {
+    if (s.todayEvents.isEmpty) return;
+    final nowMs = s.now.millisecondsSinceEpoch;
+
+    for (final event in s.todayEvents) {
+      final title = event.title;
+      final text = ('$title ${event.description}').toLowerCase();
+      if (text.trim().isEmpty) continue;
+
+      // Recency weight: imminent / current events outweigh later-today
+      // ones, all-day items get a flat mid weight. Past-and-done events
+      // are skipped entirely.
+      final minsToStart = ((event.begin - nowMs) / 60000).round();
+      final minsToEnd = ((event.end - nowMs) / 60000).round();
+      double recency;
+      if (event.allDay) {
+        recency = 0.7;
+      } else if (minsToEnd < -30) {
+        continue; // event finished more than 30 min ago — stale
+      } else if (minsToStart <= 0 && minsToEnd > 0) {
+        recency = 1.0; // happening now
+      } else if (minsToStart > 0 && minsToStart <= 60) {
+        recency = 0.95;
+      } else if (minsToStart > 0 && minsToStart <= 240) {
+        recency = 0.75;
+      } else {
+        recency = 0.55;
+      }
+
+      final reason = title.isEmpty ? 'Reminder' : 'Reminder: "$title"';
+
+      void emit(String name, List<String> tags, double base) {
+        out.add(Need(
+          name: name,
+          tags: tags,
+          priority: (base * recency).clamp(0.0, 1.0),
+          reason: reason,
+        ));
+      }
+
+      // -- Messaging --------------------------------------------------------
+      // "text mom", "message dave", "tell sarah", "dm them", "send sms"
+      if (_anyMatch(text, const [
+        'text ', 'text mom', 'text dad', 'text her', 'text him',
+        'message ', ' msg ', 'msg ',
+        'tell ', 'ping ', 'dm ', ' dm ', 'send a text', 'shoot a text',
+        'sms ', 'imessage', 'whatsapp', 'snap ', 'snapchat',
+      ])) {
+        emit('reminder_message', const [
+          AppCapability.messaging,
+          AppCapability.communication,
+          AppCapability.sms,
+        ], 0.85);
+      }
+
+      // -- Phone call -------------------------------------------------------
+      if (_anyMatch(text, const [
+        'call ', 'phone ', 'ring ', 'give a call', 'give them a call',
+        'voicemail', 'callback', 'call back',
+      ])) {
+        emit('reminder_call', const [
+          AppCapability.phone,
+          AppCapability.communication,
+        ], 0.85);
+      }
+
+      // -- Email ------------------------------------------------------------
+      // "send draft to michael", "email professor", "reply to boss",
+      // "follow up with X", "forward the report".
+      if (_anyMatch(text, const [
+        'email', 'e-mail', 'inbox',
+        'send draft', 'send the draft', 'send draft to',
+        'reply to', 'respond to', 'follow up', 'follow-up', 'followup',
+        'forward ', 'cc ', 'bcc ',
+        'send to ', 'send report', 'send the ',
+      ])) {
+        emit('reminder_email', const [
+          AppCapability.email,
+          AppCapability.communication,
+          AppCapability.professional,
+        ], 0.85);
+      }
+
+      // -- Video / work meeting --------------------------------------------
+      if (_anyMatch(text, const [
+        'zoom', 'teams call', 'webex', 'google meet', 'meet link',
+        'video call', 'video chat', 'facetime', 'huddle',
+      ])) {
+        emit('reminder_videocall', const [
+          AppCapability.videoCall,
+          AppCapability.meeting,
+          AppCapability.conference,
+        ], 0.9);
+      }
+
+      // -- Time clock / HR --------------------------------------------------
+      if (_anyMatch(text, const [
+        'clock in', 'clock-in', 'clock out', 'clock-out',
+        'punch in', 'punch out', 'shift start', 'start shift',
+        'timesheet', 'time sheet', 'submit hours', 'log hours',
+        'request pto', 'request time off', 'pay stub', 'paystub',
+        'view schedule', 'check schedule',
+      ])) {
+        emit('reminder_timeclock', const [
+          AppCapability.timeClock,
+          AppCapability.hrPortal,
+          AppCapability.professional,
+        ], 0.9);
+      }
+
+      // -- Notes / write-up -------------------------------------------------
+      if (_anyMatch(text, const [
+        'write ', 'write up', 'write-up', 'jot ', 'note ', 'take notes',
+        'draft ', 'outline ', 'brainstorm',
+      ])) {
+        emit('reminder_notes', const [
+          AppCapability.noteTaking,
+          AppCapability.productivity,
+        ], 0.7);
+      }
+
+      // -- Tasks / todo / reminders ----------------------------------------
+      if (_anyMatch(text, const [
+        'todo', 'to-do', 'to do', 'task ', 'checklist', 'finish ',
+        'complete ', 'submit ', 'turn in',
+      ])) {
+        emit('reminder_tasks', const [
+          AppCapability.tasks,
+          AppCapability.reminders,
+          AppCapability.productivity,
+        ], 0.7);
+      }
+
+      // -- Documents -------------------------------------------------------
+      if (_anyMatch(text, const [
+        'review doc', 'review the doc', 'sign ', 'docusign',
+        'spreadsheet', 'slide deck', 'slides for', 'powerpoint',
+        'word doc', 'pdf', 'contract', 'proposal',
+      ])) {
+        emit('reminder_docs', const [
+          AppCapability.documentEditing,
+          AppCapability.productivity,
+          AppCapability.professional,
+        ], 0.75);
+      }
+
+      // -- Navigation / location -------------------------------------------
+      if (_anyMatch(text, const [
+        'drive to', 'drive ', 'pick up', 'pick-up', 'drop off', 'drop-off',
+        'meet at', 'meet @', 'go to ', 'head to', 'heading to',
+        'visit ', 'stop by', 'commute',
+      ])) {
+        emit('reminder_navigation', const [
+          AppCapability.navigation,
+          AppCapability.location,
+          AppCapability.commute,
+        ], 0.8);
+      }
+
+      // -- Rideshare / transit ---------------------------------------------
+      if (_anyMatch(text, const [
+        'uber', 'lyft', 'taxi', 'cab ', 'rideshare',
+        'subway', 'bus to', 'train to', 'transit',
+      ])) {
+        emit('reminder_rideshare', const [
+          AppCapability.rideshare,
+          AppCapability.transit,
+          AppCapability.commute,
+        ], 0.8);
+      }
+
+      // -- Travel / flights ------------------------------------------------
+      if (_anyMatch(text, const [
+        'flight', 'airport', 'check in', 'check-in', 'boarding',
+        'pack ', 'packing', 'hotel', 'airbnb', 'reservation',
+        'tsa', 'passport', 'gate ',
+      ])) {
+        emit('reminder_travel', const [
+          AppCapability.travel,
+          AppCapability.flights,
+        ], 0.8);
+      }
+
+      // -- Camera / photos -------------------------------------------------
+      if (_anyMatch(text, const [
+        'photo', 'picture', 'pic of', 'snap a', 'take a pic', 'selfie',
+        'screenshot', 'scan ',
+      ])) {
+        emit('reminder_camera', const [
+          AppCapability.camera,
+          AppCapability.photography,
+        ], 0.7);
+      }
+
+      // -- Banking / payments ----------------------------------------------
+      if (_anyMatch(text, const [
+        'pay bill', 'pay bills', 'pay rent', 'pay back', 'venmo ',
+        'zelle ', 'cashapp', 'transfer money', 'wire ', 'deposit ',
+        'invoice', 'tax', 'payroll',
+      ])) {
+        emit('reminder_banking', const [
+          AppCapability.banking,
+          AppCapability.finance,
+          AppCapability.payments,
+        ], 0.8);
+      }
+
+      // -- Shopping --------------------------------------------------------
+      if (_anyMatch(text, const [
+        'buy ', 'order ', 'purchase', 'amazon', 'pick up groceries',
+        'grocer', 'shopping list', 'walmart', 'target', 'costco',
+        'returns ', 'return the',
+      ])) {
+        emit('reminder_shopping', const [
+          AppCapability.shopping,
+          AppCapability.discovery,
+        ], 0.7);
+      }
+
+      // -- Food / delivery --------------------------------------------------
+      if (_anyMatch(text, const [
+        'lunch', 'dinner', 'breakfast', 'brunch', 'coffee',
+        'order food', 'doordash', 'ubereats', 'grubhub',
+        'restaurant', 'reservation at', 'reserve a table',
+      ])) {
+        emit('reminder_food', const [
+          AppCapability.food,
+          AppCapability.restaurants,
+          AppCapability.delivery,
+        ], 0.7);
+      }
+
+      // -- Fitness / health ------------------------------------------------
+      if (_anyMatch(text, const [
+        'gym', 'workout', 'work out', 'lift ', 'yoga', 'pilates',
+        'cardio', 'run ', 'jog ', 'walk ', 'hike',
+        'doctor', 'dentist', 'physical', 'checkup', 'check-up',
+        'appointment',
+      ])) {
+        emit('reminder_fitness', const [
+          AppCapability.fitness,
+          AppCapability.health,
+          AppCapability.running,
+        ], 0.75);
+      }
+
+      // -- Meditation / wind down ------------------------------------------
+      if (_anyMatch(text, const [
+        'meditate', 'meditation', 'breathe', 'breathing',
+        'mindfulness', 'relax', 'wind down', 'wind-down',
+      ])) {
+        emit('reminder_meditation', const [
+          AppCapability.meditation,
+          AppCapability.windDown,
+          AppCapability.sleepTools,
+        ], 0.7);
+      }
+
+      // -- Reading / books / news ------------------------------------------
+      if (_anyMatch(text, const [
+        'read ', 'reading', 'finish book', 'chapter ', 'article',
+        'news', 'blog ', 'newsletter',
+      ])) {
+        emit('reminder_reading', const [
+          AppCapability.reading,
+          AppCapability.articles,
+          AppCapability.books,
+        ], 0.65);
+      }
+
+      // -- Music / audio ---------------------------------------------------
+      if (_anyMatch(text, const [
+        'playlist', 'spotify', 'apple music', 'listen to',
+        'podcast', 'audiobook',
+      ])) {
+        emit('reminder_audio', const [
+          AppCapability.music,
+          AppCapability.audio,
+          AppCapability.podcasts,
+          AppCapability.audiobooks,
+        ], 0.7);
+      }
+
+      // -- Calendar / scheduling -------------------------------------------
+      if (_anyMatch(text, const [
+        'schedule ', 'reschedule', 'book ', 'appointment',
+        'set up a meeting', 'find a time',
+      ])) {
+        emit('reminder_calendar', const [
+          AppCapability.calendar,
+          AppCapability.scheduling,
+        ], 0.65);
+      }
+
+      // -- Education / school -----------------------------------------------
+      if (_anyMatch(text, const [
+        'homework', 'assignment', 'study ', 'studying', 'exam ',
+        'midterm', 'final', 'quiz', 'lecture', 'class ', 'lab ',
+        'canvas', 'blackboard', 'moodle', 'professor',
+      ])) {
+        emit('reminder_education', const [
+          AppCapability.education,
+          AppCapability.campusPortal,
+          AppCapability.lectureCompanion,
+          AppCapability.noteTaking,
+        ], 0.8);
+      }
+    }
+  }
+
+  static bool _anyMatch(String haystack, List<String> needles) {
+    for (final n in needles) {
+      if (haystack.contains(n)) return true;
+    }
+    return false;
   }
 }
