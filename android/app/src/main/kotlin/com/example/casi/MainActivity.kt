@@ -14,6 +14,7 @@ import android.net.Uri
 import android.os.BatteryManager
 import android.provider.CalendarContract
 import android.provider.Settings
+import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.media.MediaMetadata
 import android.media.session.MediaController
@@ -277,10 +278,138 @@ class MainActivity: FlutterFragmentActivity() {
                         }
                     }
 
+                    // Audio route: lets Foresight react when the user connects
+                    // headphones / car bluetooth and immediately surface music
+                    // & podcast apps.
+                    //
+                    // Detection runs through three independent paths so a
+                    // single API quirk doesn't blind us:
+                    //   1) AudioManager.getDevices(GET_DEVICES_OUTPUTS) — the
+                    //      modern path, but on Android 12+ without
+                    //      BLUETOOTH_CONNECT it can omit names and on some
+                    //      OEMs the list lags real connection state.
+                    //   2) Legacy AudioManager flags (isBluetoothA2dpOn /
+                    //      isWiredHeadsetOn) — deprecated but still report
+                    //      classic A2DP routing without any new permission.
+                    //   3) BluetoothAdapter profile state for A2DP / Headset
+                    //      / Hearing-Aid / LE Audio (TYPE_BLE_*). Reflects
+                    //      actual pairing regardless of audio routing.
+                    val audioCtxManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                    var audioRoute = "speaker"
+                    var bluetoothAudioConnected = false
+                    var bluetoothDeviceName: String? = null
+                    val typesSeen = StringBuilder()
+
+                    try {
+                        val outputs = audioCtxManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+                        for (d in outputs) {
+                            if (typesSeen.isNotEmpty()) typesSeen.append(',')
+                            typesSeen.append(d.type)
+                            when (d.type) {
+                                AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+                                AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+                                AudioDeviceInfo.TYPE_HEARING_AID,
+                                26 /* TYPE_BLE_HEADSET, API 31 */,
+                                27 /* TYPE_BLE_SPEAKER, API 31 */,
+                                30 /* TYPE_BLE_BROADCAST, API 33 */ -> {
+                                    bluetoothAudioConnected = true
+                                    audioRoute = "bluetooth"
+                                    if (bluetoothDeviceName.isNullOrEmpty()) {
+                                        val candidate = d.productName?.toString()
+                                        if (!candidate.isNullOrBlank()) {
+                                            bluetoothDeviceName = candidate
+                                        }
+                                    }
+                                }
+                                AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+                                AudioDeviceInfo.TYPE_WIRED_HEADSET,
+                                AudioDeviceInfo.TYPE_USB_HEADSET,
+                                AudioDeviceInfo.TYPE_USB_DEVICE,
+                                AudioDeviceInfo.TYPE_USB_ACCESSORY -> {
+                                    if (audioRoute == "speaker") audioRoute = "wired_headphones"
+                                }
+                                AudioDeviceInfo.TYPE_DOCK -> {
+                                    if (audioRoute == "speaker") audioRoute = "dock"
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.w("CASI/Foresight", "audio device enumeration failed", e)
+                    }
+
+                    // Fallback 1: legacy AudioManager flags. Catches devices
+                    // some OEMs hide from the modern device list while audio
+                    // is idle.
+                    if (!bluetoothAudioConnected) {
+                        try {
+                            @Suppress("DEPRECATION")
+                            if (audioCtxManager.isBluetoothA2dpOn || audioCtxManager.isBluetoothScoOn) {
+                                bluetoothAudioConnected = true
+                                audioRoute = "bluetooth"
+                            }
+                        } catch (_: Exception) {}
+                    }
+
+                    // Fallback 2: BluetoothAdapter profile state. Detects a
+                    // paired-and-connected headset whether or not the system
+                    // is currently routing audio through it. Profile-state
+                    // reads do not require BLUETOOTH_CONNECT; reading the
+                    // device *name* does on Android 12+.
+                    try {
+                        val btMgr = getSystemService(Context.BLUETOOTH_SERVICE)
+                                as? android.bluetooth.BluetoothManager
+                        val adapter = btMgr?.adapter
+                        if (adapter != null && adapter.isEnabled) {
+                            val profiles = intArrayOf(
+                                android.bluetooth.BluetoothProfile.A2DP,
+                                android.bluetooth.BluetoothProfile.HEADSET,
+                                android.bluetooth.BluetoothProfile.HEARING_AID,
+                            )
+                            for (p in profiles) {
+                                try {
+                                    val state = adapter.getProfileConnectionState(p)
+                                    if (state == android.bluetooth.BluetoothProfile.STATE_CONNECTED) {
+                                        bluetoothAudioConnected = true
+                                        audioRoute = "bluetooth"
+                                        break
+                                    }
+                                } catch (_: SecurityException) {}
+                            }
+                        }
+                    } catch (_: Exception) {}
+
+                    android.util.Log.d(
+                        "CASI/Foresight",
+                        "audio route=$audioRoute bt=$bluetoothAudioConnected " +
+                            "name=$bluetoothDeviceName outputTypes=[$typesSeen]"
+                    )
+
+                    // Wi-Fi SSID: best-effort. Requires location permission +
+                    // location services on. Returns null otherwise — the rule
+                    // engine treats a missing SSID as "no extra signal."
+                    var wifiSsid: String? = null
+                    if (networkState == "wifi") {
+                        try {
+                            val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
+                            @Suppress("DEPRECATION")
+                            val info = wm.connectionInfo
+                            val raw = info?.ssid
+                            if (!raw.isNullOrEmpty() && raw != "<unknown ssid>" && raw != "0x") {
+                                wifiSsid = if (raw.startsWith("\"") && raw.endsWith("\"") && raw.length >= 2) {
+                                    raw.substring(1, raw.length - 1)
+                                } else raw
+                            }
+                        } catch (_: Exception) {}
+                    }
+
                     result.success(mapOf(
                         "batteryLevel" to batteryLevel,
                         "isCharging" to isCharging,
-                        "networkState" to networkState
+                        "networkState" to networkState,
+                        "audioRoute" to audioRoute,
+                        "bluetoothAudioConnected" to bluetoothAudioConnected,
+                        "bluetoothDeviceName" to bluetoothDeviceName,
+                        "wifiSsid" to wifiSsid
                     ))
                 }
                 else -> result.notImplemented()

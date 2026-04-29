@@ -48,6 +48,24 @@ class ContextSnapshot {
   /// Currently active notifications, ranked highest priority first.
   final List<NotificationPillEntry> notifications;
 
+  /// Active audio output route. One of: 'speaker', 'wired_headphones',
+  /// 'bluetooth', 'dock', 'unknown'. A non-speaker route is a strong
+  /// signal the user wants audio playback.
+  final String audioRoute;
+
+  /// True if at least one Bluetooth audio sink (A2DP/SCO) is connected.
+  final bool bluetoothAudioConnected;
+
+  /// Best-effort name of the connected Bluetooth audio device — used to
+  /// detect car contexts ("BMW", "Tesla", "Toyota", "MyCar", "SYNC").
+  /// May be null on Android 12+ without BLUETOOTH_CONNECT.
+  final String? bluetoothDeviceName;
+
+  /// Best-effort current Wi-Fi SSID — used to detect car/work/home Wi-Fi
+  /// from the network name (e.g. "Tesla Model 3", "Office", "Home Wifi").
+  /// May be null without location permission or on locked networks.
+  final String? wifiSsid;
+
   ContextSnapshot({
     required this.now,
     required this.batteryLevel,
@@ -57,6 +75,10 @@ class ContextSnapshot {
     required this.previousApp,
     required this.todayEvents,
     required this.notifications,
+    this.audioRoute = 'unknown',
+    this.bluetoothAudioConnected = false,
+    this.bluetoothDeviceName,
+    this.wifiSsid,
   });
 
   bool get isWeekend => now.weekday == DateTime.saturday || now.weekday == DateTime.sunday;
@@ -109,6 +131,8 @@ class ContextInterpreter {
     final needs = <Need>[];
     _calendarRules(s, needs);
     _notificationRules(s, needs);
+    _audioOutputRules(s, needs);
+    _carContextRules(s, needs);
     _commuteRules(s, needs);
     _workdayRules(s, needs);
     _eveningRules(s, needs);
@@ -118,6 +142,7 @@ class ContextInterpreter {
     _weekendRules(s, needs);
     _sessionGapRules(s, needs);
     _previousAppRules(s, needs);
+    _baselineRules(s, needs);
     return needs;
   }
 
@@ -664,6 +689,197 @@ class ContextInterpreter {
       ],
       priority: 0.35,
       reason: 'Just back to the device',
+    ));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Audio output: Bluetooth or wired headphones is a near-deterministic
+  // signal that the user is about to listen to something. Rank music,
+  // podcasts, and audiobooks high so the first thing they see in the
+  // dock is what they actually want.
+  // ---------------------------------------------------------------------------
+
+  static void _audioOutputRules(ContextSnapshot s, List<Need> out) {
+    // Any audio sink connected → user wants something that plays. We
+    // emit one need per playback flavour so depth-of-match scoring still
+    // ranks specialists (Spotify, Pocket Casts) above generalists, but
+    // *any* app that plays media qualifies — the device name plays no
+    // role in whether the rule fires.
+    final isBt = s.audioRoute == 'bluetooth' || s.bluetoothAudioConnected;
+    final isWired = s.audioRoute == 'wired_headphones';
+    final isDock = s.audioRoute == 'dock';
+    if (!isBt && !isWired && !isDock) return;
+
+    final reason = isBt
+        ? (s.bluetoothDeviceName != null && s.bluetoothDeviceName!.isNotEmpty
+            ? 'Bluetooth: ${s.bluetoothDeviceName}'
+            : 'Bluetooth audio connected')
+        : isWired
+            ? 'Headphones connected'
+            : 'Docked';
+
+    // Strength ladder: BT (most likely deliberate listening session) >
+    // wired (intentional but lower commitment) > dock.
+    final strength = isBt ? 1.0 : (isWired ? 0.85 : 0.65);
+
+    out.add(Need(
+      name: 'audio_music',
+      tags: const [
+        AppCapability.music,
+        AppCapability.audio,
+        AppCapability.streaming,
+      ],
+      priority: 0.95 * strength,
+      reason: reason,
+    ));
+    out.add(Need(
+      name: 'audio_video',
+      tags: const [
+        AppCapability.video,
+        AppCapability.entertainment,
+        AppCapability.streaming,
+      ],
+      priority: 0.85 * strength,
+      reason: reason,
+    ));
+    out.add(Need(
+      name: 'audio_spoken',
+      tags: const [
+        AppCapability.podcasts,
+        AppCapability.audiobooks,
+        AppCapability.audio,
+      ],
+      priority: 0.8 * strength,
+      reason: reason,
+    ));
+    // Generic catch-all so any app tagged with `entertainment` or
+    // `audio` gets a baseline lift even if it doesn't fall neatly into
+    // the buckets above (e.g. SoundCloud, Twitch, Bandcamp).
+    out.add(Need(
+      name: 'audio_any',
+      tags: const [
+        AppCapability.audio,
+        AppCapability.entertainment,
+      ],
+      priority: 0.6 * strength,
+      reason: reason,
+    ));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Car context: detect when the device is paired to a car via either
+  // Bluetooth audio OR Wi-Fi SSID. Cars produce extremely identifiable
+  // names ("BMW Bluetooth", "Tesla Model 3", "SYNC", "MyCar"). When that
+  // happens we surface navigation + audio hard so the user gets Maps and
+  // Spotify the moment they sit down.
+  // ---------------------------------------------------------------------------
+
+  static const List<String> _carHints = [
+    // Generic
+    'car', 'auto', 'drive', 'vehicle', 'truck', 'jeep', 'suv',
+    'carplay', 'android auto', 'sync', 'uconnect', 'mybmw',
+    // Brands
+    'bmw', 'audi', 'mercedes', 'benz', 'toyota', 'honda', 'ford',
+    'tesla', 'nissan', 'hyundai', 'kia', 'mazda', 'subaru', 'chevy',
+    'chevrolet', 'gmc', 'volkswagen', ' vw', 'volvo', 'lexus',
+    'porsche', 'acura', 'infiniti', 'cadillac', 'lincoln', 'dodge',
+    'ram', 'rivian', 'polestar', 'lucid',
+    // Common car-stereo brands
+    'pioneer', 'kenwood', 'alpine', 'jbl link drive',
+    // Common model names that uniquely imply a car
+    'civic', 'corolla', 'camry', 'rav4', 'f150', 'silverado',
+    'mustang', 'tacoma', 'altima', 'sentra', 'wrangler',
+  ];
+
+  static String? _matchCarName(String? raw) {
+    if (raw == null || raw.isEmpty) return null;
+    final lower = raw.toLowerCase();
+    for (final w in _carHints) {
+      if (lower.contains(w)) return raw;
+    }
+    return null;
+  }
+
+  static void _carContextRules(ContextSnapshot s, List<Need> out) {
+    final btMatch = _matchCarName(s.bluetoothDeviceName);
+    final ssidMatch = _matchCarName(s.wifiSsid);
+    if (btMatch == null && ssidMatch == null) return;
+
+    final reason = btMatch != null
+        ? 'Connected to "$btMatch"'
+        : 'On "$ssidMatch" Wi-Fi';
+
+    out.add(Need(
+      name: 'car_navigation',
+      tags: const [
+        AppCapability.navigation,
+        AppCapability.location,
+        AppCapability.commute,
+        AppCapability.traffic,
+        AppCapability.transit,
+      ],
+      priority: 0.95,
+      reason: reason,
+    ));
+    out.add(Need(
+      name: 'car_music',
+      tags: const [
+        AppCapability.music,
+        AppCapability.audio,
+        AppCapability.entertainment,
+      ],
+      priority: 0.9,
+      reason: reason,
+    ));
+    out.add(Need(
+      name: 'car_podcasts',
+      tags: const [
+        AppCapability.podcasts,
+        AppCapability.audiobooks,
+        AppCapability.audio,
+      ],
+      priority: 0.75,
+      reason: reason,
+    ));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Baseline: no matter what time it is, the user might want to text,
+  // call, or look something up. A small constant hum of communication +
+  // browser keeps the dock from collapsing into a single category when
+  // every other rule happens to fire on the same tag bucket (the classic
+  // "10am workday → only Docs/Drive/Keep" failure mode).
+  // ---------------------------------------------------------------------------
+
+  static void _baselineRules(ContextSnapshot s, List<Need> out) {
+    out.add(Need(
+      name: 'baseline_comm',
+      tags: const [
+        AppCapability.communication,
+        AppCapability.messaging,
+        AppCapability.phone,
+      ],
+      priority: 0.20,
+      reason: 'Stay connected',
+    ));
+    out.add(Need(
+      name: 'baseline_web',
+      tags: const [
+        AppCapability.browser,
+        AppCapability.search,
+      ],
+      priority: 0.15,
+      reason: 'Quick lookups',
+    ));
+    out.add(Need(
+      name: 'baseline_capture',
+      tags: const [
+        AppCapability.camera,
+        AppCapability.gallery,
+        AppCapability.photos,
+      ],
+      priority: 0.10,
+      reason: 'Capture / review',
     ));
   }
 

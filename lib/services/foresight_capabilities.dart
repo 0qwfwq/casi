@@ -394,6 +394,17 @@ class AppCapabilityMap {
     'com.google.android.apps.youtube.music': [
       AppCapability.music, AppCapability.audio, AppCapability.entertainment,
     ],
+    // Permissive matches catch modded / sideloaded variants like
+    // ReVanced (app.revanced.android.apps.youtube.music), Vanced, and
+    // re-skinned builds (YT Music Morphe). Substring matching means
+    // any package containing 'youtube.music' or 'ytmusic' qualifies.
+    'youtube.music': [
+      AppCapability.music, AppCapability.audio, AppCapability.entertainment,
+      AppCapability.podcasts,
+    ],
+    'ytmusic': [
+      AppCapability.music, AppCapability.audio, AppCapability.entertainment,
+    ],
     'pandora': [
       AppCapability.music, AppCapability.audio, AppCapability.entertainment,
     ],
@@ -408,6 +419,21 @@ class AppCapabilityMap {
     ],
     'com.amazon.mp3': [
       AppCapability.music, AppCapability.audio, AppCapability.entertainment,
+    ],
+    'com.sec.android.app.music': [ // Samsung Music
+      AppCapability.music, AppCapability.audio, AppCapability.entertainment,
+    ],
+    'com.samsung.android.app.music': [ // Samsung Music (alt id)
+      AppCapability.music, AppCapability.audio, AppCapability.entertainment,
+    ],
+    'samsung.music': [ // generic Samsung Music substring
+      AppCapability.music, AppCapability.audio, AppCapability.entertainment,
+    ],
+    'com.android.music': [ // AOSP Music
+      AppCapability.music, AppCapability.audio, AppCapability.entertainment,
+    ],
+    'musicfx': [
+      AppCapability.music, AppCapability.audio,
     ],
     'audible': [
       AppCapability.audiobooks, AppCapability.audio, AppCapability.reading,
@@ -431,6 +457,18 @@ class AppCapabilityMap {
       AppCapability.streaming,
     ],
     'com.google.android.youtube': [
+      AppCapability.video, AppCapability.entertainment,
+    ],
+    // ReVanced / Vanced / "YouTube Morphe" etc. — any package whose name
+    // contains '.youtube' (and isn't already matched by the Music key
+    // above, which adds music tags additively rather than excluding).
+    '.youtube': [
+      AppCapability.video, AppCapability.entertainment,
+    ],
+    'newpipe': [
+      AppCapability.video, AppCapability.entertainment,
+    ],
+    'libretube': [
       AppCapability.video, AppCapability.entertainment,
     ],
     'hulu': [

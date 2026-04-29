@@ -36,6 +36,7 @@ import 'package:installed_apps/app_info.dart';
 
 import '../morning_brief/calendar_brief_service.dart';
 import 'foresight_capabilities.dart';
+import 'foresight_categorizer.dart';
 import 'foresight_context.dart';
 import 'notification_pill_service.dart';
 
@@ -120,6 +121,9 @@ class ForesightService {
   Future<void> initialize() async {
     if (_initialized) return;
     _initialized = true;
+    // Replay categorizer overrides cached from prior sessions so apps
+    // that were classified before light up immediately on boot.
+    await AppCategorizer.instance.hydrate();
     debugPrint('[Foresight] Initialized (rule-engine, no model).');
   }
 
@@ -173,6 +177,15 @@ class ForesightService {
   Future<List<ForesightPrediction>> predict(List<AppInfo> installedApps) async {
     if (installedApps.isEmpty) return const [];
 
+    // Background-classify any installed packages the rule engine doesn't
+    // know yet. Fire-and-forget: results land via registerOverride and
+    // get picked up on a later predict() call. We pass the on-device
+    // display name as a hint so sideloaded mods (which fail Play Store
+    // lookup) still get tagged from their visible name.
+    AppCategorizer.instance.enqueue(installedApps.map(
+      (a) => (packageName: a.packageName, appName: a.name),
+    ));
+
     try {
       final snapshot = await _gatherSnapshot();
       final signature = _buildSignature(snapshot);
@@ -213,6 +226,13 @@ class ForesightService {
         final needsSummary =
             needs.map((n) => '${n.name}@${n.priority.toStringAsFixed(2)}')
                 .join(', ');
+        debugPrint(
+          '[Foresight] ctx route=${snapshot.audioRoute} '
+          'btConn=${snapshot.bluetoothAudioConnected} '
+          'btName=${snapshot.bluetoothDeviceName ?? "-"} '
+          'ssid=${snapshot.wifiSsid ?? "-"} '
+          'net=${snapshot.networkState}',
+        );
         debugPrint('[Foresight] needs=[$needsSummary]');
         debugPrint('[Foresight] picks=[$summary]');
       }
@@ -248,19 +268,22 @@ class ForesightService {
       String bestReason = '';
 
       for (final need in needs) {
-        // Need is satisfied if any of its tags is among the app's tags.
-        bool matched = false;
+        // Depth-of-match: an app that satisfies more of a need's tags is
+        // a stronger fit than one that just barely overlaps. This breaks
+        // the old "20 apps tied at 0.55" failure mode that left Docs /
+        // Drive / Keep monopolising the dock for hours at a time.
+        int matchCount = 0;
         for (final t in need.tags) {
-          if (tagSet.contains(t)) {
-            matched = true;
-            break;
-          }
+          if (tagSet.contains(t)) matchCount++;
         }
-        if (!matched) continue;
+        if (matchCount == 0) continue;
 
-        total += need.priority;
-        if (need.priority > bestPriority) {
-          bestPriority = need.priority;
+        final scoreForThisNeed =
+            need.priority * (1.0 + 0.1 * (matchCount - 1));
+        total += scoreForThisNeed;
+
+        if (scoreForThisNeed > bestPriority) {
+          bestPriority = scoreForThisNeed;
           bestReason = need.reason;
         }
       }
@@ -327,6 +350,10 @@ class ForesightService {
       previousApp: _previousApp,
       todayEvents: events,
       notifications: notifs,
+      audioRoute: (device['audioRoute'] as String?) ?? 'unknown',
+      bluetoothAudioConnected: device['bluetoothAudioConnected'] == true,
+      bluetoothDeviceName: device['bluetoothDeviceName'] as String?,
+      wifiSsid: device['wifiSsid'] as String?,
     );
   }
 
@@ -416,9 +443,15 @@ class ForesightService {
                 e.end > s.now.millisecondsSinceEpoch)
             .map((e) => '${e.title}@${e.begin}')
             .join('|');
+    // New context fields are part of the cache key so that plugging in
+    // headphones, connecting Bluetooth, or joining a different Wi-Fi
+    // immediately invalidates the cached prediction and re-runs the
+    // rule engine on the next poll.
     return '$timeBucket|${s.now.weekday}|${s.networkState}|'
         '${s.isCharging}|$batteryBucket|${s.previousApp ?? "_"}|'
         '${s.sessionGapSeconds > 1800 ? "fresh" : "warm"}|'
-        '$notifKey|$eventKey';
+        '$notifKey|$eventKey|'
+        '${s.audioRoute}|${s.bluetoothDeviceName ?? "_"}|'
+        '${s.wifiSsid ?? "_"}';
   }
 }
