@@ -38,6 +38,7 @@ import '../morning_brief/calendar_brief_service.dart';
 import 'foresight_capabilities.dart';
 import 'foresight_categorizer.dart';
 import 'foresight_context.dart';
+import 'foresight_user_rules.dart';
 import 'notification_pill_service.dart';
 
 // ---------------------------------------------------------------------------
@@ -121,11 +122,16 @@ class ForesightService {
   Future<void> initialize() async {
     if (_initialized) return;
     _initialized = true;
-    // Replay categorizer overrides cached from prior sessions so apps
-    // that were classified before light up immediately on boot.
-    await AppCategorizer.instance.hydrate();
+    await Future.wait([
+      AppCategorizer.instance.hydrate(),
+      ForesightUserRulesService.instance.load(),
+    ]);
     debugPrint('[Foresight] Initialized (rule-engine, no model).');
   }
+
+  /// Force the next [predict] call to re-score even if the snapshot
+  /// signature hasn't changed — used after user rules are edited.
+  void invalidateCache() => _lastSignature = null;
 
   /// Called when the launcher is paused (user leaves the home screen).
   void onPause() {
@@ -204,14 +210,14 @@ class ForesightService {
       final needs = ContextInterpreter.interpret(snapshot);
       _lastNeedCount = needs.length;
 
-      if (needs.isEmpty) {
-        _currentPredictions = const [];
-        _lastSignature = signature;
-        _lastPredictAt = snapshot.now;
-        return const [];
-      }
+      // Score automatic needs (may be empty when context is flat).
+      final scored = needs.isEmpty
+          ? const <ForesightPrediction>[]
+          : _scoreApps(installedApps, needs);
 
-      final predictions = _scoreApps(installedApps, needs);
+      // Overlay user-configured schedule / scenario rules — these always
+      // surface first regardless of context scoring.
+      final predictions = _applyUserRules(installedApps, scored, snapshot);
 
       _currentPredictions = predictions;
       _lastSignature = signature;
@@ -220,12 +226,11 @@ class ForesightService {
       if (kDebugMode) {
         final summary = predictions
             .take(5)
-            .map((p) =>
-                '${p.appName}(${p.confidence.toStringAsFixed(2)})')
+            .map((p) => '${p.appName}(${p.confidence.toStringAsFixed(2)})')
             .join(', ');
-        final needsSummary =
-            needs.map((n) => '${n.name}@${n.priority.toStringAsFixed(2)}')
-                .join(', ');
+        final needsSummary = needs
+            .map((n) => '${n.name}@${n.priority.toStringAsFixed(2)}')
+            .join(', ');
         debugPrint(
           '[Foresight] ctx route=${snapshot.audioRoute} '
           'btConn=${snapshot.bluetoothAudioConnected} '
@@ -321,6 +326,47 @@ class ForesightService {
           reason: topReason[entry.key],
         ),
     ];
+  }
+
+  // -------------------------------------------------------------------------
+  // User-rule overlay
+  // -------------------------------------------------------------------------
+
+  /// Prepends any apps matched by user-configured schedule/scenario rules to
+  /// [scored], deduplicating by package. User-rule apps get confidence 1.0
+  /// so they always appear before automatically-scored apps in the dock.
+  List<ForesightPrediction> _applyUserRules(
+    List<AppInfo> installedApps,
+    List<ForesightPrediction> scored,
+    ContextSnapshot snapshot,
+  ) {
+    final matched = ForesightUserRulesService.instance
+        .matchNow(snapshot.now, snapshot);
+    if (matched.isEmpty) return scored;
+
+    final appMap = <String, AppInfo>{
+      for (final a in installedApps) a.packageName: a,
+    };
+
+    final pinned = <ForesightPrediction>[];
+    for (final m in matched) {
+      final app = appMap[m.packageName];
+      if (app == null) continue; // not installed — skip silently
+      pinned.add(ForesightPrediction(
+        packageName: m.packageName,
+        appName: app.name,
+        icon: app.icon,
+        confidence: 1.0,
+        reason: m.reason,
+      ));
+    }
+
+    if (pinned.isEmpty) return scored;
+
+    final pinnedPkgs = {for (final p in pinned) p.packageName};
+    final remainder =
+        scored.where((p) => !pinnedPkgs.contains(p.packageName)).toList();
+    return [...pinned, ...remainder].take(15).toList();
   }
 
   // -------------------------------------------------------------------------

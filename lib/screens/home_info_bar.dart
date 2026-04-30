@@ -102,7 +102,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   // --- Foresight State ---
   List<ForesightPrediction> _foresightPredictions = [];
   bool _showForesight = true;
-  int _foresightDockCount = 5;
 
   // --- Notification Pill State ---
   List<NotificationPillEntry> _notificationPillApps = [];
@@ -190,7 +189,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
         .where((p) =>
             !dockPackages.contains(p.packageName) &&
             !notifPackages.contains(p.packageName))
-        .take(_foresightDockCount)
+        .take(6)
         .toList();
     if (mounted) {
       setState(() => _foresightPredictions = filtered);
@@ -713,12 +712,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     final prefs = await SharedPreferences.getInstance();
     final hidden = prefs.getBool('foresight_hidden') ?? false;
     final longPressPkg = prefs.getString('foresight_longpress_package') ?? '';
-    final dockCount = (prefs.getInt('foresight_dock_count') ?? 5).clamp(1, 7);
     if (mounted) {
       setState(() {
         _showForesight = !hidden;
         _foresightLongPressPackage = longPressPkg;
-        _foresightDockCount = dockCount;
       });
     }
   }
@@ -1200,7 +1197,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                                       child: ForesightPill(
                                                         predictions: _foresightPredictions,
                                                         onAppTap: _onForesightAppTap,
-                                                        maxForesight: _foresightDockCount,
+                                                        maxForesight: 6,
                                                         onLongPress: _onForesightLongPress,
                                                         backgroundWidget: _wallpaperService.buildBackground(),
                                                       ),
@@ -1253,7 +1250,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                                   ? ForesightPill(
                                                       predictions: _foresightPredictions,
                                                       onAppTap: _onForesightAppTap,
-                                                      maxForesight: _foresightDockCount,
+                                                      maxForesight: 6,
                                                       onLongPress: _onForesightLongPress,
                                                       backgroundWidget: _wallpaperService.buildBackground(),
                                                     )

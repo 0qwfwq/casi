@@ -3,16 +3,16 @@ import 'package:casi/design_system.dart';
 import 'package:casi/services/foresight_service.dart';
 import 'package:casi/widgets/press_pulse.dart';
 
-/// The Foresight dock — a pill row of 1–7 predicted app icons that
+/// The Foresight dock — a pill row of up to 6 predicted app icons that
 /// sits just above the main dock.
 ///
-/// Tapping an icon opens that app. Long-pressing anywhere on the pill
-/// (chips or whitespace between them) launches the user's configured
-/// "long-press" app (default: the system browser) and plays a scale
-/// pulse animation via [PressPulse].
+/// The number shown is automatic (driven by context scoring and user rules)
+/// with a hard maximum of 6. Tapping an icon opens that app. Long-pressing
+/// anywhere on the pill launches the user's configured "long-press" app
+/// (default: the system browser) via [PressPulse].
 class ForesightPill extends StatelessWidget {
-  /// Max foresight apps rendered in the dock row.
-  /// Configurable via settings (1–7); falls back to 5.
+  /// Hard ceiling on icons rendered. Predictions are already filtered to ≤6
+  /// before reaching this widget; this cap is a safety backstop.
   final int maxForesight;
 
   final List<ForesightPrediction> predictions;
@@ -31,7 +31,7 @@ class ForesightPill extends StatelessWidget {
     required this.predictions,
     required this.onAppTap,
     required this.backgroundWidget,
-    this.maxForesight = 5,
+    this.maxForesight = 6,
     this.onLongPress,
   });
 

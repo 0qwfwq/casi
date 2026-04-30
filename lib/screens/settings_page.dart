@@ -11,6 +11,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:casi/design_system.dart';
 import '../services/wallpaper_service.dart';
 import '../services/notification_pill_service.dart';
+import '../services/foresight_user_rules.dart';
+import '../services/foresight_service.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -23,7 +25,6 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _immersiveMode = false;
   String _temperatureUnit = 'C'; // 'C' or 'F'
   bool _showForesight = true;
-  int _foresightDockCount = 5;
   bool _briefDismissedToday = false;
   String _foresightLongPressPackage = '';
   String _foresightLongPressLabel = 'Default Browser';
@@ -55,7 +56,6 @@ class _SettingsPageState extends State<SettingsPage> {
       _temperatureUnit = prefs.getString('temperature_unit') ?? 'C';
       _nameController.text = prefs.getString('user_name') ?? '';
       _showForesight = !(prefs.getBool('foresight_hidden') ?? false);
-      _foresightDockCount = (prefs.getInt('foresight_dock_count') ?? 5).clamp(1, 7);
       _briefDismissedToday =
           (prefs.getInt('morning_brief_dismiss_day') ?? -1) == today;
       _foresightLongPressPackage = longPressPkg;
@@ -96,13 +96,6 @@ class _SettingsPageState extends State<SettingsPage> {
     setState(() => _showDate = value);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('show_date', value);
-  }
-
-  Future<void> _setForesightDockCount(int count) async {
-    final clamped = count.clamp(1, 7);
-    setState(() => _foresightDockCount = clamped);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('foresight_dock_count', clamped);
   }
 
   /// "Show Brief again" — clears today's dismiss flag so the morning
@@ -340,36 +333,47 @@ class _SettingsPageState extends State<SettingsPage> {
                   onChanged: _toggleForesight,
                   activeThumbColor: CASIColors.accentPrimary,
                 ),
-                // Foresight dock count slider
+                // Schedule rules
                 ListTile(
-                  leading: const Icon(Icons.apps_outlined, color: Colors.white),
-                  title: const Text("Dock Suggestions",
+                  leading: const Icon(Icons.schedule_outlined, color: Colors.white),
+                  title: const Text("Schedule Rules",
                       style: TextStyle(color: Colors.white)),
-                  subtitle: Text(
-                    '$_foresightDockCount app${_foresightDockCount == 1 ? '' : 's'}',
-                    style: const TextStyle(
-                        color: CASIColors.textSecondary, fontSize: 12),
+                  subtitle: const Text(
+                    "Pin apps by time and day of week",
+                    style: TextStyle(color: CASIColors.textSecondary, fontSize: 12),
                   ),
-                  trailing: SizedBox(
-                    width: 160,
-                    child: SliderTheme(
-                      data: SliderThemeData(
-                        activeTrackColor: CASIColors.accentPrimary,
-                        inactiveTrackColor: CASIColors.textTertiary.withValues(alpha: 0.3),
-                        thumbColor: CASIColors.accentPrimary,
-                        overlayColor: CASIColors.accentPrimary.withValues(alpha: 0.12),
-                        trackHeight: 3,
-                        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
-                      ),
-                      child: Slider(
-                        value: _foresightDockCount.toDouble(),
-                        min: 1,
-                        max: 7,
-                        divisions: 6,
-                        onChanged: (v) => _setForesightDockCount(v.round()),
-                      ),
-                    ),
+                  trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 16),
+                  onTap: () {
+                    Navigator.push(context, PageRouteBuilder(
+                      pageBuilder: (context, animation, secondaryAnimation) =>
+                          const ForesightScheduleRulesPage(),
+                      transitionDuration: const Duration(milliseconds: 80),
+                      reverseTransitionDuration: const Duration(milliseconds: 60),
+                      transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+                          FadeTransition(opacity: animation, child: child),
+                    ));
+                  },
+                ),
+                // Scenario rules
+                ListTile(
+                  leading: const Icon(Icons.device_hub_outlined, color: Colors.white),
+                  title: const Text("Scenario Rules",
+                      style: TextStyle(color: Colors.white)),
+                  subtitle: const Text(
+                    "Pin apps by Bluetooth, charging, Wi-Fi, and more",
+                    style: TextStyle(color: CASIColors.textSecondary, fontSize: 12),
                   ),
+                  trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 16),
+                  onTap: () {
+                    Navigator.push(context, PageRouteBuilder(
+                      pageBuilder: (context, animation, secondaryAnimation) =>
+                          const ForesightScenarioRulesPage(),
+                      transitionDuration: const Duration(milliseconds: 80),
+                      reverseTransitionDuration: const Duration(milliseconds: 60),
+                      transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+                          FadeTransition(opacity: animation, child: child),
+                    ));
+                  },
                 ),
                 // Foresight long-press app picker
                 ListTile(
@@ -1320,5 +1324,623 @@ class _WallpaperAdjustPageState extends State<WallpaperAdjustPage> {
       debugPrint('[WallpaperAdjust] Save error: $e');
       if (mounted) Navigator.pop(context, widget.imagePath);
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Foresight Schedule Rules Page
+// ---------------------------------------------------------------------------
+
+class ForesightScheduleRulesPage extends StatefulWidget {
+  const ForesightScheduleRulesPage({super.key});
+
+  @override
+  State<ForesightScheduleRulesPage> createState() =>
+      _ForesightScheduleRulesPageState();
+}
+
+class _ForesightScheduleRulesPageState
+    extends State<ForesightScheduleRulesPage> {
+  final WallpaperService _wallpaperService = WallpaperService();
+  List<ForesightScheduleRule> _rules = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _wallpaperService.initialize();
+    _reload();
+  }
+
+  @override
+  void dispose() {
+    _wallpaperService.dispose();
+    super.dispose();
+  }
+
+  void _reload() => setState(
+      () => _rules = ForesightUserRulesService.instance.scheduleRules.toList());
+
+  Future<void> _addRule() async {
+    final pageCtx = context;
+
+    String? packageName;
+    String? appName;
+    int startHour = 8;
+    int endHour = 9;
+    // Default Mon–Fri
+    List<int> weekdays = [1, 2, 3, 4, 5];
+
+    final saved = await showDialog<bool>(
+      context: pageCtx,
+      builder: (dlgCtx) => StatefulBuilder(
+        builder: (_, setS) => AlertDialog(
+          backgroundColor: CASIColors.void_,
+          title: const Text('Add Schedule Rule',
+              style: TextStyle(color: Colors.white)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // App picker
+                const Text('App',
+                    style: TextStyle(
+                        color: CASIColors.textSecondary, fontSize: 12)),
+                const SizedBox(height: 6),
+                GestureDetector(
+                  onTap: () async {
+                    final picked = await showDialog<_AppPickResult>(
+                      context: pageCtx,
+                      builder: (_) => const _AppPickerDialog(),
+                    );
+                    if (picked != null) {
+                      setS(() {
+                        packageName = picked.packageName;
+                        appName = picked.label;
+                      });
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            appName ?? 'Tap to choose an app',
+                            style: TextStyle(
+                              color: appName != null
+                                  ? Colors.white
+                                  : CASIColors.textTertiary,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                        const Icon(Icons.chevron_right,
+                            color: CASIColors.textTertiary, size: 18),
+                      ],
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 18),
+
+                // Time window
+                const Text('Time Window',
+                    style: TextStyle(
+                        color: CASIColors.textSecondary, fontSize: 12)),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    const Text('From',
+                        style: TextStyle(color: Colors.white, fontSize: 13)),
+                    const SizedBox(width: 8),
+                    DropdownButton<int>(
+                      value: startHour,
+                      dropdownColor: CASIColors.void_,
+                      style: const TextStyle(
+                          color: Colors.white, fontSize: 13),
+                      items: [
+                        for (int h = 0; h < 24; h++)
+                          DropdownMenuItem(
+                              value: h, child: Text(fmtHour(h)))
+                      ],
+                      onChanged: (v) {
+                        if (v != null) setS(() => startHour = v);
+                      },
+                    ),
+                    const SizedBox(width: 12),
+                    const Text('to',
+                        style: TextStyle(color: Colors.white, fontSize: 13)),
+                    const SizedBox(width: 8),
+                    DropdownButton<int>(
+                      value: endHour,
+                      dropdownColor: CASIColors.void_,
+                      style: const TextStyle(
+                          color: Colors.white, fontSize: 13),
+                      items: [
+                        for (int h = 0; h < 24; h++)
+                          DropdownMenuItem(
+                              value: h, child: Text(fmtHour(h)))
+                      ],
+                      onChanged: (v) {
+                        if (v != null) setS(() => endHour = v);
+                      },
+                    ),
+                  ],
+                ),
+                if (startHour == endHour)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 4),
+                    child: Text(
+                      'Start and end cannot be the same hour.',
+                      style: TextStyle(
+                          color: Colors.redAccent, fontSize: 11),
+                    ),
+                  ),
+
+                const SizedBox(height: 18),
+
+                // Day selector
+                const Text('Days',
+                    style: TextStyle(
+                        color: CASIColors.textSecondary, fontSize: 12)),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (int d = 1; d <= 7; d++)
+                      FilterChip(
+                        label: Text(dayAbbr(d),
+                            style: const TextStyle(fontSize: 12)),
+                        selected: weekdays.contains(d),
+                        onSelected: (on) => setS(() {
+                          if (on) {
+                            weekdays.add(d);
+                          } else {
+                            weekdays.remove(d);
+                          }
+                          weekdays.sort();
+                        }),
+                        selectedColor:
+                            CASIColors.accentPrimary.withValues(alpha: 0.35),
+                        checkmarkColor: Colors.white,
+                        labelStyle: TextStyle(
+                          color: weekdays.contains(d)
+                              ? Colors.white
+                              : CASIColors.textSecondary,
+                        ),
+                        backgroundColor: Colors.white.withValues(alpha: 0.08),
+                      ),
+                  ],
+                ),
+                if (weekdays.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 4),
+                    child: Text('Empty = every day',
+                        style: TextStyle(
+                            color: CASIColors.textTertiary, fontSize: 11)),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dlgCtx),
+              child: const Text('Cancel',
+                  style: TextStyle(color: CASIColors.textSecondary)),
+            ),
+            TextButton(
+              onPressed: (packageName == null || startHour == endHour)
+                  ? null
+                  : () => Navigator.pop(dlgCtx, true),
+              child: const Text('Save',
+                  style: TextStyle(color: CASIColors.accentPrimary)),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (saved == true && packageName != null) {
+      final rule = ForesightScheduleRule(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        packageName: packageName!,
+        appName: appName!,
+        startHour: startHour,
+        endHour: endHour,
+        weekdays: weekdays,
+      );
+      await ForesightUserRulesService.instance.addScheduleRule(rule);
+      ForesightService.instance.invalidateCache();
+      _reload();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        title: const Text('Schedule Rules'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        actions: [
+          IconButton(icon: const Icon(Icons.add), onPressed: _addRule),
+        ],
+      ),
+      body: Stack(
+        children: [
+          Positioned.fill(child: _wallpaperService.buildBackground()),
+          Positioned.fill(
+              child:
+                  ColoredBox(color: Colors.black.withValues(alpha: 0.3))),
+          SafeArea(
+            child: _rules.isEmpty
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(32),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.schedule_outlined,
+                              color: CASIColors.textTertiary, size: 48),
+                          const SizedBox(height: 16),
+                          const Text(
+                            'No schedule rules yet.\n'
+                            'Tap + to pin an app at a specific time and day.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                                color: CASIColors.textSecondary,
+                                height: 1.5),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Example: show Gmail from 6–8 AM on Mon, Tue, Fri.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                                color: CASIColors.textTertiary,
+                                fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 8),
+                    itemCount: _rules.length,
+                    itemBuilder: (_, i) {
+                      final r = _rules[i];
+                      return ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor:
+                              CASIColors.accentPrimary.withValues(alpha: 0.2),
+                          child: Text(
+                            r.appName.isNotEmpty
+                                ? r.appName[0].toUpperCase()
+                                : '?',
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                        title: Text(r.appName,
+                            style:
+                                const TextStyle(color: Colors.white)),
+                        subtitle: Text(
+                          '${r.timeRangeLabel} · ${r.daysLabel}',
+                          style: const TextStyle(
+                              color: CASIColors.textSecondary,
+                              fontSize: 12),
+                        ),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete_outline,
+                              color: CASIColors.textTertiary, size: 20),
+                          onPressed: () async {
+                            await ForesightUserRulesService.instance
+                                .removeScheduleRule(r.id);
+                            ForesightService.instance.invalidateCache();
+                            _reload();
+                          },
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Foresight Scenario Rules Page
+// ---------------------------------------------------------------------------
+
+class ForesightScenarioRulesPage extends StatefulWidget {
+  const ForesightScenarioRulesPage({super.key});
+
+  @override
+  State<ForesightScenarioRulesPage> createState() =>
+      _ForesightScenarioRulesPageState();
+}
+
+class _ForesightScenarioRulesPageState
+    extends State<ForesightScenarioRulesPage> {
+  final WallpaperService _wallpaperService = WallpaperService();
+  List<ForesightScenarioRule> _rules = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _wallpaperService.initialize();
+    _reload();
+  }
+
+  @override
+  void dispose() {
+    _wallpaperService.dispose();
+    super.dispose();
+  }
+
+  void _reload() => setState(
+      () => _rules = ForesightUserRulesService.instance.scenarioRules.toList());
+
+  Future<void> _addRule() async {
+    final pageCtx = context;
+
+    String? packageName;
+    String? appName;
+    ScenarioTrigger trigger = ScenarioTrigger.anyBluetooth;
+    String ssidFilter = '';
+
+    final saved = await showDialog<bool>(
+      context: pageCtx,
+      builder: (dlgCtx) => StatefulBuilder(
+        builder: (_, setS) => AlertDialog(
+          backgroundColor: CASIColors.void_,
+          title: const Text('Add Scenario Rule',
+              style: TextStyle(color: Colors.white)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // App picker
+                const Text('App',
+                    style: TextStyle(
+                        color: CASIColors.textSecondary, fontSize: 12)),
+                const SizedBox(height: 6),
+                GestureDetector(
+                  onTap: () async {
+                    final picked = await showDialog<_AppPickResult>(
+                      context: pageCtx,
+                      builder: (_) => const _AppPickerDialog(),
+                    );
+                    if (picked != null) {
+                      setS(() {
+                        packageName = picked.packageName;
+                        appName = picked.label;
+                      });
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            appName ?? 'Tap to choose an app',
+                            style: TextStyle(
+                              color: appName != null
+                                  ? Colors.white
+                                  : CASIColors.textTertiary,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                        const Icon(Icons.chevron_right,
+                            color: CASIColors.textTertiary, size: 18),
+                      ],
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 18),
+
+                // Trigger
+                const Text('When this happens',
+                    style: TextStyle(
+                        color: CASIColors.textSecondary, fontSize: 12)),
+                const SizedBox(height: 6),
+                DropdownButton<ScenarioTrigger>(
+                  value: trigger,
+                  isExpanded: true,
+                  dropdownColor: CASIColors.void_,
+                  style: const TextStyle(
+                      color: Colors.white, fontSize: 13),
+                  items: ScenarioTrigger.values
+                      .map((t) => DropdownMenuItem(
+                            value: t,
+                            child: Text(t.label),
+                          ))
+                      .toList(),
+                  onChanged: (v) {
+                    if (v != null) setS(() => trigger = v);
+                  },
+                ),
+
+                // Wi-Fi filter (only for specificWifi)
+                if (trigger == ScenarioTrigger.specificWifi) ...[
+                  const SizedBox(height: 14),
+                  const Text('Wi-Fi name contains',
+                      style: TextStyle(
+                          color: CASIColors.textSecondary, fontSize: 12)),
+                  const SizedBox(height: 4),
+                  TextField(
+                    style: const TextStyle(
+                        color: Colors.white, fontSize: 13),
+                    decoration: const InputDecoration(
+                      hintText: 'e.g. Home, Tesla Model 3, Office',
+                      hintStyle:
+                          TextStyle(color: CASIColors.textTertiary),
+                      enabledBorder: UnderlineInputBorder(
+                          borderSide: BorderSide(
+                              color: CASIColors.textTertiary)),
+                      focusedBorder: UnderlineInputBorder(
+                          borderSide: BorderSide(
+                              color: CASIColors.accentPrimary)),
+                    ),
+                    onChanged: (v) => ssidFilter = v,
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dlgCtx),
+              child: const Text('Cancel',
+                  style: TextStyle(color: CASIColors.textSecondary)),
+            ),
+            TextButton(
+              onPressed: packageName == null
+                  ? null
+                  : () => Navigator.pop(dlgCtx, true),
+              child: const Text('Save',
+                  style: TextStyle(color: CASIColors.accentPrimary)),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (saved == true && packageName != null) {
+      final rule = ForesightScenarioRule(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        packageName: packageName!,
+        appName: appName!,
+        trigger: trigger,
+        ssidFilter: (trigger == ScenarioTrigger.specificWifi &&
+                ssidFilter.trim().isNotEmpty)
+            ? ssidFilter.trim()
+            : null,
+      );
+      await ForesightUserRulesService.instance.addScenarioRule(rule);
+      ForesightService.instance.invalidateCache();
+      _reload();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        title: const Text('Scenario Rules'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        actions: [
+          IconButton(icon: const Icon(Icons.add), onPressed: _addRule),
+        ],
+      ),
+      body: Stack(
+        children: [
+          Positioned.fill(child: _wallpaperService.buildBackground()),
+          Positioned.fill(
+              child:
+                  ColoredBox(color: Colors.black.withValues(alpha: 0.3))),
+          SafeArea(
+            child: _rules.isEmpty
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(32),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.device_hub_outlined,
+                              color: CASIColors.textTertiary, size: 48),
+                          const SizedBox(height: 16),
+                          const Text(
+                            'No scenario rules yet.\n'
+                            'Tap + to pin an app for a specific situation.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                                color: CASIColors.textSecondary,
+                                height: 1.5),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Examples: show Maps when connected to your car, '
+                            'or Spotify when headphones are plugged in.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                                color: CASIColors.textTertiary,
+                                fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 8),
+                    itemCount: _rules.length,
+                    itemBuilder: (_, i) {
+                      final r = _rules[i];
+                      return ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor:
+                              CASIColors.accentPrimary.withValues(alpha: 0.2),
+                          child: Text(
+                            r.appName.isNotEmpty
+                                ? r.appName[0].toUpperCase()
+                                : '?',
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                        title: Text(r.appName,
+                            style:
+                                const TextStyle(color: Colors.white)),
+                        subtitle: Text(
+                          r.ssidFilter != null
+                              ? '${r.triggerLabel} · "${r.ssidFilter}"'
+                              : r.triggerLabel,
+                          style: const TextStyle(
+                              color: CASIColors.textSecondary,
+                              fontSize: 12),
+                        ),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete_outline,
+                              color: CASIColors.textTertiary, size: 20),
+                          onPressed: () async {
+                            await ForesightUserRulesService.instance
+                                .removeScenarioRule(r.id);
+                            ForesightService.instance.invalidateCache();
+                            _reload();
+                          },
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
   }
 }
