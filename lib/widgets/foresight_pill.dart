@@ -3,16 +3,14 @@ import 'package:casi/design_system.dart';
 import 'package:casi/services/foresight_service.dart';
 import 'package:casi/widgets/press_pulse.dart';
 
-/// The Foresight dock — a pill row of up to 6 predicted app icons that
-/// sits just above the main dock.
+/// The Foresight dock — a pill row of app icons configured by the user
+/// via schedule and scenario rules in settings.
 ///
-/// The number shown is automatic (driven by context scoring and user rules)
-/// with a hard maximum of 6. Tapping an icon opens that app. Long-pressing
-/// anywhere on the pill launches the user's configured "long-press" app
-/// (default: the system browser) via [PressPulse].
+/// Up to [maxForesight] icons are shown at once. When more apps are active
+/// the pill stays the same physical width and becomes horizontally scrollable.
 class ForesightPill extends StatelessWidget {
-  /// Hard ceiling on icons rendered. Predictions are already filtered to ≤6
-  /// before reaching this widget; this cap is a safety backstop.
+  /// Number of icons visible at once. When predictions exceed this the pill
+  /// scrolls rather than growing.
   final int maxForesight;
 
   final List<ForesightPrediction> predictions;
@@ -35,13 +33,48 @@ class ForesightPill extends StatelessWidget {
     this.onLongPress,
   });
 
+  static const double _iconSize = 34.0;
+  static const double _iconGap = 16.0;
+
   @override
   Widget build(BuildContext context) {
     if (predictions.isEmpty) return const SizedBox.shrink();
 
-    final int count = predictions.length < maxForesight
-        ? predictions.length
-        : maxForesight;
+    final bool needsScroll = predictions.length > maxForesight;
+
+    final iconChildren = <Widget>[
+      for (int i = 0; i < predictions.length; i++) ...[
+        if (i > 0) const SizedBox(width: _iconGap),
+        GestureDetector(
+          onTap: () => onAppTap(predictions[i].packageName),
+          behavior: HitTestBehavior.opaque,
+          child: _buildPredictionIcon(predictions[i]),
+        ),
+      ],
+    ];
+
+    Widget content;
+    if (needsScroll) {
+      // Fixed width = exactly maxForesight icons so the pill never grows.
+      final double fixedWidth =
+          maxForesight * _iconSize + (maxForesight - 1) * _iconGap;
+      content = SizedBox(
+        width: fixedWidth,
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          physics: const BouncingScrollPhysics(),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: iconChildren,
+          ),
+        ),
+      );
+    } else {
+      content = Row(
+        mainAxisSize: MainAxisSize.min,
+        children: iconChildren,
+      );
+    }
 
     return PressPulse(
       onLongPress: onLongPress,
@@ -50,19 +83,7 @@ class ForesightPill extends StatelessWidget {
         backgroundWidget: backgroundWidget,
         cornerRadius: CASILiquidGlass.cornerPill,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (int i = 0; i < count; i++) ...[
-              if (i > 0) const SizedBox(width: 16),
-              GestureDetector(
-                onTap: () => onAppTap(predictions[i].packageName),
-                behavior: HitTestBehavior.opaque,
-                child: _buildPredictionIcon(predictions[i]),
-              ),
-            ],
-          ],
-        ),
+        child: content,
       ),
     );
   }

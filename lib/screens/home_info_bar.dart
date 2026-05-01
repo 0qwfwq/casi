@@ -25,10 +25,9 @@ import '../morning_brief/morning_brief_panel.dart';
 import '../morning_brief/weather_brief_service.dart';
 import '../morning_brief/calendar_brief_service.dart';
 import '../services/wallpaper_service.dart';
+import '../services/system_clock_service.dart';
 import 'package:casi/services/foresight_service.dart';
-import 'package:casi/services/notification_pill_service.dart';
 import '../widgets/foresight_pill.dart';
-import '../widgets/notification_stack_pill.dart';
 import '../widgets/timer_pill.dart';
 import '../widgets/alarm_pill.dart';
 import '../models/widget_items.dart';
@@ -59,7 +58,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   List<AppAlarm> _alarms = [];
   bool _isAlarmRinging = false;
   Timer? _alarmTimer;
-  Timer? _notificationPollTimer;
+  Timer? _foresightPollTimer;
   String? _lastRungAlarmTime;
 
   // Tracks which schedule-row pill(s) are currently ringing so we can
@@ -103,12 +102,20 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   List<ForesightPrediction> _foresightPredictions = [];
   bool _showForesight = true;
 
-  // --- Notification Pill State ---
-  List<NotificationPillEntry> _notificationPillApps = [];
-
   // --- Foresight long-press launch target ---
   // Empty string means "use the system's default browser".
   String _foresightLongPressPackage = '';
+
+  // --- System clock state (read from user's default clock app) ---
+  // Next system alarm scheduled via AlarmManager.setAlarmClock — populated
+  // for any clock app the user has installed (Google Clock, Samsung Clock,
+  // OnePlus, AOSP DeskClock, etc.).
+  SystemAlarm? _systemAlarm;
+  // Currently active system timers parsed from the clock app's foreground
+  // notifications. Empty list means no clock-app timer is running, OR the
+  // user hasn't granted Notification Access.
+  List<SystemTimer> _systemTimers = const [];
+  Timer? _systemClockTimer;
 
   // --- Settings ---
   final WallpaperService _wallpaperService = WallpaperService();
@@ -162,61 +169,45 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
       _checkAlarms();
     });
 
+    // System clock polling — alarms refresh slowly (they only change when the
+    // user opens the clock app), but timers tick down second-by-second so we
+    // refresh both every second to keep the timer pill accurate.
+    _refreshSystemClock();
+    _systemClockTimer =
+        Timer.periodic(const Duration(seconds: 1), (_) => _refreshSystemClock());
+
     _initForesight();
+  }
+
+  Future<void> _refreshSystemClock() async {
+    final results = await Future.wait([
+      SystemClockService.instance.getNextAlarm(),
+      SystemClockService.instance.getSystemTimers(),
+    ]);
+    if (!mounted) return;
+    final nextAlarm = results[0] as SystemAlarm?;
+    final timers = results[1] as List<SystemTimer>;
+    setState(() {
+      _systemAlarm = nextAlarm;
+      _systemTimers = timers;
+    });
   }
 
   Future<void> _initForesight() async {
     await ForesightService.instance.initialize();
-    await NotificationPillService.loadUserOverrides();
-    await _refreshNotificationPill();
     _refreshForesightPredictions();
-    // Poll notifications every 3 seconds for real-time updates
-    _notificationPollTimer = Timer.periodic(const Duration(seconds: 3), (_) {
-      _refreshNotificationPill().then((_) => _refreshForesightPredictions());
+    // Re-evaluate Foresight periodically so context-driven predictions
+    // refresh without waiting for the user to leave and come back.
+    _foresightPollTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      _refreshForesightPredictions();
     });
   }
 
   Future<void> _refreshForesightPredictions() async {
     if (!ForesightService.instance.isInitialized || _apps.isEmpty) return;
     final predictions = await ForesightService.instance.predict(_apps);
-    final dockPackages = _homeApps.values.map((a) => a.packageName).toSet();
-    // Exclude apps already on the home dock, and skip any that are
-    // currently shown in a notification pill — the runner-up (#6) will
-    // slide into the dock in that case so we always end up with 5.
-    final notifPackages =
-        _notificationPillApps.map((n) => n.packageName).toSet();
-    final filtered = predictions
-        .where((p) =>
-            !dockPackages.contains(p.packageName) &&
-            !notifPackages.contains(p.packageName))
-        .take(6)
-        .toList();
     if (mounted) {
-      setState(() => _foresightPredictions = filtered);
-    }
-  }
-
-  Future<void> _refreshNotificationPill() async {
-    final apps = await NotificationPillService.getNotificationPillApps();
-    // Resolve icons from installed apps list
-    final appMap = <String, AppInfo>{};
-    for (final app in _apps) {
-      appMap[app.packageName] = app;
-    }
-    final withIcons = apps.map((entry) {
-      final installed = appMap[entry.packageName];
-      return NotificationPillEntry(
-        packageName: entry.packageName,
-        tier: entry.tier,
-        timestamp: entry.timestamp,
-        icon: installed?.icon,
-        appName: installed?.name ?? entry.appName,
-        title: entry.title,
-        text: entry.text,
-      );
-    }).toList();
-    if (mounted) {
-      setState(() => _notificationPillApps = withIcons);
+      setState(() => _foresightPredictions = predictions);
     }
   }
 
@@ -225,16 +216,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     AppLauncher.launchApp(packageName);
   }
 
-  void _onNotificationPillTap(String packageName) {
-    ForesightService.instance.recordLaunch(packageName);
-    AppLauncher.launchApp(packageName);
-  }
-
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _alarmTimer?.cancel();
-    _notificationPollTimer?.cancel();
+    _foresightPollTimer?.cancel();
+    _systemClockTimer?.cancel();
     _countdownTimer?.cancel();
     _stopAlarmSound();
     _audioPlayer.dispose();
@@ -260,12 +247,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
       _refreshCalendarBrief();
       WeatherService.instance.reloadUnitAndRefresh();
 
-      // Notification pill: re-evaluate queue on return
-      _refreshNotificationPill().then((_) {
-        // Foresight: generate predictions on unlock (after pill so dedup works)
-        ForesightService.instance.onResume();
-        _refreshForesightPredictions();
-      });
+      // Foresight: generate predictions on unlock
+      ForesightService.instance.onResume();
+      _refreshForesightPredictions();
       // Instantly close the drawer when returning to the launcher
       if (_drawerController.isAttached && _drawerController.size > 0.0) {
         _drawerController.jumpTo(0.0);
@@ -1125,23 +1109,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                               ),
                                             ),
                                           ),
-                                          // Notification stack pill — sits just below the
-                                          // Music Player, matching its width/height. Collapses
-                                          // smoothly when there are no active notifications.
-                                          AnimatedSize(
-                                            duration: CASIMotion.standard,
-                                            curve: Curves.easeOutCubic,
-                                            alignment: Alignment.topCenter,
-                                            child: (_notificationPillApps.isNotEmpty && !_isAlarmRinging)
-                                                ? Padding(
-                                                    padding: const EdgeInsets.only(top: 12),
-                                                    child: NotificationStackPill(
-                                                      entries: _notificationPillApps,
-                                                      onTap: _onNotificationPillTap,
-                                                    ),
-                                                  )
-                                                : const SizedBox(width: double.infinity, height: 0),
-                                          ),
                                         ],
                                       ),
                                     ),
@@ -1560,33 +1527,75 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   }
 
   // Schedule status row: alarm & timer pills above the music player.
-  // Visible whenever there's a nearest alarm and/or active timer, or when
-  // either is currently ringing (so the bell-shake ringing UI shows here
-  // in place of the old bottom-of-screen going-off panel).
+  //
+  // Both pills are populated from two independent sources:
+  //   * CASI internal alarms/timers (the ones the user creates inside
+  //     the launcher's Widgets Screen).
+  //   * The user's default clock app — system alarms come from
+  //     `AlarmManager.getNextAlarmClock()`, system timers from the clock
+  //     app's foreground notifications. System timers ride alongside CASI
+  //     timers in the same swipe-able deck, sorted lowest→highest
+  //     remaining time as the user requested.
+  //
+  // System timers carry a negative `timerIndex` sentinel so the pill's
+  // tap/swipe callbacks can route them to the clock app instead of
+  // mutating CASI state.
   Widget _buildScheduleStatusRow() {
-    final String? nearestAlarm = _ringingAlarmLabel ?? _nearestAlarmLabel();
+    final String? casiNearestAlarm =
+        _ringingAlarmLabel ?? _nearestAlarmLabel();
+    final String? systemAlarmLabel = _systemAlarm?.formattedLabel();
+    // Prefer the system alarm when one is set — that's the "user's default
+    // clock app" alarm they expect to see; CASI internal alarms still
+    // appear when the system has none scheduled.
+    final String? nearestAlarm = systemAlarmLabel ?? casiNearestAlarm;
+
     final List<int> activeTimerIndices = _activeTimerIndicesSorted();
     final bool hasAlarm = nearestAlarm != null;
-    final bool hasTimer = activeTimerIndices.isNotEmpty;
+    final bool hasTimer =
+        activeTimerIndices.isNotEmpty || _systemTimers.isNotEmpty;
     final bool show = hasAlarm || hasTimer;
 
     Widget? timerPillWidget;
     if (hasTimer) {
-      final deckEntries = activeTimerIndices.map((idx) {
+      // Build a unified deck. CASI entries keep their real index; system
+      // entries get -1, -2, ... so the callbacks can detect them and route
+      // accordingly. Sort by remaining seconds so 1-min timers always sit
+      // in front of 5-min ones, regardless of which source they came from.
+      final deckEntries = <_DeckBuildEntry>[];
+      for (final idx in activeTimerIndices) {
         final t = _appTimers[idx];
-        return TimerDeckEntry(
-          timerIndex: idx,
-          timeText: _formatTimerTime(t.remainingSeconds),
-          isRunning: t.isRunning,
-          isRinging: _ringingTimerIndices.contains(idx),
-        );
-      }).toList();
+        deckEntries.add(_DeckBuildEntry(
+          remaining: t.remainingSeconds,
+          entry: TimerDeckEntry(
+            timerIndex: idx,
+            timeText: _formatTimerTime(t.remainingSeconds),
+            isRunning: t.isRunning,
+            isRinging: _ringingTimerIndices.contains(idx),
+          ),
+        ));
+      }
+      for (int i = 0; i < _systemTimers.length; i++) {
+        final st = _systemTimers[i];
+        final remaining = st.currentRemainingSeconds();
+        deckEntries.add(_DeckBuildEntry(
+          remaining: remaining,
+          entry: TimerDeckEntry(
+            // Sentinel negative index identifies a system timer.
+            timerIndex: -(i + 1),
+            timeText: _formatTimerTime(remaining),
+            isRunning: st.isRunning,
+            isRinging: false,
+          ),
+        ));
+      }
+      deckEntries.sort((a, b) => a.remaining.compareTo(b.remaining));
+
       timerPillWidget = TimerPill(
-        entries: deckEntries,
+        entries: deckEntries.map((e) => e.entry).toList(),
         anyRinging: _ringingTimerIndices.isNotEmpty,
         onLongPressOpen: _openWidgetsScreen,
-        onTogglePause: _toggleTimer,
-        onStopSingle: _stopAndResetTimer,
+        onTogglePause: _onTimerDeckTogglePause,
+        onStopSingle: _onTimerDeckStop,
         onStopAllRinging: _stopAllRingingTimers,
         backgroundWidget: _wallpaperService.buildBackground(),
       );
@@ -1594,11 +1603,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
 
     Widget? alarmPillWidget;
     if (hasAlarm) {
-      final bool isThisRinging = _ringingAlarmLabel == nearestAlarm;
+      // Only CASI internal alarms can ring inside CASI; the system clock
+      // handles its own ringing UI for system alarms.
+      final bool isCasiAlarmShown = systemAlarmLabel == null;
+      final bool isThisRinging =
+          isCasiAlarmShown && _ringingAlarmLabel == nearestAlarm;
       alarmPillWidget = AlarmPill(
         title: nearestAlarm,
         isRinging: isThisRinging,
-        onLongPressOpen: _openWidgetsScreen,
+        onLongPressOpen: systemAlarmLabel != null
+            ? () => SystemClockService.instance.openClockApp()
+            : _openWidgetsScreen,
         onStop: _stopAlarm,
         backgroundWidget: _wallpaperService.buildBackground(),
       );
@@ -1633,6 +1648,26 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     );
   }
 
+  // Routes a deck pause/resume gesture to the right backend. Negative
+  // indices are system timers — we can't pause those from CASI, so we
+  // open the user's clock app instead (which is the only way for them to
+  // act on it).
+  void _onTimerDeckTogglePause(int timerIndex) {
+    if (timerIndex < 0) {
+      SystemClockService.instance.openTimersScreen();
+    } else {
+      _toggleTimer(timerIndex);
+    }
+  }
+
+  void _onTimerDeckStop(int timerIndex) {
+    if (timerIndex < 0) {
+      SystemClockService.instance.openTimersScreen();
+    } else {
+      _stopAndResetTimer(timerIndex);
+    }
+  }
+
   Widget _buildBackground() {
     return Positioned.fill(
       child: _wallpaperService.buildBackground(),
@@ -1663,4 +1698,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     _saveLayout();
   }
 
+}
+
+/// Lightweight tuple used while sorting CASI + system timers into a single
+/// deck. The pill itself only sees the embedded [TimerDeckEntry]; the
+/// `remaining` field exists purely so the merged list can be sorted by
+/// remaining time before stripping back down.
+class _DeckBuildEntry {
+  final int remaining;
+  final TimerDeckEntry entry;
+  const _DeckBuildEntry({required this.remaining, required this.entry});
 }

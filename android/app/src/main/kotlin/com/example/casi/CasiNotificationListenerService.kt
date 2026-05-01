@@ -1,174 +1,154 @@
 package com.example.casi
 
 import android.app.Notification
-import android.content.SharedPreferences
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
-import android.service.notification.NotificationListenerService.Ranking
-import android.service.notification.NotificationListenerService.RankingMap
 import org.json.JSONArray
 import org.json.JSONObject
 
+/**
+ * NotificationListenerService kept for two purposes only:
+ *
+ *  1. Acting as the registered listener so [android.media.session.MediaSessionManager.getActiveSessions]
+ *     can hand back media controllers from any audio app on the device.
+ *  2. Tracking active timer notifications posted by the user's default clock
+ *     app (Google Clock, Samsung Clock, AOSP DeskClock, etc.) so the launcher
+ *     can surface them in the home-screen timer pill.
+ *
+ * The previous tier-based notification pill / capture system has been
+ * removed — there is no longer any general notification ingestion or
+ * persistence happening here.
+ */
 class CasiNotificationListenerService : NotificationListenerService() {
 
     companion object {
-        private const val PREFS_NAME = "casi_notifications"
-        private const val KEY_NOTIFICATIONS = "captured_notifications"
-        private const val MAX_NOTIFICATIONS = 200
-
-        // Static instance so MainActivity can call getActiveNotifications()
         var instance: CasiNotificationListenerService? = null
             private set
+
+        // Packages whose ongoing notifications we treat as system timers.
+        // Add a package here and it will be parsed for HH:MM[:SS] timer text.
+        private val CLOCK_PACKAGES = setOf(
+            "com.google.android.deskclock",
+            "com.android.deskclock",
+            "com.sec.android.app.clockpackage",
+            "com.oneplus.deskclock",
+            "com.coloros.alarmclock",
+            "com.miui.misound",
+            "com.xiaomi.misettings",
+            "com.android.alarmclock",
+            "com.htc.android.worldclock",
+            "com.lge.clock",
+            "com.motorola.blur.alarmclock",
+            "com.sonyericsson.organizer",
+            "com.asus.deskclock"
+        )
+
+        // HH:MM:SS or MM:SS — captures the first time-shaped substring.
+        private val TIMER_TIME_REGEX = Regex("""(?:(\d{1,2}):)?(\d{1,2}):(\d{2})""")
     }
+
+    /** Active clock-app timer notifications, keyed by [StatusBarNotification.key]. */
+    private val activeTimers = mutableMapOf<String, JSONObject>()
 
     override fun onListenerConnected() {
         super.onListenerConnected()
         instance = this
+        // Seed the in-memory cache from whatever is currently posted so the
+        // launcher gets timers immediately on (re)connect rather than waiting
+        // for the next post.
+        try {
+            val current = activeNotifications ?: emptyArray()
+            for (sbn in current) ingestTimerIfApplicable(sbn)
+        } catch (_: Exception) {}
     }
 
     override fun onListenerDisconnected() {
         super.onListenerDisconnected()
         instance = null
+        activeTimers.clear()
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
-        super.onNotificationPosted(sbn)
         if (sbn == null) return
+        ingestTimerIfApplicable(sbn)
+    }
+
+    override fun onNotificationRemoved(sbn: StatusBarNotification?) {
+        if (sbn == null) return
+        val key = sbn.key ?: return
+        if (activeTimers.remove(key) != null) {
+            // No-op: the next getSystemTimers() call will reflect the removal.
+        }
+    }
+
+    private fun ingestTimerIfApplicable(sbn: StatusBarNotification) {
+        val pkg = sbn.packageName ?: return
+        if (pkg !in CLOCK_PACKAGES) return
 
         val notification = sbn.notification ?: return
         val extras = notification.extras ?: return
 
-        val packageName = sbn.packageName ?: return
+        val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty()
+        val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString().orEmpty()
+        val subText = extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString().orEmpty()
+        val haystack = "$title\n$text\n$subText"
 
-        // Skip our own notifications and system UI
-        if (packageName == "com.example.casi") return
-        if (packageName == "android" || packageName == "com.android.systemui") return
+        // Heuristic — clock apps post separate notifications for alarms vs.
+        // timers. The launcher reads alarms via AlarmManager.getNextAlarmClock()
+        // already, so reject anything that doesn't *both* contain a time-shaped
+        // value AND mention the word "timer" somewhere.
+        val mentionsTimer = haystack.contains("timer", ignoreCase = true)
+        if (!mentionsTimer) {
+            activeTimers.remove(sbn.key)
+            return
+        }
 
-        val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString() ?: ""
-        val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString() ?: ""
-        val bigText = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString() ?: ""
-        val subText = extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString() ?: ""
+        val match = TIMER_TIME_REGEX.find(haystack)
+        if (match == null) {
+            activeTimers.remove(sbn.key)
+            return
+        }
 
-        // Skip empty notifications
-        if (title.isBlank() && text.isBlank()) return
+        val h = match.groupValues[1].toIntOrNull() ?: 0
+        val m = match.groupValues[2].toIntOrNull() ?: 0
+        val s = match.groupValues[3].toIntOrNull() ?: 0
+        val totalSeconds = h * 3600 + m * 60 + s
+        if (totalSeconds <= 0) {
+            // Either a finished timer (00:00) or unparseable. Either way, drop.
+            activeTimers.remove(sbn.key)
+            return
+        }
 
-        // Build notification JSON
-        val notifJson = JSONObject().apply {
-            put("packageName", packageName)
-            put("title", title)
-            put("text", text)
-            put("bigText", bigText)
-            put("subText", subText)
-            put("timestamp", sbn.postTime)
+        val isPaused = haystack.contains("paused", ignoreCase = true)
+
+        activeTimers[sbn.key ?: pkg] = JSONObject().apply {
+            put("packageName", pkg)
             put("key", sbn.key ?: "")
-            put("category", notification.category ?: "")
+            put("remainingSeconds", totalSeconds)
+            put("title", if (title.isNotBlank()) title else "Timer")
+            put("isRunning", !isPaused)
+            // postTime lets Flutter compute drift-corrected remaining seconds —
+            // the notification typically updates every second but we only poll
+            // every 1–2 s, so subtracting elapsed-since-post smooths the count.
+            put("postTime", sbn.postTime)
         }
-
-        saveNotification(notifJson)
     }
 
-    override fun onNotificationRemoved(sbn: StatusBarNotification?) {
-        super.onNotificationRemoved(sbn)
-        // No action needed for history — history keeps all notifications.
-        // Active notifications are read live via getActiveNotifs().
-    }
+    /** Returns a JSON array of currently active clock-app timer notifications. */
+    fun getActiveTimers(): String {
+        // Re-read live whenever asked so we don't depend on caching alone.
+        try {
+            val live = activeNotifications ?: emptyArray()
+            // Drop entries that have disappeared from the live set.
+            val liveKeys = live.mapNotNull { it.key }.toSet()
+            val stale = activeTimers.keys.filter { it !in liveKeys }
+            for (k in stale) activeTimers.remove(k)
+            // Re-ingest the live set to keep parsed values fresh.
+            for (sbn in live) ingestTimerIfApplicable(sbn)
+        } catch (_: Exception) {}
 
-    /**
-     * Returns a JSON array string of currently active (non-dismissed) notifications
-     * from the system notification shade.
-     */
-    fun getActiveNotifs(): String {
-        val sbns = try {
-            activeNotifications ?: emptyArray()
-        } catch (e: Exception) {
-            emptyArray<StatusBarNotification>()
-        }
-
-        // Get current ranking map for importance levels
-        val rankingMap = try { getCurrentRanking() } catch (_: Exception) { null }
-
-        val array = JSONArray()
-        for (sbn in sbns) {
-            val packageName = sbn.packageName ?: continue
-            if (packageName == "com.example.casi") continue
-            if (packageName == "android" || packageName == "com.android.systemui") continue
-
-            val notification = sbn.notification ?: continue
-            val extras = notification.extras ?: continue
-
-            val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString() ?: ""
-            val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString() ?: ""
-            val bigText = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString() ?: ""
-            val subText = extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString() ?: ""
-
-            if (title.isBlank() && text.isBlank()) continue
-
-            // Determine importance from ranking
-            var importance = 3 // default IMPORTANCE_DEFAULT
-            if (rankingMap != null) {
-                val ranking = Ranking()
-                if (rankingMap.getRanking(sbn.key, ranking)) {
-                    importance = ranking.importance
-                }
-            }
-
-            val isOngoing = (notification.flags and Notification.FLAG_ONGOING_EVENT) != 0
-            val isForeground = (notification.flags and Notification.FLAG_FOREGROUND_SERVICE) != 0
-            val isGroupSummary = (notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0
-
-            val obj = JSONObject().apply {
-                put("packageName", packageName)
-                put("title", title)
-                put("text", text)
-                put("bigText", bigText)
-                put("subText", subText)
-                put("timestamp", sbn.postTime)
-                put("key", sbn.key ?: "")
-                put("category", notification.category ?: "")
-                put("importance", importance)
-                put("isOngoing", isOngoing)
-                put("isForeground", isForeground)
-                put("isGroupSummary", isGroupSummary)
-            }
-            array.put(obj)
-        }
-        return array.toString()
-    }
-
-    private fun saveNotification(notifJson: JSONObject) {
-        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-        val existing = prefs.getString(KEY_NOTIFICATIONS, "[]") ?: "[]"
-
-        val array = try {
-            JSONArray(existing)
-        } catch (e: Exception) {
-            JSONArray()
-        }
-
-        // Deduplicate: skip if same package+title+text already exists within last 5 minutes
-        val newPkg = notifJson.optString("packageName")
-        val newTitle = notifJson.optString("title")
-        val newText = notifJson.optString("text")
-        val newTimestamp = notifJson.optLong("timestamp")
-        val fiveMinutes = 5 * 60 * 1000L
-
-        for (i in 0 until array.length()) {
-            val existingItem = array.optJSONObject(i) ?: continue
-            if (existingItem.optString("packageName") == newPkg &&
-                existingItem.optString("title") == newTitle &&
-                existingItem.optString("text") == newText &&
-                (newTimestamp - existingItem.optLong("timestamp")) < fiveMinutes) {
-                return // Duplicate, skip
-            }
-        }
-
-        array.put(notifJson)
-
-        // Trim to max size (keep most recent)
-        while (array.length() > MAX_NOTIFICATIONS) {
-            array.remove(0)
-        }
-
-        prefs.edit().putString(KEY_NOTIFICATIONS, array.toString()).apply()
+        val arr = JSONArray()
+        for (entry in activeTimers.values) arr.put(entry)
+        return arr.toString()
     }
 }

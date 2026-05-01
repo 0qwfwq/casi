@@ -1,33 +1,10 @@
-// Foresight — need-driven app surfacing for the CASI launcher.
+// Foresight — user-rule-driven app surfacing for the CASI launcher.
 //
-// The dock no longer predicts from launch history. It reasons:
+// The dock surfaces exactly the apps the user has configured via schedule
+// and scenario rules in settings. No capability scoring, no categorization,
+// no automatic context inference — only what the user explicitly set up.
 //
-//   "What does the user need right now?"  — inferred from real-world
-//                                            signals (calendar, time,
-//                                            notifications, network,
-//                                            charging, battery, …).
-//   "Which app satisfies that need?"      — matched against a structured
-//                                            capability knowledge base.
-//
-// Two clean pieces sit behind this service:
-//
-//  * [ContextInterpreter] (foresight_context.dart) — a pure rule engine
-//    that maps a [ContextSnapshot] of every signal we can read into a
-//    list of semantic [Need]s, each with a priority and a reason.
-//
-//  * [AppCapabilityMap] (foresight_capabilities.dart) — a hand-curated
-//    map from package name patterns to capability tags ("Spotify →
-//    music, audio, podcasts; Google Maps → navigation, commute").
-//
-// [predict] scores every installed app by summing the priorities of the
-// needs whose tags overlap that app's capabilities, then returns the
-// top candidates. This is genuinely non-frequency: a freshly-installed
-// app the user has never opened can rank #1 if context demands its
-// capability and no other installed app supplies it.
-//
-// Upgrade path: replace [ContextInterpreter.interpret] with an LLM
-// (e.g. Gemma 4) that emits the same `List<Need>`. The capability map
-// and matching logic don't change.
+// If the user has no rules active right now, no apps are shown.
 
 import 'dart:async';
 import 'package:flutter/foundation.dart';
@@ -35,11 +12,8 @@ import 'package:flutter/services.dart';
 import 'package:installed_apps/app_info.dart';
 
 import '../morning_brief/calendar_brief_service.dart';
-import 'foresight_capabilities.dart';
-import 'foresight_categorizer.dart';
 import 'foresight_context.dart';
 import 'foresight_user_rules.dart';
-import 'notification_pill_service.dart';
 
 // ---------------------------------------------------------------------------
 // Data model — kept compatible with the consuming UI (foresight_pill.dart,
@@ -107,26 +81,15 @@ class ForesightService {
   List<ForesightPrediction> get currentPredictions => _currentPredictions;
   bool get isInitialized => _initialized;
 
-  /// Total number of needs the rule engine produced on the most recent
-  /// [predict] call. Exposed for diagnostics; the UI doesn't use it.
-  int get lastNeedCount => _lastNeedCount;
-  int _lastNeedCount = 0;
-
   // -------------------------------------------------------------------------
   // Lifecycle
   // -------------------------------------------------------------------------
 
-  /// No-op besides flipping the initialized flag — the rule engine is
-  /// stateless and the capability map is compile-time. Kept async to
-  /// preserve the previous public signature so callers don't change.
   Future<void> initialize() async {
     if (_initialized) return;
     _initialized = true;
-    await Future.wait([
-      AppCategorizer.instance.hydrate(),
-      ForesightUserRulesService.instance.load(),
-    ]);
-    debugPrint('[Foresight] Initialized (rule-engine, no model).');
+    await ForesightUserRulesService.instance.load();
+    debugPrint('[Foresight] Initialized.');
   }
 
   /// Force the next [predict] call to re-score even if the snapshot
@@ -150,16 +113,14 @@ class ForesightService {
   }
 
   // -------------------------------------------------------------------------
-  // Recording — only the in-memory continuity hint matters now. There is
-  // no database, no learning, no feedback loop. This method exists purely
-  // so existing call-sites don't have to change.
+  // Recording — no persistence, kept so call-sites don't need changing.
   // -------------------------------------------------------------------------
 
   Future<void> recordLaunch(String packageName, {String? appName}) async {
     if (_lastSessionPackage == packageName) return;
     _previousApp = packageName;
     _lastSessionPackage = packageName;
-    _lastSignature = null; // continuity rule depends on previous app
+    _lastSignature = null;
   }
 
   /// Clear any stored state for a package (e.g. on uninstall). With no
@@ -175,49 +136,25 @@ class ForesightService {
   // Prediction
   // -------------------------------------------------------------------------
 
-  /// Build a list of app suggestions for the current moment.
-  ///
-  /// Returns up to 15 predictions so the dock has runners-up after
-  /// filtering out apps already shown in the home dock or notification
-  /// pills. The dock UI picks the top N to display.
+  /// Returns apps whose user-configured schedule or scenario rules match now.
+  /// If no rules are active, returns an empty list and the dock hides itself.
   Future<List<ForesightPrediction>> predict(List<AppInfo> installedApps) async {
     if (installedApps.isEmpty) return const [];
-
-    // Background-classify any installed packages the rule engine doesn't
-    // know yet. Fire-and-forget: results land via registerOverride and
-    // get picked up on a later predict() call. We pass the on-device
-    // display name as a hint so sideloaded mods (which fail Play Store
-    // lookup) still get tagged from their visible name.
-    AppCategorizer.instance.enqueue(installedApps.map(
-      (a) => (packageName: a.packageName, appName: a.name),
-    ));
 
     try {
       final snapshot = await _gatherSnapshot();
       final signature = _buildSignature(snapshot);
 
-      // Quick path: identical signature within TTL → reuse last result.
       final age = _lastPredictAt == null
           ? null
           : snapshot.now.difference(_lastPredictAt!);
       if (signature == _lastSignature &&
           age != null &&
-          age < _predictionTtl &&
-          _currentPredictions.isNotEmpty) {
+          age < _predictionTtl) {
         return _currentPredictions;
       }
 
-      final needs = ContextInterpreter.interpret(snapshot);
-      _lastNeedCount = needs.length;
-
-      // Score automatic needs (may be empty when context is flat).
-      final scored = needs.isEmpty
-          ? const <ForesightPrediction>[]
-          : _scoreApps(installedApps, needs);
-
-      // Overlay user-configured schedule / scenario rules — these always
-      // surface first regardless of context scoring.
-      final predictions = _applyUserRules(installedApps, scored, snapshot);
+      final predictions = _applyUserRules(installedApps, snapshot);
 
       _currentPredictions = predictions;
       _lastSignature = signature;
@@ -225,21 +162,9 @@ class ForesightService {
 
       if (kDebugMode) {
         final summary = predictions
-            .take(5)
-            .map((p) => '${p.appName}(${p.confidence.toStringAsFixed(2)})')
+            .map((p) => p.appName)
             .join(', ');
-        final needsSummary = needs
-            .map((n) => '${n.name}@${n.priority.toStringAsFixed(2)}')
-            .join(', ');
-        debugPrint(
-          '[Foresight] ctx route=${snapshot.audioRoute} '
-          'btConn=${snapshot.bluetoothAudioConnected} '
-          'btName=${snapshot.bluetoothDeviceName ?? "-"} '
-          'ssid=${snapshot.wifiSsid ?? "-"} '
-          'net=${snapshot.networkState}',
-        );
-        debugPrint('[Foresight] needs=[$needsSummary]');
-        debugPrint('[Foresight] picks=[$summary]');
+        debugPrint('[Foresight] user-rule picks=[$summary]');
       }
       return predictions;
     } catch (e, st) {
@@ -249,110 +174,28 @@ class ForesightService {
   }
 
   // -------------------------------------------------------------------------
-  // Scoring
+  // User-rule matching
   // -------------------------------------------------------------------------
 
-  /// Score every installed app by summing the priorities of the needs
-  /// whose capability tags overlap the app's capability tags. Returns
-  /// the top candidates sorted by descending score.
-  List<ForesightPrediction> _scoreApps(
-    List<AppInfo> installedApps,
-    List<Need> needs,
-  ) {
-    final scores = <String, double>{};
-    final topReason = <String, String>{};
-    final topReasonPriority = <String, double>{};
-
-    for (final app in installedApps) {
-      final tags = AppCapabilityMap.tagsFor(app.packageName);
-      if (tags.isEmpty) continue;
-      final tagSet = tags.toSet();
-
-      double total = 0.0;
-      double bestPriority = 0.0;
-      String bestReason = '';
-
-      for (final need in needs) {
-        // Depth-of-match: an app that satisfies more of a need's tags is
-        // a stronger fit than one that just barely overlaps. This breaks
-        // the old "20 apps tied at 0.55" failure mode that left Docs /
-        // Drive / Keep monopolising the dock for hours at a time.
-        int matchCount = 0;
-        for (final t in need.tags) {
-          if (tagSet.contains(t)) matchCount++;
-        }
-        if (matchCount == 0) continue;
-
-        final scoreForThisNeed =
-            need.priority * (1.0 + 0.1 * (matchCount - 1));
-        total += scoreForThisNeed;
-
-        if (scoreForThisNeed > bestPriority) {
-          bestPriority = scoreForThisNeed;
-          bestReason = need.reason;
-        }
-      }
-
-      if (total > 0.0) {
-        scores[app.packageName] = total;
-        topReason[app.packageName] = bestReason;
-        topReasonPriority[app.packageName] = bestPriority;
-      }
-    }
-
-    if (scores.isEmpty) return const [];
-
-    // Resolve AppInfo for each scored package once.
-    final appMap = <String, AppInfo>{};
-    for (final a in installedApps) {
-      appMap[a.packageName] = a;
-    }
-
-    final maxScore =
-        scores.values.fold<double>(0.0, (a, b) => b > a ? b : a);
-
-    final sorted = scores.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-
-    final top = sorted.take(15).toList();
-
-    return [
-      for (final entry in top)
-        ForesightPrediction(
-          packageName: entry.key,
-          appName: appMap[entry.key]!.name,
-          icon: appMap[entry.key]!.icon,
-          confidence: maxScore > 0 ? entry.value / maxScore : 0.0,
-          reason: topReason[entry.key],
-        ),
-    ];
-  }
-
-  // -------------------------------------------------------------------------
-  // User-rule overlay
-  // -------------------------------------------------------------------------
-
-  /// Prepends any apps matched by user-configured schedule/scenario rules to
-  /// [scored], deduplicating by package. User-rule apps get confidence 1.0
-  /// so they always appear before automatically-scored apps in the dock.
+  /// Returns predictions for every schedule/scenario rule that matches now.
+  /// If no rules are active, returns an empty list.
   List<ForesightPrediction> _applyUserRules(
     List<AppInfo> installedApps,
-    List<ForesightPrediction> scored,
     ContextSnapshot snapshot,
   ) {
     final matched = ForesightUserRulesService.instance
         .matchNow(snapshot.now, snapshot);
-    if (matched.isEmpty) return scored;
+    if (matched.isEmpty) return const [];
 
     final appMap = <String, AppInfo>{
       for (final a in installedApps) a.packageName: a,
     };
 
-    final pinned = <ForesightPrediction>[];
+    final result = <ForesightPrediction>[];
     for (final m in matched) {
       final app = appMap[m.packageName];
-      if (app == null) continue; // not installed — skip silently
-      pinned.add(ForesightPrediction(
+      if (app == null) continue;
+      result.add(ForesightPrediction(
         packageName: m.packageName,
         appName: app.name,
         icon: app.icon,
@@ -360,13 +203,7 @@ class ForesightService {
         reason: m.reason,
       ));
     }
-
-    if (pinned.isEmpty) return scored;
-
-    final pinnedPkgs = {for (final p in pinned) p.packageName};
-    final remainder =
-        scored.where((p) => !pinnedPkgs.contains(p.packageName)).toList();
-    return [...pinned, ...remainder].take(15).toList();
+    return result;
   }
 
   // -------------------------------------------------------------------------
@@ -380,12 +217,10 @@ class ForesightService {
     final results = await Future.wait([
       _fetchDeviceContext(),
       _fetchTodayEvents(now),
-      _fetchActiveNotifications(),
     ]);
 
     final device = results[0] as Map<String, dynamic>;
     final events = results[1] as List<DeviceCalendarEvent>;
-    final notifs = results[2] as List<NotificationPillEntry>;
 
     return ContextSnapshot(
       now: now,
@@ -395,7 +230,6 @@ class ForesightService {
       sessionGapSeconds: _currentSessionGap,
       previousApp: _previousApp,
       todayEvents: events,
-      notifications: notifs,
       audioRoute: (device['audioRoute'] as String?) ?? 'unknown',
       bluetoothAudioConnected: device['bluetoothAudioConnected'] == true,
       bluetoothDeviceName: device['bluetoothDeviceName'] as String?,
@@ -439,15 +273,6 @@ class ForesightService {
     }
   }
 
-  Future<List<NotificationPillEntry>> _fetchActiveNotifications() async {
-    try {
-      return await NotificationPillService.getNotificationPillApps();
-    } catch (e) {
-      debugPrint('[Foresight] notification fetch error: $e');
-      return const [];
-    }
-  }
-
   // -------------------------------------------------------------------------
   // Cache signature
   // -------------------------------------------------------------------------
@@ -477,9 +302,6 @@ class ForesightService {
             : s.batteryLevel > 80
                 ? 'high'
                 : 'mid';
-    final notifKey = s.notifications.isEmpty
-        ? 'none'
-        : '${s.notifications.first.packageName}#${s.notifications.first.tier}';
     final eventKey = s.todayEvents.isEmpty
         ? 'none'
         : s.todayEvents
@@ -496,7 +318,7 @@ class ForesightService {
     return '$timeBucket|${s.now.weekday}|${s.networkState}|'
         '${s.isCharging}|$batteryBucket|${s.previousApp ?? "_"}|'
         '${s.sessionGapSeconds > 1800 ? "fresh" : "warm"}|'
-        '$notifKey|$eventKey|'
+        '$eventKey|'
         '${s.audioRoute}|${s.bluetoothDeviceName ?? "_"}|'
         '${s.wifiSsid ?? "_"}';
   }

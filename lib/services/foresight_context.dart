@@ -1,7 +1,7 @@
 // Foresight — Context interpreter (rule engine).
 //
 // Reads every signal we can observe about the user's current situation —
-// time, calendar, notifications, battery, charging, network, session gap,
+// time, calendar, battery, charging, network, session gap,
 // previous app — and reasons about what they probably *need right now*.
 //
 // Produces a list of [Need] records, each with:
@@ -19,7 +19,6 @@
 
 import 'foresight_capabilities.dart';
 import '../morning_brief/calendar_brief_service.dart';
-import 'notification_pill_service.dart';
 
 // ---------------------------------------------------------------------------
 // Snapshot of every signal a rule can read.
@@ -44,9 +43,6 @@ class ContextSnapshot {
 
   /// Today's calendar events from the device's default calendar.
   final List<DeviceCalendarEvent> todayEvents;
-
-  /// Currently active notifications, ranked highest priority first.
-  final List<NotificationPillEntry> notifications;
 
   /// Active audio output route. One of: 'speaker', 'wired_headphones',
   /// 'bluetooth', 'dock', 'unknown'. A non-speaker route is a strong
@@ -74,7 +70,6 @@ class ContextSnapshot {
     required this.sessionGapSeconds,
     required this.previousApp,
     required this.todayEvents,
-    required this.notifications,
     this.audioRoute = 'unknown',
     this.bluetoothAudioConnected = false,
     this.bluetoothDeviceName,
@@ -131,7 +126,6 @@ class ContextInterpreter {
     final needs = <Need>[];
     _calendarRules(s, needs);
     _calendarTextRules(s, needs);
-    _notificationRules(s, needs);
     _audioOutputRules(s, needs);
     _carContextRules(s, needs);
     _commuteRules(s, needs);
@@ -350,94 +344,6 @@ class ContextInterpreter {
       s.startsWith('http') || s.contains('://') || s.contains('zoom.us') ||
       s.contains('meet.google') || s.contains('teams.microsoft');
 
-  // ---------------------------------------------------------------------------
-  // Active notifications — the user has unread something. The notification
-  // pill already surfaces the apps directly; this rule additionally biases
-  // related capability classes (e.g. an email from the boss biases
-  // "professional" / "calendar" alongside the email app itself).
-  // ---------------------------------------------------------------------------
-
-  static void _notificationRules(ContextSnapshot s, List<Need> out) {
-    if (s.notifications.isEmpty) return;
-
-    // Top notification dominates. Tier 1–2 = critical/personal, tier 3 = work,
-    // tier 4 = social, tier 5 = reminders, tier 6 = utility.
-    final top = s.notifications.first;
-    final tier = top.tier;
-    final senderHint = top.title.isNotEmpty ? ' from ${top.title}' : '';
-
-    if (tier <= 2) {
-      out.add(Need(
-        name: 'reply_personal',
-        tags: const [
-          AppCapability.communication,
-          AppCapability.messaging,
-        ],
-        priority: 0.95,
-        reason: 'Unread message$senderHint',
-      ));
-    } else if (tier == 3) {
-      out.add(Need(
-        name: 'reply_work',
-        tags: const [
-          AppCapability.communication,
-          AppCapability.email,
-          AppCapability.professional,
-        ],
-        priority: 0.85,
-        reason: 'Work notification$senderHint',
-      ));
-      out.add(Need(
-        name: 'work_calendar',
-        tags: const [AppCapability.calendar],
-        priority: 0.4,
-        reason: 'Sender may reference a meeting',
-      ));
-    } else if (tier == 4) {
-      out.add(Need(
-        name: 'reply_social',
-        tags: const [AppCapability.social],
-        priority: 0.65,
-        reason: 'Social update$senderHint',
-      ));
-    } else if (tier == 5) {
-      out.add(Need(
-        name: 'reminder_action',
-        tags: const [
-          AppCapability.reminders,
-          AppCapability.tasks,
-          AppCapability.calendar,
-        ],
-        priority: 0.7,
-        reason: 'Reminder${top.title.isNotEmpty ? ': ${top.title}' : ''}',
-      ));
-    } else {
-      out.add(Need(
-        name: 'utility_check',
-        tags: const [AppCapability.utility],
-        priority: 0.3,
-        reason: 'Pending notification',
-      ));
-    }
-
-    // A second notification of equal-or-higher priority piles on a slightly
-    // smaller communication signal so a flurry of messages still ranks
-    // chat apps highly even when the top tier is something else.
-    if (s.notifications.length > 1) {
-      final second = s.notifications[1];
-      if (second.tier <= 4) {
-        out.add(Need(
-          name: 'reply_secondary',
-          tags: const [
-            AppCapability.communication,
-            AppCapability.messaging,
-          ],
-          priority: 0.4,
-          reason: '${s.notifications.length} unread items',
-        ));
-      }
-    }
-  }
 
   // ---------------------------------------------------------------------------
   // Commute window: weekday morning/evening. Cellular-only is a strong

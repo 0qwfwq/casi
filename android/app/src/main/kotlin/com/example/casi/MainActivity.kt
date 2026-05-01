@@ -48,6 +48,7 @@ class MainActivity: FlutterFragmentActivity() {
     private val HEALTH_CHANNEL = "casi.launcher/health"
     private val WALLPAPER_CHANNEL = "casi.launcher/wallpaper"
     private val DEVICE_CHANNEL = "casi.launcher/device"
+    private val CLOCK_CHANNEL = "casi.launcher/clock"
     private val CALENDAR_PERMISSION_REQUEST = 100
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
@@ -72,30 +73,102 @@ class MainActivity: FlutterFragmentActivity() {
         super.configureFlutterEngine(flutterEngine)
 
         // --- Notifications Channel ---
+        // Only kept for `isNotificationAccessGranted` — needed by the
+        // media-controller and system-timer flows so the launcher can ask
+        // the user to grant Notification Access from settings.
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, NOTIF_CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
-                "getNotifications" -> {
-                    val prefs = getSharedPreferences("casi_notifications", MODE_PRIVATE)
-                    val json = prefs.getString("captured_notifications", "[]") ?: "[]"
-                    result.success(json)
-                }
-                "clearNotifications" -> {
-                    val prefs = getSharedPreferences("casi_notifications", MODE_PRIVATE)
-                    prefs.edit().putString("captured_notifications", "[]").apply()
-                    result.success(null)
-                }
                 "isNotificationAccessGranted" -> {
                     val componentName = ComponentName(this, CasiNotificationListenerService::class.java)
                     val flat = android.provider.Settings.Secure.getString(contentResolver, "enabled_notification_listeners")
                     val enabled = flat != null && flat.contains(componentName.flattenToString())
                     result.success(enabled)
                 }
-                "getActiveNotifications" -> {
+                else -> result.notImplemented()
+            }
+        }
+
+        // --- Clock Channel: system alarms & timers ---
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CLOCK_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getNextAlarmClock" -> {
+                    try {
+                        val am = getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+                        val info = am.nextAlarmClock
+                        if (info == null) {
+                            result.success(null)
+                        } else {
+                            val showIntent = info.showIntent
+                            val ownerPkg = showIntent?.creatorPackage
+                                ?: showIntent?.intentSender?.creatorPackage
+                            result.success(mapOf(
+                                "triggerTime" to info.triggerTime,
+                                "ownerPackage" to ownerPkg
+                            ))
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.w("CASI/Clock", "getNextAlarmClock failed", e)
+                        result.success(null)
+                    }
+                }
+                "getSystemTimers" -> {
                     val service = CasiNotificationListenerService.instance
-                    if (service != null) {
-                        result.success(service.getActiveNotifs())
-                    } else {
-                        result.success("[]")
+                    result.success(service?.getActiveTimers() ?: "[]")
+                }
+                "openSystemClock" -> {
+                    try {
+                        val pm = packageManager
+                        // Prefer the app that registered the next alarm — that's
+                        // the user's *de facto* default clock app, even if no
+                        // intent filter advertises it as such.
+                        val am = getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+                        val ownerPkg = am.nextAlarmClock?.let { info ->
+                            info.showIntent?.creatorPackage
+                                ?: info.showIntent?.intentSender?.creatorPackage
+                        }
+
+                        var launched = false
+                        if (ownerPkg != null) {
+                            val launch = pm.getLaunchIntentForPackage(ownerPkg)
+                            if (launch != null) {
+                                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                startActivity(launch)
+                                launched = true
+                            }
+                        }
+                        if (!launched) {
+                            // Fall back to the standard SHOW_ALARMS intent;
+                            // every modern Android clock app handles it.
+                            val intent = Intent(android.provider.AlarmClock.ACTION_SHOW_ALARMS)
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            try {
+                                startActivity(intent)
+                                launched = true
+                            } catch (_: Exception) {}
+                        }
+                        result.success(launched)
+                    } catch (e: Exception) {
+                        android.util.Log.w("CASI/Clock", "openSystemClock failed", e)
+                        result.success(false)
+                    }
+                }
+                "openSystemTimers" -> {
+                    try {
+                        val intent = Intent(android.provider.AlarmClock.ACTION_SHOW_TIMERS)
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        startActivity(intent)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        // Older devices may not support ACTION_SHOW_TIMERS — fall
+                        // back to the alarms screen of the user's clock app.
+                        try {
+                            val intent = Intent(android.provider.AlarmClock.ACTION_SHOW_ALARMS)
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            startActivity(intent)
+                            result.success(true)
+                        } catch (_: Exception) {
+                            result.success(false)
+                        }
                     }
                 }
                 else -> result.notImplemented()
