@@ -13,11 +13,16 @@ class GlassStatusBar extends StatelessWidget {
   /// flag — see [ClockCapsule.dateSlotHeight].
   final bool showDate;
 
+  /// Wallpaper the liquid-glass clock pills refract. Pass
+  /// [WallpaperService.buildBackground()].
+  final Widget backgroundWidget;
+
   const GlassStatusBar({
     super.key,
     this.opacity = 1.0,
     this.showClock = true,
     this.showDate = true,
+    required this.backgroundWidget,
   });
 
   @override
@@ -30,6 +35,7 @@ class GlassStatusBar extends StatelessWidget {
         opacity: opacity,
         showClock: showClock,
         showDate: showDate,
+        backgroundWidget: backgroundWidget,
       ),
     );
   }

@@ -14,11 +14,8 @@ import '../widgets/glass_header.dart';
 import '../widgets/app_drawer.dart';
 import '../widgets/screen_dock.dart';
 import '../widgets/song_player.dart';
-import '../widgets/clock_capsule.dart';
 import '../widgets/weather_forecast_widget.dart';
 import '../services/weather_service.dart';
-import '../pills/dynamic_pill.dart';
-import '../pills/d_calendar_pill.dart';
 import '../utils/app_launcher.dart';
 import '../widgets/notify_pill.dart';
 import '../morning_brief/morning_brief_panel.dart';
@@ -50,9 +47,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   AppInfo? _draggingApp;
   bool _isPlayerVisible = false;
 
-  // --- Pill & Alarm State ---
-  bool _showPill = false;
-
   // --- Alarm list (each alarm carries its own isActive flag) ---
   List<AppAlarm> _alarms = [];
   bool _isAlarmRinging = false;
@@ -75,13 +69,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   // --- Timer list ---
   List<AppTimer> _appTimers = [];
   Timer? _countdownTimer;
-
-  // --- Calendar States ---
-  bool _isCalendarMode = false;
-  bool _isViewingEvents = false;
-  int? _selectedEventIndex;
-  DateTime _calendarFocusedDay = DateTime.now();
-  Map<DateTime, List<CalendarEvent>> _calendarEvents = {};
 
   // --- Morning Brief State ---
   bool _showMorningBrief = true;
@@ -157,7 +144,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     }
     
     _loadSettings();
-    _loadCalendarEvents();
     _loadAlarms();
     _loadTimers();
     _loadMorningBriefState();
@@ -397,7 +383,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     setState(() {
       _isAlarmRinging = false;
       _ringingAlarmLabel = null;
-      _showPill = false;
       final existing =
           _alarms.indexWhere((a) => a.label == snoozeTime);
       if (existing == -1) {
@@ -416,7 +401,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
       _ringingAlarmLabel = null;
       // Another ringing source (e.g. a timer) may still be active.
       _isAlarmRinging = _ringingTimerIndices.isNotEmpty;
-      _showPill = false;
     });
     if (!_isAlarmRinging) _stopAlarmSound();
   }
@@ -752,41 +736,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
       setState(() {
         _calendarBriefData = data;
       });
-      // Auto-sync device calendar events into launcher events for today
-      if (data.hasPermission && data.events.isNotEmpty) {
-        _syncDeviceEventsToLauncher(data.events);
-      }
-    }
-  }
-
-  /// Copies device calendar events into the launcher's local calendar storage
-  /// so they appear in the calendar pill alongside user-created events.
-  void _syncDeviceEventsToLauncher(List<DeviceCalendarEvent> deviceEvents) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final existing = _calendarEvents[today] ?? [];
-    final existingTitles = existing.map((e) => e.title).toSet();
-
-    bool changed = false;
-    for (final de in deviceEvents) {
-      // Skip if an event with the same title already exists (avoid duplicates)
-      if (existingTitles.contains(de.title)) continue;
-      final launcherEvent = CalendarEvent(
-        title: de.title,
-        description: de.allDay
-            ? 'All day'
-            : '${de.timeString}${de.location.isNotEmpty ? ' · ${de.location}' : ''}',
-      );
-      existing.add(launcherEvent);
-      existingTitles.add(de.title);
-      changed = true;
-    }
-
-    if (changed) {
-      setState(() {
-        _calendarEvents[today] = existing;
-      });
-      _saveCalendarEvents();
     }
   }
 
@@ -865,39 +814,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     }
   }
 
-  Future<void> _saveCalendarEvents() async {
-    final prefs = await SharedPreferences.getInstance();
-    final Map<String, dynamic> serialized = {};
-    _calendarEvents.forEach((date, events) {
-      serialized[date.toIso8601String()] = events.map((e) => e.toJson()).toList();
-    });
-    await prefs.setString('calendar_events', jsonEncode(serialized));
-  }
-
-  Future<void> _loadCalendarEvents() async {
-    final prefs = await SharedPreferences.getInstance();
-    final String? jsonStr = prefs.getString('calendar_events');
-    if (jsonStr == null) return;
-    try {
-      final Map<String, dynamic> decoded = jsonDecode(jsonStr);
-      final Map<DateTime, List<CalendarEvent>> loaded = {};
-      decoded.forEach((key, value) {
-        final date = DateTime.parse(key);
-        final normalized = DateTime(date.year, date.month, date.day);
-        final events = (value as List)
-            .map((e) => CalendarEvent.fromJson(e as Map<String, dynamic>))
-            .toList();
-        loaded[normalized] = events;
-      });
-      setState(() {
-        _calendarEvents = loaded;
-      });
-    } catch (e) {
-      debugPrint("Error loading calendar events: $e");
-    }
-  }
-
-
   void _addToHomeScreen(AppInfo app) {
     if (_homeApps.values.any((element) => element.packageName == app.packageName)) {
       return;
@@ -915,36 +831,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     }
     
     NotifyPill.show(context, 'Home Screen is full!', icon: Icons.block);
-  }
-
-  // --- Calendar Logic ---
-  void _toggleCalendar() {
-    setState(() {
-      _showPill = true;
-      _isCalendarMode = true;
-      _isViewingEvents = false;
-      _selectedEventIndex = null;
-    });
-  }
-
-  void _dismissPill() {
-    setState(() {
-      _showPill = false;
-      _isCalendarMode = false;
-      _isViewingEvents = false;
-      _selectedEventIndex = null;
-    });
-  }
-
-  // --- Glassmorphism Dialog to Add Events ---
-  void _addCalendarEvent(String title) {
-    setState(() {
-      final date = DateTime(_calendarFocusedDay.year, _calendarFocusedDay.month, _calendarFocusedDay.day);
-      final eventsList = _calendarEvents[date] ?? [];
-      eventsList.add(CalendarEvent(title: title));
-      _calendarEvents[date] = eventsList;
-    });
-    _saveCalendarEvents();
   }
 
   // ── Spatial Layout ───────────────────────────────────────────────────────────
@@ -1043,14 +929,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                   child: SizeTransition(
                       sizeFactor: animation, axisAlignment: -1.0, child: child),
                 ),
-                child: (_showMorningBrief && !_showPill && !_isAlarmRinging)
+                child: (_showMorningBrief && !_isAlarmRinging)
                     ? Padding(
                         key: ValueKey('morning_brief_$_morningBriefKey'),
                         padding: const EdgeInsets.only(top: 12),
                         child: MorningBriefPanel(
                           weatherData: _weatherBriefData,
                           calendarData: _calendarBriefData,
-                          launcherEvents: _calendarEvents,
                           onDismiss: _dismissMorningBrief,
                           temperatureUnit: _temperatureUnit,
                         ),
@@ -1085,6 +970,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
               opacity: 1.0,
               showClock: _showClock,
               showDate: _showDate,
+              backgroundWidget: _wallpaperService.buildBackground(),
             ),
           ),
         ),
@@ -1150,21 +1036,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                 bottom: MediaQuery.of(context).viewInsets.bottom),
             child: TapRegion(
               groupId: 'dock_region',
-              onTapOutside: (event) {
-                if (_isAlarmRinging) {
-                  return;
-                } else if (_showPill && _isCalendarMode && _isViewingEvents) {
-                  setState(() {
-                    _isViewingEvents = false;
-                    _selectedEventIndex = null;
-                  });
-                } else if (_showPill) {
-                  _dismissPill();
-                }
-              },
+              onTapOutside: null,
               child: ScreenDock(
                 isDragging: _isDragging,
-                showApps: !_showPill && !_isAlarmRinging,
+                showApps: !_isAlarmRinging,
                 onRemove: (app) {
                   setState(() {
                     _homeApps.removeWhere(
@@ -1202,54 +1077,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                 }),
                 draggingApp: _draggingApp,
                 emptyDockWidget: null,
-                activePill: _showPill
-                    ? DynamicPill(
-                        key: const ValueKey('main_dynamic_pill'),
-                        child: DCalendarPill(
-                          focusedDay: _calendarFocusedDay,
-                          isViewingEvents: _isViewingEvents,
-                          events: _calendarEvents,
-                          selectedEventIndex: _selectedEventIndex,
-                          onEventSelected: (index) => setState(() {
-                            _selectedEventIndex =
-                                (_selectedEventIndex == index) ? null : index;
-                          }),
-                          onDateSelected: (date) => setState(() {
-                            _calendarFocusedDay = date;
-                            _selectedEventIndex = null;
-                          }),
-                          onViewEvents: () =>
-                              setState(() => _isViewingEvents = true),
-                          onSaveEvent: _addCalendarEvent,
-                          onDeleteEvent: () {
-                            if (_selectedEventIndex != null) {
-                              setState(() {
-                                final date = DateTime(
-                                    _calendarFocusedDay.year,
-                                    _calendarFocusedDay.month,
-                                    _calendarFocusedDay.day);
-                                if (_calendarEvents[date] != null &&
-                                    _selectedEventIndex! <
-                                        _calendarEvents[date]!.length) {
-                                  _calendarEvents[date]!
-                                      .removeAt(_selectedEventIndex!);
-                                  _selectedEventIndex = null;
-                                }
-                              });
-                              _saveCalendarEvents();
-                            } else {
-                              NotifyPill.show(context,
-                                  'Select an event to delete',
-                                  icon: Icons.touch_app);
-                            }
-                          },
-                          onCloseEvents: () => setState(() {
-                            _isViewingEvents = false;
-                            _selectedEventIndex = null;
-                          }),
-                        ),
-                      )
-                    : null,
+                activePill: null,
               ),
             ),
           ),
@@ -1277,7 +1105,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
           GestureDetector(
             behavior: HitTestBehavior.translucent,
             onDoubleTap: () {
-              if (_drawerProgress.value > 0.05 || _showPill || _isAlarmRinging) {
+              if (_drawerProgress.value > 0.05 || _isAlarmRinging) {
                 return;
               }
               const MethodChannel('casi.launcher/apps').invokeMethod('lockScreen');
@@ -1320,16 +1148,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                 }
               }
             },
-            child: NotificationListener<CalendarTapNotification>(
-              onNotification: (notification) {
-                if (_showPill && _isCalendarMode) {
-                  _dismissPill();
-                } else {
-                  _toggleCalendar();
-                }
-                return true;
-              },
-              child: SafeArea(
+            child: SafeArea(
                   child: _isLoading
                       ? const Center(child: CircularProgressIndicator())
                       : Stack(
@@ -1364,6 +1183,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                             opacity: 1.0,
                                             showClock: _showClock,
                                             showDate: _showDate,
+                                            backgroundWidget: _wallpaperService.buildBackground(),
                                           ),
                                           const SizedBox(height: 4),
                                           // Pill row: Alarm > Weather > Timer (clipped to prevent transient overflow)
@@ -1384,14 +1204,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                                 ),
                                               );
                                             },
-                                            child: (_showMorningBrief && !_showPill && !_isAlarmRinging)
+                                            child: (_showMorningBrief && !_isAlarmRinging)
                                                 ? Padding(
                                                     key: ValueKey('morning_brief_$_morningBriefKey'),
                                                     padding: const EdgeInsets.only(top: 12),
                                                     child: MorningBriefPanel(
                                                       weatherData: _weatherBriefData,
                                                       calendarData: _calendarBriefData,
-                                                      launcherEvents: _calendarEvents,
                                                       onDismiss: _dismissMorningBrief,
                                                       temperatureUnit: _temperatureUnit,
                                                     ),
@@ -1433,18 +1252,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                         ),
                                         child: TapRegion(
                                         groupId: 'dock_region',
-                                        onTapOutside: (event) {
-                                          if (_isAlarmRinging) {
-                                            return;
-                                          } else if (_showPill && _isCalendarMode && _isViewingEvents) {
-                                            setState(() {
-                                              _isViewingEvents = false;
-                                              _selectedEventIndex = null;
-                                            });
-                                          } else if (_showPill) {
-                                            _dismissPill();
-                                          }
-                                        },
+                                        onTapOutside: null,
                                         child: Column(
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
@@ -1484,7 +1292,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                             ),
                                             ScreenDock(
                                               isDragging: _isDragging,
-                                              showApps: !_showPill && !_isAlarmRinging,
+                                              showApps: !_isAlarmRinging,
                                               onRemove: (app) {
                                                 setState(() {
                                                   _homeApps.removeWhere((key, value) => value.packageName == app.packageName);
@@ -1532,48 +1340,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                                       backgroundWidget: _wallpaperService.buildBackground(),
                                                     )
                                                   : null,
-                                              activePill: _showPill
-                                                  ? DynamicPill(
-                                                      key: const ValueKey('main_dynamic_pill'),
-                                                      child: DCalendarPill(
-                                                            focusedDay: _calendarFocusedDay,
-                                                            isViewingEvents: _isViewingEvents,
-                                                            events: _calendarEvents,
-                                                            selectedEventIndex: _selectedEventIndex,
-                                                            onEventSelected: (index) {
-                                                              setState(() {
-                                                                _selectedEventIndex = (_selectedEventIndex == index) ? null : index;
-                                                              });
-                                                            },
-                                                            onDateSelected: (date) {
-                                                              setState(() {
-                                                                _calendarFocusedDay = date;
-                                                                _selectedEventIndex = null;
-                                                              });
-                                                            },
-                                                            onViewEvents: () => setState(() => _isViewingEvents = true),
-                                                            onSaveEvent: _addCalendarEvent,
-                                                            onDeleteEvent: () {
-                                                              if (_selectedEventIndex != null) {
-                                                                setState(() {
-                                                                  final date = DateTime(_calendarFocusedDay.year, _calendarFocusedDay.month, _calendarFocusedDay.day);
-                                                                  if (_calendarEvents[date] != null && _selectedEventIndex! < _calendarEvents[date]!.length) {
-                                                                    _calendarEvents[date]!.removeAt(_selectedEventIndex!);
-                                                                    _selectedEventIndex = null;
-                                                                  }
-                                                                });
-                                                                _saveCalendarEvents();
-                                                              } else {
-                                                                NotifyPill.show(context, 'Select an event to delete', icon: Icons.touch_app);
-                                                              }
-                                                            },
-                                                            onCloseEvents: () => setState(() {
-                                                              _isViewingEvents = false;
-                                                              _selectedEventIndex = null;
-                                                            }),
-                                                      ),
-                                                    )
-                                                  : null,
+                                              activePill: null,
                                             ),
                                           ],
                                         ),
@@ -1623,7 +1390,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                       ),
               ),
             ),
-          ),
         ],
       ),
       ),

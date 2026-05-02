@@ -314,40 +314,20 @@ class _AppDrawerSheetState extends State<_AppDrawerSheet> {
                                   ),
                                   suffixIcon: Padding(
                                     padding: const EdgeInsets.only(right: 14.0),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Material(
-                                          color: Colors.transparent,
-                                          child: InkWell(
-                                            borderRadius: BorderRadius.circular(CASIGlass.cornerPill),
-                                            onTap: () {
-                                              AppLauncher.launchApp('com.google.ar.lens');
-                                            },
-                                            child: Icon(
-                                              Icons.center_focus_strong_outlined,
-                                              color: CASIColors.textSecondary,
-                                              size: CASISearchBarSpec.iconSize,
-                                            ),
-                                          ),
+                                    child: Material(
+                                      color: Colors.transparent,
+                                      child: InkWell(
+                                        borderRadius: BorderRadius.circular(CASIGlass.cornerPill),
+                                        onTap: widget.onOpenSettings,
+                                        onLongPress: () {
+                                          AppLauncher.launchApp('com.android.settings');
+                                        },
+                                        child: Icon(
+                                          Icons.settings_outlined,
+                                          color: CASIColors.textSecondary,
+                                          size: CASISearchBarSpec.iconSize,
                                         ),
-                                        const SizedBox(width: CASISpacing.sm),
-                                        Material(
-                                          color: Colors.transparent,
-                                          child: InkWell(
-                                            borderRadius: BorderRadius.circular(CASIGlass.cornerPill),
-                                            onTap: widget.onOpenSettings,
-                                            onLongPress: () {
-                                              AppLauncher.launchApp('com.android.settings');
-                                            },
-                                            child: Icon(
-                                              Icons.settings_outlined,
-                                              color: CASIColors.textSecondary,
-                                              size: CASISearchBarSpec.iconSize,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
+                                      ),
                                     ),
                                   ),
                                   filled: false,
