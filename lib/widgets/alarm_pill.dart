@@ -5,21 +5,29 @@ import 'package:casi/design_system.dart';
 /// Alarm schedule pill shown above the music player on the home screen.
 ///
 /// Gestures:
-/// - Long-press (idle): plays a grow/shrink press-pulse, then opens the
-///   alarm panel.
-/// - Tap (idle): nothing.
-/// - Tap (ringing): stops the alarm.
+/// - Tap (idle): plays a grow/shrink press-pulse, then opens the clock app
+///   via [onTap].
+/// - Tap (ringing): stops the alarm via [onStop].
+///
+/// In spatial mode pass [compact] = true so the pill shrinks to its text
+/// content instead of expanding to fill the row. This lets the drag wrapper
+/// in [_buildSpatialElement] handle long-press for repositioning without
+/// conflicting with an inner long-press handler.
 ///
 /// Ringing state heavily tints the liquid-glass surface red, adds a glow
 /// halo, and plays a repeating bell-shake until the user taps to stop.
-/// The lens still refracts the wallpaper through the red tint, which keeps
-/// the going-off treatment continuous with the rest of the new material
-/// instead of becoming a flat colored shape.
 class AlarmPill extends StatefulWidget {
   final String title;
   final bool isRinging;
-  final VoidCallback onLongPressOpen;
+
+  /// Called (after a short press-pulse animation) when the user taps the
+  /// pill in the idle state. Typically opens the device clock app.
+  final VoidCallback? onTap;
   final VoidCallback onStop;
+
+  /// When true the text column does not expand — the pill sizes itself to
+  /// its content so the spatial-mode layout can auto-size.
+  final bool compact;
 
   /// Wallpaper widget the lens refracts. Pass
   /// [WallpaperService.buildBackground].
@@ -29,9 +37,10 @@ class AlarmPill extends StatefulWidget {
     super.key,
     required this.title,
     required this.isRinging,
-    required this.onLongPressOpen,
+    this.onTap,
     required this.onStop,
     required this.backgroundWidget,
+    this.compact = false,
   });
 
   @override
@@ -94,10 +103,10 @@ class _AlarmPillState extends State<AlarmPill>
     super.dispose();
   }
 
-  void _onLongPress() {
+  void _onTap() {
     _pressController.forward(from: 0);
     Future.delayed(const Duration(milliseconds: 162), () {
-      if (mounted) widget.onLongPressOpen();
+      if (mounted) widget.onTap?.call();
     });
   }
 
@@ -109,7 +118,7 @@ class _AlarmPillState extends State<AlarmPill>
   Widget _buildIdle() {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onLongPress: _onLongPress,
+      onTap: _onTap,
       child: ScaleTransition(
         scale: _pressScale,
         child: LiquidGlassSurface.foresight(
@@ -191,7 +200,37 @@ class _AlarmPillState extends State<AlarmPill>
     required Color subtitleColor,
     FontWeight subtitleWeight = FontWeight.w400,
   }) {
+    final textColumn = Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          title,
+          style: TextStyle(
+            color: titleColor,
+            fontSize: 14,
+            fontWeight: titleWeight,
+            height: 1.15,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        const SizedBox(height: 2),
+        Text(
+          subtitle,
+          style: TextStyle(
+            color: subtitleColor,
+            fontSize: 12,
+            fontWeight: subtitleWeight,
+            height: 1.2,
+          ),
+        ),
+      ],
+    );
+
     return Row(
+      mainAxisSize: widget.compact ? MainAxisSize.min : MainAxisSize.max,
       children: [
         SizedBox(
           width: 42,
@@ -201,35 +240,7 @@ class _AlarmPillState extends State<AlarmPill>
           ),
         ),
         const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: TextStyle(
-                  color: titleColor,
-                  fontSize: 14,
-                  fontWeight: titleWeight,
-                  height: 1.15,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 2),
-              Text(
-                subtitle,
-                style: TextStyle(
-                  color: subtitleColor,
-                  fontSize: 12,
-                  fontWeight: subtitleWeight,
-                  height: 1.2,
-                ),
-              ),
-            ],
-          ),
-        ),
+        widget.compact ? textColumn : Expanded(child: textColumn),
       ],
     );
   }

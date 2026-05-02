@@ -1,3 +1,4 @@
+import 'dart:math' show min;
 import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import 'package:liquid_glass_easy/liquid_glass_easy.dart';
@@ -380,9 +381,9 @@ class CASILiquidGlass {
   /// (no frosted softening — the refraction alone carries the material).
   static const double edgeBlurSigma = 0.0;
 
-  /// Capture pixel ratio for [LiquidGlassView]. 0.8 gives the best
-  /// perf/detail trade-off for full-screen backgrounds.
-  static const double pixelRatio = 0.8;
+  /// Capture pixel ratio for [LiquidGlassView]. 1.0 captures at full device
+  /// resolution, eliminating the pixelation visible through the lens.
+  static const double pixelRatio = 1.0;
 
   /// Hairline border thickness applied on top of the lens — kept for
   /// continuity with [CASIGlass.borderWidth] so liquid-glass and frosted-
@@ -690,6 +691,15 @@ class _LiquidGlassSurfaceState extends State<LiquidGlassSurface> {
                 if (!w.isFinite || !h.isFinite || w <= 0 || h <= 0) {
                   return const SizedBox.shrink();
                 }
+                // Cap the distortion band so it never exceeds half the
+                // shorter dimension. On small pills (h≈70 px) the global
+                // 62 px value would span almost the entire surface, making
+                // the refraction sample outside the captured texture and
+                // producing a black bar at the top edge.
+                final double effectiveDistortionWidth = min(
+                  CASILiquidGlass.distortionWidth,
+                  min(w, h) / 2 - 4.0,
+                );
                 return LiquidGlassView(
                   pixelRatio: CASILiquidGlass.pixelRatio,
                   realTimeCapture: true,
@@ -705,7 +715,7 @@ class _LiquidGlassSurfaceState extends State<LiquidGlassSurface> {
                       magnification: CASILiquidGlass.magnification,
                       distortion: widget.distortionOverride ??
                           CASILiquidGlass.distortion,
-                      distortionWidth: CASILiquidGlass.distortionWidth,
+                      distortionWidth: effectiveDistortionWidth,
                       chromaticAberration:
                           CASILiquidGlass.chromaticAberration,
                       blur: LiquidGlassBlur(

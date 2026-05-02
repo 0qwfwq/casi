@@ -1815,11 +1815,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
       timerPillWidget = TimerPill(
         entries: deckEntries.map((e) => e.entry).toList(),
         anyRinging: _ringingTimerIndices.isNotEmpty,
-        onLongPressOpen: () => SystemClockService.instance.openClockApp(),
+        onTap: () => SystemClockService.instance.openClockApp(),
         onTogglePause: _onTimerDeckTogglePause,
         onStopSingle: _onTimerDeckStop,
         onStopAllRinging: _stopAllRingingTimers,
         backgroundWidget: _wallpaperService.buildBackground(),
+        compact: spatial,
       );
     }
 
@@ -1833,31 +1834,39 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
       alarmPillWidget = AlarmPill(
         title: nearestAlarm,
         isRinging: isThisRinging,
-        onLongPressOpen: () => SystemClockService.instance.openClockApp(),
+        onTap: () => SystemClockService.instance.openClockApp(),
         onStop: _stopAlarm,
         backgroundWidget: _wallpaperService.buildBackground(),
+        compact: spatial,
       );
     }
 
     Widget content;
     if (timerPillWidget != null && alarmPillWidget != null) {
-      content = Row(
-        children: [
-          Expanded(child: timerPillWidget),
-          const SizedBox(width: 12),
-          Expanded(child: alarmPillWidget),
-        ],
-      );
+      content = spatial
+          // Compact pills: Row sizes to content, no Expanded needed.
+          ? Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                timerPillWidget,
+                const SizedBox(width: 12),
+                alarmPillWidget,
+              ],
+            )
+          : Row(
+              children: [
+                Expanded(child: timerPillWidget),
+                const SizedBox(width: 12),
+                Expanded(child: alarmPillWidget),
+              ],
+            );
     } else {
       content = timerPillWidget ?? alarmPillWidget ?? const SizedBox.shrink();
     }
 
     if (spatial) {
       if (!show) return const SizedBox.shrink();
-      return SizedBox(
-        width: MediaQuery.of(context).size.width - 80,
-        child: content,
-      );
+      return content;
     }
 
     return AnimatedSize(

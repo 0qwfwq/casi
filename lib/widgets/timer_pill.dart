@@ -28,29 +28,36 @@ class TimerDeckEntry {
 /// appears on the front card when more than one timer is active.
 ///
 /// Gestures:
-/// - Long-press: plays a grow/shrink press-pulse, then opens the widgets
-///   screen.
+/// - Tap: opens the clock app via [onTap].
 /// - Swipe up: advance the deck forward (next higher time).
 /// - Swipe down: advance the deck backward (next lower time).
 /// - Swipe right-to-left on the front card: pause/resume that timer.
 /// - Swipe left-to-right on the front card: stop+reset that timer.
 /// - Tap (when any timer is ringing): stops ALL currently-ringing timers.
 ///
+/// In spatial mode pass [compact] = true so the pill shrinks to its text
+/// content instead of expanding to fill the row. Long-press is left free
+/// for the spatial drag wrapper.
+///
 /// Liquid-glass treatment:
 ///   The front card is a [LiquidGlassSurface]. While the user swipes
 ///   horizontally, the lens *tint* is shifted toward the action color
 ///   (red for stop, pulse-blue for pause/resume) instead of painting an
-///   opaque overlay on top. The wallpaper keeps refracting through the
-///   tinted glass the whole time, so the swipe colors feel native to the
-///   liquid material rather than fighting it. The ringing state uses the
-///   same trick with a strong red tint plus a glow halo behind the lens.
+///   opaque overlay on top.
 class TimerPill extends StatefulWidget {
   final List<TimerDeckEntry> entries;
   final bool anyRinging;
-  final VoidCallback onLongPressOpen;
+
+  /// Called (after a short press-pulse animation) when the user taps the
+  /// pill in the idle state. Typically opens the device clock app.
+  final VoidCallback? onTap;
   final void Function(int timerIndex) onTogglePause;
   final void Function(int timerIndex) onStopSingle;
   final VoidCallback onStopAllRinging;
+
+  /// When true the text column does not expand — the pill sizes itself to
+  /// its content so the spatial-mode layout can auto-size.
+  final bool compact;
 
   /// Wallpaper widget the lens refracts. Pass
   /// [WallpaperService.buildBackground].
@@ -60,11 +67,12 @@ class TimerPill extends StatefulWidget {
     super.key,
     required this.entries,
     required this.anyRinging,
-    required this.onLongPressOpen,
+    this.onTap,
     required this.onTogglePause,
     required this.onStopSingle,
     required this.onStopAllRinging,
     required this.backgroundWidget,
+    this.compact = false,
   });
 
   @override
@@ -247,10 +255,10 @@ class _TimerPillState extends State<TimerPill> with TickerProviderStateMixin {
     setState(() => _vertDragDy = 0);
   }
 
-  void _onLongPress() {
+  void _onTap() {
     _pressController.forward(from: 0);
     Future.delayed(const Duration(milliseconds: 162), () {
-      if (mounted) widget.onLongPressOpen();
+      if (mounted) widget.onTap?.call();
     });
   }
 
@@ -317,6 +325,26 @@ class _TimerPillState extends State<TimerPill> with TickerProviderStateMixin {
     final double absProgress = progress.abs().clamp(0.0, 1.0);
     final bool swipingRight = progress > 0;
 
+    final liquidSurface = LiquidGlassSurface.foresight(
+      backgroundWidget: widget.backgroundWidget,
+      cornerRadius: _cornerRadius,
+      height: _frontHeight,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      tintOverride: _swipeTint(absProgress, swipingRight),
+      child: Opacity(
+        opacity: (1.0 - absProgress).clamp(0.0, 1.0),
+        child: _buildIdleContent(entry, frontIndex, total),
+      ),
+    );
+
+    final swipeOverlay = absProgress > 0.02
+        ? Positioned.fill(
+            child: IgnorePointer(
+              child: _buildSwipeOverlay(entry, swipingRight, absProgress),
+            ),
+          )
+        : null;
+
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onHorizontalDragStart: _onHorizDragStart,
@@ -325,43 +353,27 @@ class _TimerPillState extends State<TimerPill> with TickerProviderStateMixin {
       onVerticalDragUpdate: _onVertDragUpdate,
       onVerticalDragEnd: _onVertDragEnd,
       onVerticalDragCancel: _onVertDragCancel,
-      onLongPress: _onLongPress,
+      onTap: _onTap,
       child: ScaleTransition(
         scale: _pressScale,
         child: SizedBox(
           height: _frontHeight,
-          child: Stack(
-            children: [
-              // The lens itself carries the swipe color via tintOverride.
-              // We don't paint a separate colored overlay on top — that
-              // would hide the refraction. As the swipe progresses, the
-              // idle content (icon, time, "Timer"/"Paused" label) fades
-              // out so it doesn't clash with the action label/icon that
-              // slides in from the side.
-              Positioned.fill(
-                child: LiquidGlassSurface.foresight(
-                  backgroundWidget: widget.backgroundWidget,
-                  cornerRadius: _cornerRadius,
-                  height: _frontHeight,
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 8),
-                  tintOverride: _swipeTint(absProgress, swipingRight),
-                  child: Opacity(
-                    opacity: (1.0 - absProgress).clamp(0.0, 1.0),
-                    child:
-                        _buildIdleContent(entry, frontIndex, total),
-                  ),
+          child: widget.compact
+              // Compact: LiquidGlassSurface is a non-positioned Stack child
+              // so its content drives the Stack's width.
+              ? Stack(
+                  children: [
+                    liquidSurface,
+                    ?swipeOverlay,
+                  ],
+                )
+              // Normal: fill the parent-constrained width via Positioned.fill.
+              : Stack(
+                  children: [
+                    Positioned.fill(child: liquidSurface),
+                    ?swipeOverlay,
+                  ],
                 ),
-              ),
-              if (absProgress > 0.02)
-                Positioned.fill(
-                  child: IgnorePointer(
-                    child:
-                        _buildSwipeOverlay(entry, swipingRight, absProgress),
-                  ),
-                ),
-            ],
-          ),
         ),
       ),
     );
@@ -371,7 +383,56 @@ class _TimerPillState extends State<TimerPill> with TickerProviderStateMixin {
       TimerDeckEntry entry, int frontIndex, int total) {
     final String? indexLabel =
         total > 1 ? '${frontIndex + 1}/$total' : null;
+
+    final textColumn = Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              entry.timeText,
+              style: const TextStyle(
+                color: CASIColors.textPrimary,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                height: 1.15,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            if (indexLabel != null) ...[
+              const SizedBox(width: 8),
+              Text(
+                indexLabel,
+                style: const TextStyle(
+                  color: CASIColors.textSecondary,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 2),
+        Text(
+          entry.isRunning ? 'Timer' : 'Paused',
+          style: const TextStyle(
+            color: CASIColors.textSecondary,
+            fontSize: 12,
+            fontWeight: FontWeight.w400,
+            height: 1.2,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
+    );
+
     return Row(
+      mainAxisSize: widget.compact ? MainAxisSize.min : MainAxisSize.max,
       children: [
         SizedBox(
           width: 42,
@@ -385,54 +446,7 @@ class _TimerPillState extends State<TimerPill> with TickerProviderStateMixin {
           ),
         ),
         const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      entry.timeText,
-                      style: const TextStyle(
-                        color: CASIColors.textPrimary,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        height: 1.15,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  if (indexLabel != null) ...[
-                    const SizedBox(width: 8),
-                    Text(
-                      indexLabel,
-                      style: const TextStyle(
-                        color: CASIColors.textSecondary,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-              const SizedBox(height: 2),
-              Text(
-                entry.isRunning ? 'Timer' : 'Paused',
-                style: const TextStyle(
-                  color: CASIColors.textSecondary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w400,
-                  height: 1.2,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
-        ),
+        widget.compact ? textColumn : Expanded(child: textColumn),
       ],
     );
   }
