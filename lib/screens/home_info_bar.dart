@@ -118,6 +118,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   final WallpaperService _wallpaperService = WallpaperService();
   bool _immersiveMode = false;
 
+  // --- Spatial layout mode ---
+  bool _spatialMode = false;
+  final Map<String, Offset> _spatialPositions = {};
+  String? _activeDragKey;
+  Offset _dragStartElementPos = Offset.zero;
+
   // Clock + date visibility (Settings → Clock). Date slot height is
   // always reserved by [ClockCapsule] — only the glyph rendering toggles
   // — so widgets below the capsule never drift up into the date band.
@@ -629,8 +635,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
       _temperatureUnit = prefs.getString('temperature_unit') ?? 'C';
       _showClock = prefs.getBool('show_clock') ?? true;
       _showDate = prefs.getBool('show_date') ?? true;
+      _spatialMode = prefs.getBool('spatial_mode') ?? false;
     });
     _applyImmersiveMode();
+    if (_spatialMode) await _loadSpatialPositions();
     await _wallpaperService.initialize();
     // Foresight state (including the long-press app) and the Morning
     // Brief dismiss flag may have been changed from the settings page —
@@ -939,6 +947,317 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     _saveCalendarEvents();
   }
 
+  // ── Spatial Layout ───────────────────────────────────────────────────────────
+
+  Future<void> _loadSpatialPositions() async {
+    final prefs = await SharedPreferences.getInstance();
+    final Map<String, Offset> loaded = {};
+    for (final key in ['clock', 'weather', 'schedule', 'foresight']) {
+      final x = prefs.getDouble('spatial_${key}_x');
+      final y = prefs.getDouble('spatial_${key}_y');
+      if (x != null && y != null) loaded[key] = Offset(x, y);
+    }
+    if (mounted) {
+      setState(() {
+        _spatialPositions.clear();
+        _spatialPositions.addAll(loaded);
+      });
+    }
+  }
+
+  Future<void> _saveSpatialPositions() async {
+    final prefs = await SharedPreferences.getInstance();
+    for (final e in _spatialPositions.entries) {
+      await prefs.setDouble('spatial_${e.key}_x', e.value.dx);
+      await prefs.setDouble('spatial_${e.key}_y', e.value.dy);
+    }
+  }
+
+  Offset _defaultSpatialPos(String key, Size screen) {
+    // Clock height = dateSlot(36) + clockFraction(0.17) * screenH + topPad(8)
+    final double clockH = 36.0 + screen.height * 0.17 + 8.0;
+    switch (key) {
+      case 'clock':    return const Offset(0, 0);
+      case 'weather':  return Offset(40, clockH + 4);
+      case 'schedule': return Offset(40, clockH + 260);
+      case 'foresight': return Offset(40, screen.height - 190);
+      default: return Offset.zero;
+    }
+  }
+
+  Widget _buildSpatialElement(String key, Size screen, Widget child) {
+    final Offset pos = _spatialPositions[key] ?? _defaultSpatialPos(key, screen);
+    final bool isDraggingThis = _activeDragKey == key;
+    return Positioned(
+      left: pos.dx,
+      top: pos.dy,
+      child: GestureDetector(
+        onLongPressStart: (_) {
+          HapticFeedback.mediumImpact();
+          setState(() {
+            _activeDragKey = key;
+            _dragStartElementPos =
+                _spatialPositions[key] ?? _defaultSpatialPos(key, screen);
+          });
+        },
+        onLongPressMoveUpdate: (details) {
+          if (_activeDragKey == key) {
+            setState(() => _spatialPositions[key] =
+                _dragStartElementPos + details.offsetFromOrigin);
+          }
+        },
+        onLongPressEnd: (_) {
+          if (_activeDragKey == key) {
+            setState(() => _activeDragKey = null);
+            _saveSpatialPositions();
+          }
+        },
+        child: AnimatedScale(
+          scale: isDraggingThis ? 1.04 : 1.0,
+          duration: CASIMotion.fast,
+          child: child,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSpatialHomeStack() {
+    final Size screen = MediaQuery.of(context).size;
+    return Stack(
+      children: [
+        const SizedBox.expand(),
+
+        // Morning Brief + Music Player — non-draggable, pinned to top
+        Positioned(
+          top: 0, left: 0, right: 0,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 400),
+                reverseDuration: const Duration(milliseconds: 350),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                transitionBuilder: (child, animation) => FadeTransition(
+                  opacity: animation,
+                  child: SizeTransition(
+                      sizeFactor: animation, axisAlignment: -1.0, child: child),
+                ),
+                child: (_showMorningBrief && !_showPill && !_isAlarmRinging)
+                    ? Padding(
+                        key: ValueKey('morning_brief_$_morningBriefKey'),
+                        padding: const EdgeInsets.only(top: 12),
+                        child: MorningBriefPanel(
+                          weatherData: _weatherBriefData,
+                          calendarData: _calendarBriefData,
+                          launcherEvents: _calendarEvents,
+                          onDismiss: _dismissMorningBrief,
+                          temperatureUnit: _temperatureUnit,
+                        ),
+                      )
+                    : const SizedBox.shrink(key: ValueKey('no_brief')),
+              ),
+              Offstage(
+                offstage: !_isPlayerVisible || _isAlarmRinging,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: SongPlayer(
+                    backgroundWidget: _wallpaperService.buildBackground(),
+                    onVisibilityChanged: (visible) {
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted && _isPlayerVisible != visible) {
+                          setState(() => _isPlayerVisible = visible);
+                        }
+                      });
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        // Clock / Date — draggable
+        _buildSpatialElement('clock', screen,
+          SizedBox(
+            width: screen.width,
+            child: GlassStatusBar(
+              opacity: 1.0,
+              showClock: _showClock,
+              showDate: _showDate,
+            ),
+          ),
+        ),
+
+        // Weather widget — draggable, only when active
+        if (_weatherWidgetActive)
+          _buildSpatialElement('weather', screen,
+            ValueListenableBuilder<WeatherSnapshot>(
+              valueListenable: WeatherService.instance.snapshot,
+              builder: (ctx, snap, _) => LiquidGlassSurface.modal(
+                backgroundWidget: _wallpaperService.buildBackground(),
+                cornerRadius: CASILiquidGlass.cornerSheet,
+                width: screen.width - 80,
+                child: WeatherForecastWidget(
+                  forecastData: snap.daily,
+                  hourlyData: snap.hourly,
+                  currentTemp: snap.tempLabel,
+                  currentDescription: snap.description,
+                  currentIcon: snap.icon,
+                  currentIconColor: snap.iconColor,
+                  feelsLike: snap.feelsLike,
+                  wind: snap.wind,
+                  precipitation: snap.precipitation,
+                  humidity: snap.humidity,
+                  uvIndex: snap.uvIndex,
+                  sunrise: snap.sunrise,
+                  visibility: snap.visibility,
+                  location: snap.location,
+                  lastUpdated: snap.lastUpdated,
+                  isRefreshing: snap.isRefreshing,
+                  onRefresh: () => WeatherService.instance.forceRefresh(),
+                ),
+              ),
+            ),
+          ),
+
+        // Timer + Alarm pills — draggable
+        _buildSpatialElement('schedule', screen,
+          _buildScheduleStatusRow(spatial: true),
+        ),
+
+        // Foresight dock — draggable
+        if (_foresightPredictions.isNotEmpty &&
+            _showForesight &&
+            _homeApps.isNotEmpty &&
+            !_isAlarmRinging &&
+            !_isDragging)
+          _buildSpatialElement('foresight', screen,
+            ForesightPill(
+              predictions: _foresightPredictions,
+              onAppTap: _onForesightAppTap,
+              maxForesight: 6,
+              onLongPress: null, // long-press starts drag in spatial mode
+              backgroundWidget: _wallpaperService.buildBackground(),
+            ),
+          ),
+
+        // Dock — fixed, never draggable per spec
+        Positioned(
+          bottom: 0, left: 0, right: 0,
+          child: Padding(
+            padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom),
+            child: TapRegion(
+              groupId: 'dock_region',
+              onTapOutside: (event) {
+                if (_isAlarmRinging) {
+                  return;
+                } else if (_showPill && _isCalendarMode && _isViewingEvents) {
+                  setState(() {
+                    _isViewingEvents = false;
+                    _selectedEventIndex = null;
+                  });
+                } else if (_showPill) {
+                  _dismissPill();
+                }
+              },
+              child: ScreenDock(
+                isDragging: _isDragging,
+                showApps: !_showPill && !_isAlarmRinging,
+                onRemove: (app) {
+                  setState(() {
+                    _homeApps.removeWhere(
+                        (k, v) => v.packageName == app.packageName);
+                    _isDragging = false;
+                    _draggingApp = null;
+                  });
+                  _saveLayout();
+                },
+                onUninstall: (app) {
+                  setState(() {
+                    _isDragging = false;
+                    _draggingApp = null;
+                  });
+                  ForesightService.instance.purgeApp(app.packageName);
+                  try {
+                    InstalledApps.uninstallApp(app.packageName);
+                  } catch (e) {
+                    debugPrint('Uninstall error: $e');
+                  }
+                },
+                onCancel: () => setState(
+                    () { _isDragging = false; _draggingApp = null; }),
+                homeApps: _homeApps,
+                maxHomeApps: _maxHomeApps,
+                onAppDropped: (index, app) => _onAppDropped(index, app),
+                onAppTap: (app) {
+                  ForesightService.instance
+                      .recordLaunch(app.packageName, appName: app.name);
+                  AppLauncher.launchApp(app.packageName);
+                },
+                onDragStarted: (app) => setState(() {
+                  _isDragging = true;
+                  _draggingApp = app;
+                }),
+                draggingApp: _draggingApp,
+                emptyDockWidget: null,
+                activePill: _showPill
+                    ? DynamicPill(
+                        key: const ValueKey('main_dynamic_pill'),
+                        child: DCalendarPill(
+                          focusedDay: _calendarFocusedDay,
+                          isViewingEvents: _isViewingEvents,
+                          events: _calendarEvents,
+                          selectedEventIndex: _selectedEventIndex,
+                          onEventSelected: (index) => setState(() {
+                            _selectedEventIndex =
+                                (_selectedEventIndex == index) ? null : index;
+                          }),
+                          onDateSelected: (date) => setState(() {
+                            _calendarFocusedDay = date;
+                            _selectedEventIndex = null;
+                          }),
+                          onViewEvents: () =>
+                              setState(() => _isViewingEvents = true),
+                          onSaveEvent: _addCalendarEvent,
+                          onDeleteEvent: () {
+                            if (_selectedEventIndex != null) {
+                              setState(() {
+                                final date = DateTime(
+                                    _calendarFocusedDay.year,
+                                    _calendarFocusedDay.month,
+                                    _calendarFocusedDay.day);
+                                if (_calendarEvents[date] != null &&
+                                    _selectedEventIndex! <
+                                        _calendarEvents[date]!.length) {
+                                  _calendarEvents[date]!
+                                      .removeAt(_selectedEventIndex!);
+                                  _selectedEventIndex = null;
+                                }
+                              });
+                              _saveCalendarEvents();
+                            } else {
+                              NotifyPill.show(context,
+                                  'Select an event to delete',
+                                  icon: Icons.touch_app);
+                            }
+                          },
+                          onCloseEvents: () => setState(() {
+                            _isViewingEvents = false;
+                            _selectedEventIndex = null;
+                          }),
+                        ),
+                      )
+                    : null,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -1028,7 +1347,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
                                   ignoring: progress > 0.05,
                                   child: Opacity(
                                     opacity: homeOpacity,
-                                    child: Stack(
+                                    child: _spatialMode
+                                        ? _buildSpatialHomeStack()
+                                        : Stack(
                                   children: [
                                     const SizedBox.expand(),
                                     // TOP: Clock + Weather Pill + Brief + Music
@@ -1441,7 +1762,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   // System timers carry a negative `timerIndex` sentinel so the pill's
   // tap/swipe callbacks can route them to the clock app instead of
   // mutating CASI state.
-  Widget _buildScheduleStatusRow() {
+  Widget _buildScheduleStatusRow({bool spatial = false}) {
     final String? casiNearestAlarm =
         _ringingAlarmLabel ?? _nearestAlarmLabel();
     final String? systemAlarmLabel = _systemAlarm?.formattedLabel();
@@ -1529,6 +1850,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
       );
     } else {
       content = timerPillWidget ?? alarmPillWidget ?? const SizedBox.shrink();
+    }
+
+    if (spatial) {
+      if (!show) return const SizedBox.shrink();
+      return SizedBox(
+        width: MediaQuery.of(context).size.width - 80,
+        child: content,
+      );
     }
 
     return AnimatedSize(

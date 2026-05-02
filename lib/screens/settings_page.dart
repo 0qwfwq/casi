@@ -30,6 +30,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _showClock = true;
   bool _showDate = true;
   bool _weatherWidgetActive = false;
+  bool _spatialMode = false;
   final WallpaperService _wallpaperService = WallpaperService();
   final TextEditingController _nameController = TextEditingController();
 
@@ -62,6 +63,7 @@ class _SettingsPageState extends State<SettingsPage> {
       _showClock = prefs.getBool('show_clock') ?? true;
       _showDate = prefs.getBool('show_date') ?? true;
       _weatherWidgetActive = prefs.getBool('weather_widget_active') ?? false;
+      _spatialMode = prefs.getBool('spatial_mode') ?? false;
     });
     // Resolve a human-readable label for the long-press target.
     if (longPressPkg.isNotEmpty) {
@@ -139,6 +141,28 @@ class _SettingsPageState extends State<SettingsPage> {
       _foresightLongPressPackage = '';
       _foresightLongPressLabel = 'Default Browser';
     });
+  }
+
+  Future<void> _toggleSpatialMode(bool value) async {
+    setState(() => _spatialMode = value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('spatial_mode', value);
+  }
+
+  Future<void> _resetSpatialLayout() async {
+    final prefs = await SharedPreferences.getInstance();
+    for (final key in ['clock', 'weather', 'schedule', 'foresight']) {
+      await prefs.remove('spatial_${key}_x');
+      await prefs.remove('spatial_${key}_y');
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Layout reset to default positions'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   Future<void> _saveName(String name) async {
@@ -339,6 +363,59 @@ class _SettingsPageState extends State<SettingsPage> {
                     ],
                   ),
                 ),
+
+                // ─── Layout ────────────────────────────────────────
+                _sectionDivider(),
+                _sectionHeader('Layout'),
+                ListTile(
+                  title: const Text('Layout Mode',
+                      style: TextStyle(color: Colors.white)),
+                  subtitle: Text(
+                    _spatialMode
+                        ? 'Spatial — long-press any element to drag it'
+                        : 'Static — elements stay in fixed positions',
+                    style: const TextStyle(
+                        color: CASIColors.textSecondary, fontSize: 12),
+                  ),
+                  leading: const Icon(Icons.dashboard_customize_outlined,
+                      color: Colors.white),
+                  trailing: ToggleButtons(
+                    isSelected: [!_spatialMode, _spatialMode],
+                    onPressed: (index) => _toggleSpatialMode(index == 1),
+                    borderRadius: BorderRadius.circular(8),
+                    selectedColor: Colors.white,
+                    fillColor:
+                        CASIColors.accentPrimary.withValues(alpha: 0.3),
+                    color: CASIColors.textSecondary,
+                    borderColor: CASIColors.textTertiary,
+                    selectedBorderColor: CASIColors.accentPrimary,
+                    constraints: const BoxConstraints(
+                        minWidth: 60, minHeight: 32),
+                    children: const [
+                      Text('Static',
+                          style: TextStyle(
+                              fontSize: 13, fontWeight: FontWeight.w600)),
+                      Text('Spatial',
+                          style: TextStyle(
+                              fontSize: 13, fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ),
+                if (_spatialMode)
+                  ListTile(
+                    leading: const Icon(Icons.restart_alt,
+                        color: Colors.white),
+                    title: const Text('Reset Layout',
+                        style: TextStyle(color: Colors.white)),
+                    subtitle: const Text(
+                      'Return all elements to their default positions',
+                      style: TextStyle(
+                          color: CASIColors.textSecondary, fontSize: 12),
+                    ),
+                    trailing: const Icon(Icons.refresh,
+                        color: Colors.white, size: 20),
+                    onTap: _resetSpatialLayout,
+                  ),
 
                 // ─── Foresight ─────────────────────────────────────
                 _sectionDivider(),
