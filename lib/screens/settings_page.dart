@@ -29,6 +29,7 @@ class _SettingsPageState extends State<SettingsPage> {
   String _foresightLongPressLabel = 'Default Browser';
   bool _showClock = true;
   bool _showDate = true;
+  bool _weatherWidgetActive = false;
   final WallpaperService _wallpaperService = WallpaperService();
   final TextEditingController _nameController = TextEditingController();
 
@@ -60,6 +61,7 @@ class _SettingsPageState extends State<SettingsPage> {
       _foresightLongPressPackage = longPressPkg;
       _showClock = prefs.getBool('show_clock') ?? true;
       _showDate = prefs.getBool('show_date') ?? true;
+      _weatherWidgetActive = prefs.getBool('weather_widget_active') ?? false;
     });
     // Resolve a human-readable label for the long-press target.
     if (longPressPkg.isNotEmpty) {
@@ -95,6 +97,12 @@ class _SettingsPageState extends State<SettingsPage> {
     setState(() => _showDate = value);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('show_date', value);
+  }
+
+  Future<void> _toggleWeatherWidget(bool value) async {
+    setState(() => _weatherWidgetActive = value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('weather_widget_active', value);
   }
 
   /// "Show Brief again" — clears today's dismiss flag so the morning
@@ -257,35 +265,6 @@ class _SettingsPageState extends State<SettingsPage> {
                   onChanged: _toggleImmersiveMode,
                   activeThumbColor: CASIColors.accentPrimary,
                 ),
-                ListTile(
-                  title: const Text("Temperature Unit", style: TextStyle(color: Colors.white)),
-                  subtitle: Text(
-                    _temperatureUnit == 'C' ? 'Celsius (°C)' : 'Fahrenheit (°F)',
-                    style: const TextStyle(color: CASIColors.textSecondary, fontSize: 12),
-                  ),
-                  leading: const Icon(Icons.thermostat, color: Colors.white),
-                  trailing: ToggleButtons(
-                    isSelected: [_temperatureUnit == 'C', _temperatureUnit == 'F'],
-                    onPressed: (index) async {
-                      final unit = index == 0 ? 'C' : 'F';
-                      setState(() => _temperatureUnit = unit);
-                      final prefs = await SharedPreferences.getInstance();
-                      await prefs.setString('temperature_unit', unit);
-                    },
-                    borderRadius: BorderRadius.circular(8),
-                    selectedColor: Colors.white,
-                    fillColor: CASIColors.accentPrimary.withValues(alpha: 0.3),
-                    color: CASIColors.textSecondary,
-                    borderColor: CASIColors.textTertiary,
-                    selectedBorderColor: CASIColors.accentPrimary,
-                    constraints: const BoxConstraints(minWidth: 44, minHeight: 32),
-                    children: const [
-                      Text('°C', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                      Text('°F', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                    ],
-                  ),
-                ),
-
                 // ─── Clock ─────────────────────────────────────────
                 _sectionDivider(),
                 _sectionHeader('Clock'),
@@ -314,6 +293,51 @@ class _SettingsPageState extends State<SettingsPage> {
                   value: _showDate,
                   onChanged: _toggleShowDate,
                   activeThumbColor: CASIColors.accentPrimary,
+                ),
+
+                // ─── Weather ───────────────────────────────────────
+                _sectionDivider(),
+                _sectionHeader('Weather'),
+                SwitchListTile(
+                  title: const Text("Show Weather",
+                      style: TextStyle(color: Colors.white)),
+                  subtitle: const Text(
+                      "Show the weather forecast widget on the home screen",
+                      style: TextStyle(
+                          color: CASIColors.textSecondary, fontSize: 12)),
+                  secondary: const Icon(Icons.cloud_outlined,
+                      color: Colors.white),
+                  value: _weatherWidgetActive,
+                  onChanged: _toggleWeatherWidget,
+                  activeThumbColor: CASIColors.accentPrimary,
+                ),
+                ListTile(
+                  title: const Text("Temperature Unit", style: TextStyle(color: Colors.white)),
+                  subtitle: Text(
+                    _temperatureUnit == 'C' ? 'Celsius (°C)' : 'Fahrenheit (°F)',
+                    style: const TextStyle(color: CASIColors.textSecondary, fontSize: 12),
+                  ),
+                  leading: const Icon(Icons.thermostat, color: Colors.white),
+                  trailing: ToggleButtons(
+                    isSelected: [_temperatureUnit == 'C', _temperatureUnit == 'F'],
+                    onPressed: (index) async {
+                      final unit = index == 0 ? 'C' : 'F';
+                      setState(() => _temperatureUnit = unit);
+                      final prefs = await SharedPreferences.getInstance();
+                      await prefs.setString('temperature_unit', unit);
+                    },
+                    borderRadius: BorderRadius.circular(8),
+                    selectedColor: Colors.white,
+                    fillColor: CASIColors.accentPrimary.withValues(alpha: 0.3),
+                    color: CASIColors.textSecondary,
+                    borderColor: CASIColors.textTertiary,
+                    selectedBorderColor: CASIColors.accentPrimary,
+                    constraints: const BoxConstraints(minWidth: 44, minHeight: 32),
+                    children: const [
+                      Text('°C', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                      Text('°F', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                    ],
+                  ),
                 ),
 
                 // ─── Foresight ─────────────────────────────────────

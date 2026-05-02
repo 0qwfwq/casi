@@ -351,44 +351,37 @@ class GlassPalette {
 // look of every liquid-glass surface project-wide.
 //
 // Token spec:
-//   distortion             — 0.08  (subtle bend; dock/cards)
-//   distortionWidth        — 40    (how far in from the edge the bend
-//                                    decays; ~edge-thickness in px)
-//   magnification          — 1.00  (no zoom — the glass is flat, not a lens)
+//   distortion             — 0.47  (strong shape-refraction bend along edges)
+//   distortionWidth        — 62    (edge band width matching the package demo)
+//   magnification          — 1.00  (no zoom — flat glass, wallpaper behind)
 //   chromaticAberration    — 0.003 (whisper of color fringing on the edge)
-//   edgeBlurSigma          — 1.0   (light frosted softening on top of
-//                                    refraction; 0 = perfectly clear glass)
-//   pixelRatio             — 0.8   (capture resolution for the background
-//                                    snapshot — perf vs. detail trade-off)
+//   edgeBlurSigma          — 0.0   (perfectly clear glass — no frosted blur)
+//   pixelRatio             — 0.8   (capture resolution; perf vs. detail trade-off)
+//   realTimeCapture        — true  (live wallpaper / video refracts in real time)
 class CASILiquidGlass {
   CASILiquidGlass._();
 
   /// How much the lens warps the captured background near its edges.
-  /// 0 = no bend (looks like clear glass), 0.15+ reads as a fish-eye.
-  static const double distortion = 0.08;
+  /// 0 = no bend (clear glass), 0.47 = strong physically-accurate refraction.
+  static const double distortion = 0.47;
 
-  /// Width (in px) of the edge band that carries the distortion. Smaller
-  /// values give a sharp bevel; larger values fade refraction across the
-  /// whole face of the glass.
-  static const double distortionWidth = 40;
+  /// Width (in px) of the edge band that carries the distortion, matching
+  /// the package README demo value (62 px).
+  static const double distortionWidth = 62;
 
-  /// Optical zoom applied through the lens. CASI glass is intentionally
-  /// flat — the wallpaper should feel like it's right *behind* the card,
-  /// not magnified.
+  /// Optical zoom through the lens. Glass is intentionally flat — the
+  /// wallpaper should feel right *behind* the card, not magnified.
   static const double magnification = 1.0;
 
-  /// Color-fringing intensity at the lens edge. The package default is
-  /// 0.003; we keep that — anything higher reads as a chromatic shift,
-  /// not a glass edge.
+  /// Color-fringing intensity at the lens edge. Package default is 0.003.
   static const double chromaticAberration = 0.003;
 
-  /// Sigma for the soft frosted blur on top of refraction. Set to 0 for
-  /// perfectly clear glass.
-  static const double edgeBlurSigma = 1.0;
+  /// Sigma for edge blur on top of refraction. 0 = perfectly clear glass
+  /// (no frosted softening — the refraction alone carries the material).
+  static const double edgeBlurSigma = 0.0;
 
-  /// Capture pixel ratio for [LiquidGlassView]. 0.8 is the recommended
-  /// general-use value (see package docs); drop to 0.5–0.7 if a surface
-  /// is performance-critical.
+  /// Capture pixel ratio for [LiquidGlassView]. 0.8 gives the best
+  /// perf/detail trade-off for full-screen backgrounds.
   static const double pixelRatio = 0.8;
 
   /// Hairline border thickness applied on top of the lens — kept for
@@ -674,110 +667,99 @@ class _LiquidGlassSurfaceState extends State<LiquidGlassSurface> {
     final MediaQueryData mq = MediaQuery.of(context);
     final Size screenSize = mq.size;
 
-    return ValueListenableBuilder<Color>(
-      valueListenable: GlassPalette.accent,
-      builder: (context, accent, _) {
-        // Same tint formula as [GlassSurface] so the two materials read as
-        // one during the migration.
-        final Color baseTint =
-            Color.lerp(Colors.white, accent, CASILiquidGlass.accentMix) ??
-                Colors.white;
-        final Color tint =
-            widget.tintOverride ?? baseTint.withValues(alpha: widget.opacity);
-        final Color border = widget.borderOverride ??
-            Colors.white.withValues(alpha: CASILiquidGlass.borderAlpha);
+    // Pure liquid glass: no white tint by default. The refraction and
+    // distortion ARE the material — adding a white overlay on top would
+    // fight the physics effect. tintOverride is still honoured for
+    // semantic states (e.g. red alarm tint, pause-blue swipe tint).
+    final Color tint = widget.tintOverride ?? Colors.transparent;
+    final Color border = widget.borderOverride ??
+        Colors.white.withValues(alpha: CASILiquidGlass.borderAlpha);
 
-        final BorderRadius radius = BorderRadius.circular(widget.cornerRadius);
+    final BorderRadius radius = BorderRadius.circular(widget.cornerRadius);
 
-        // Stack lays out the actual content (child) at its natural size and
-        // fills the lens + border behind/in front of it via Positioned.fill.
-        // The LayoutBuilder reads the Stack's resolved size and feeds it to
-        // the LiquidGlass lens.
-        Widget surface = Stack(
-          key: _surfaceKey,
-          children: [
-            Positioned.fill(
-              child: ClipRRect(
-                borderRadius: radius,
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final double w = constraints.maxWidth;
-                    final double h = constraints.maxHeight;
-                    if (!w.isFinite || !h.isFinite || w <= 0 || h <= 0) {
-                      return const SizedBox.shrink();
-                    }
-                    return LiquidGlassView(
-                      pixelRatio: CASILiquidGlass.pixelRatio,
-                      backgroundWidget: _AlignedWallpaperBackdrop(
-                        wallpaper: widget.backgroundWidget,
-                        screenSize: screenSize,
-                        screenOffset: _screenOffset,
-                      ),
-                      children: [
-                        LiquidGlass(
-                          width: w,
-                          height: h,
-                          magnification: CASILiquidGlass.magnification,
-                          distortion: widget.distortionOverride ??
-                              CASILiquidGlass.distortion,
-                          distortionWidth: CASILiquidGlass.distortionWidth,
-                          chromaticAberration:
-                              CASILiquidGlass.chromaticAberration,
-                          blur: LiquidGlassBlur(
-                            sigmaX: CASILiquidGlass.edgeBlurSigma,
-                            sigmaY: CASILiquidGlass.edgeBlurSigma,
-                          ),
-                          color: tint,
-                          shape: RoundedRectangleShape(
-                            cornerRadius: widget.cornerRadius,
-                          ),
-                          position: LiquidGlassAlignPosition(
-                            alignment: Alignment.center,
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-              ),
-            ),
-            // Hairline border on top — the package draws the lens but does
-            // not stroke an edge, so we paint our own to keep parity with
-            // [GlassSurface].
-            Positioned.fill(
-              child: IgnorePointer(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    borderRadius: radius,
-                    border: Border.all(
-                      color: border,
-                      width: CASILiquidGlass.borderWidth,
-                    ),
+    Widget surface = Stack(
+      key: _surfaceKey,
+      children: [
+        Positioned.fill(
+          child: ClipRRect(
+            borderRadius: radius,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final double w = constraints.maxWidth;
+                final double h = constraints.maxHeight;
+                if (!w.isFinite || !h.isFinite || w <= 0 || h <= 0) {
+                  return const SizedBox.shrink();
+                }
+                return LiquidGlassView(
+                  pixelRatio: CASILiquidGlass.pixelRatio,
+                  realTimeCapture: true,
+                  backgroundWidget: _AlignedWallpaperBackdrop(
+                    wallpaper: widget.backgroundWidget,
+                    screenSize: screenSize,
+                    screenOffset: _screenOffset,
                   ),
+                  children: [
+                    LiquidGlass(
+                      width: w,
+                      height: h,
+                      magnification: CASILiquidGlass.magnification,
+                      distortion: widget.distortionOverride ??
+                          CASILiquidGlass.distortion,
+                      distortionWidth: CASILiquidGlass.distortionWidth,
+                      chromaticAberration:
+                          CASILiquidGlass.chromaticAberration,
+                      blur: LiquidGlassBlur(
+                        sigmaX: CASILiquidGlass.edgeBlurSigma,
+                        sigmaY: CASILiquidGlass.edgeBlurSigma,
+                      ),
+                      color: tint,
+                      shape: RoundedRectangleShape(
+                        cornerRadius: widget.cornerRadius,
+                      ),
+                      position: LiquidGlassAlignPosition(
+                        alignment: Alignment.center,
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ),
+        // Hairline specular border — defines the glass edge without
+        // adding a flat tint on top of the refraction.
+        Positioned.fill(
+          child: IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: radius,
+                border: Border.all(
+                  color: border,
+                  width: CASILiquidGlass.borderWidth,
                 ),
               ),
             ),
-            // Content drives the Stack's intrinsic size.
-            Padding(
-              padding: widget.padding ?? EdgeInsets.zero,
-              child: widget.child,
-            ),
-          ],
-        );
-
-        if (widget.width != null || widget.height != null) {
-          surface = SizedBox(
-            width: widget.width,
-            height: widget.height,
-            child: surface,
-          );
-        }
-        if (widget.margin != null) {
-          surface = Padding(padding: widget.margin!, child: surface);
-        }
-        return RepaintBoundary(child: surface);
-      },
+          ),
+        ),
+        // Content drives the Stack's intrinsic size.
+        Padding(
+          padding: widget.padding ?? EdgeInsets.zero,
+          child: widget.child,
+        ),
+      ],
     );
+
+    if (widget.width != null || widget.height != null) {
+      surface = SizedBox(
+        width: widget.width,
+        height: widget.height,
+        child: surface,
+      );
+    }
+    if (widget.margin != null) {
+      surface = Padding(padding: widget.margin!, child: surface);
+    }
+    return RepaintBoundary(child: surface);
   }
 }
 

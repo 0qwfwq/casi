@@ -31,7 +31,6 @@ import '../widgets/foresight_pill.dart';
 import '../widgets/timer_pill.dart';
 import '../widgets/alarm_pill.dart';
 import '../models/widget_items.dart';
-import 'widgets_screen.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -92,10 +91,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
   CalendarBriefData? _calendarBriefData;
   String _temperatureUnit = 'C';
 
-  // Whether the user has placed the Weather widget in the Active section
-  // of the Widgets Screen. When true, the expanded WeatherForecastWidget
-  // renders on the home screen; when false, only the inline weather text
-  // beside the date is visible. Persisted to SharedPreferences.
+  // Whether the user has enabled the weather widget in Settings.
+  // Persisted to SharedPreferences.
   bool _weatherWidgetActive = false;
 
   // --- Foresight State ---
@@ -640,6 +637,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     // reload so the home screen reflects it immediately on return.
     await _loadForesightState();
     await _loadMorningBriefState();
+    await _loadWeatherWidgetState();
     if (mounted) setState(() {});
   }
 
@@ -710,10 +708,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     if (mounted) setState(() => _weatherWidgetActive = active);
   }
 
-  Future<void> _saveWeatherWidgetState() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('weather_widget_active', _weatherWidgetActive);
-  }
 
   /// Launches the user's chosen "foresight long-press" app. An empty
   /// package string means "open the system's default browser" via an
@@ -969,12 +963,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
               }
               const MethodChannel('casi.launcher/apps').invokeMethod('lockScreen');
             },
-            onLongPress: () {
-              if (_drawerProgress.value > 0.05 || _showPill || _isAlarmRinging) {
-                return;
-              }
-              _openWidgetsScreen();
-            },
+            onLongPress: null,
             onVerticalDragStart: (details) {
               _dragStartY = details.globalPosition.dy;
             },
@@ -1394,95 +1383,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
     return entries.map((e) => e.index).toList();
   }
 
-  // Push the Widgets Screen over the home route. The screen owns its
-  // drag/drop UI and mutates this state via callbacks; we persist on every
-  // change so the home screen reflects new isActive/delete/create flags
-  // the moment the user drops or saves.
-  void _openWidgetsScreen() {
-    HapticFeedback.mediumImpact();
-    Navigator.of(context).push(
-      PageRouteBuilder(
-        opaque: false,
-        barrierColor: Colors.transparent,
-        transitionDuration: const Duration(milliseconds: 220),
-        reverseTransitionDuration: const Duration(milliseconds: 180),
-        pageBuilder: (ctx, a, b) => WidgetsScreen(
-          alarms: _alarms,
-          timers: _appTimers,
-          weatherActive: _weatherWidgetActive,
-          onSetWeatherActive: (active) {
-            setState(() => _weatherWidgetActive = active);
-            _saveWeatherWidgetState();
-          },
-          onSetAlarmActive: (i, active) {
-            setState(() => _alarms[i].isActive = active);
-            _saveAlarms();
-          },
-          onSetTimerActive: (i, active) {
-            setState(() {
-              final t = _appTimers[i];
-              t.isActive = active;
-              // Going inactive freezes the timer: stop the running clock
-              // but preserve the remaining seconds so resuming later picks
-              // up where the user left off.
-              if (!active && t.isRunning) {
-                t.isRunning = false;
-                t.endTime = null;
-              }
-            });
-            _saveTimers();
-            _syncTimersOnResume();
-          },
-          onDeleteAlarm: (i) {
-            setState(() => _alarms.removeAt(i));
-            _saveAlarms();
-          },
-          onDeleteTimer: (i) {
-            setState(() => _appTimers.removeAt(i));
-            _saveTimers();
-          },
-          onReorderAlarm: (from, to) {
-            setState(() {
-              final item = _alarms.removeAt(from);
-              _alarms.insert(to, item);
-            });
-            _saveAlarms();
-          },
-          onReorderTimer: (from, to) {
-            setState(() {
-              final item = _appTimers.removeAt(from);
-              _appTimers.insert(to, item);
-            });
-            _saveTimers();
-          },
-          onCreateAlarms: (labels) {
-            setState(() {
-              for (final label in labels) {
-                if (_alarms.any((a) => a.label == label)) continue;
-                _alarms.add(AppAlarm(label: label, isActive: false));
-              }
-            });
-            _saveAlarms();
-          },
-          onCreateTimer: (totalSeconds) {
-            setState(() {
-              _appTimers.add(AppTimer(totalSeconds: totalSeconds));
-            });
-            _saveTimers();
-          },
-        ),
-        transitionsBuilder: (ctx, animation, _, child) => FadeTransition(
-          opacity: animation,
-          child: child,
-        ),
-      ),
-    );
-  }
-
   // The home-screen weather slot. Renders the expanded forecast widget
-  // only when the user has placed the Weather widget in Active in the
-  // Widgets Screen — otherwise the slot collapses to zero so the Morning
-  // Brief / clock layout stays tight. The inline temperature beside the
+  // only when the user has enabled weather in Settings — otherwise the
+  // slot collapses to zero. The inline temperature beside the
   // date in [ClockCapsule] is what's shown in the inactive case.
   Widget _buildPillRow() {
     return AnimatedSize(
@@ -1528,9 +1431,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
 
   // Schedule status row: alarm & timer pills above the music player.
   //
-  // Both pills are populated from two independent sources:
-  //   * CASI internal alarms/timers (the ones the user creates inside
-  //     the launcher's Widgets Screen).
+  // Pills are populated from:
   //   * The user's default clock app — system alarms come from
   //     `AlarmManager.getNextAlarmClock()`, system timers from the clock
   //     app's foreground notifications. System timers ride alongside CASI
@@ -1593,7 +1494,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
       timerPillWidget = TimerPill(
         entries: deckEntries.map((e) => e.entry).toList(),
         anyRinging: _ringingTimerIndices.isNotEmpty,
-        onLongPressOpen: _openWidgetsScreen,
+        onLongPressOpen: () => SystemClockService.instance.openClockApp(),
         onTogglePause: _onTimerDeckTogglePause,
         onStopSingle: _onTimerDeckStop,
         onStopAllRinging: _stopAllRingingTimers,
@@ -1611,9 +1512,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, Ticker
       alarmPillWidget = AlarmPill(
         title: nearestAlarm,
         isRinging: isThisRinging,
-        onLongPressOpen: systemAlarmLabel != null
-            ? () => SystemClockService.instance.openClockApp()
-            : _openWidgetsScreen,
+        onLongPressOpen: () => SystemClockService.instance.openClockApp(),
         onStop: _stopAlarm,
         backgroundWidget: _wallpaperService.buildBackground(),
       );
